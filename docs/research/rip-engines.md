@@ -70,7 +70,7 @@ Patent note: some stochastic and multi-level screening methods have been patente
 ## 5. Wide-format specifics
 - A 64 in × 50 ft job at 1200×1200 dpi in 6 colorants at 8 bpc is about 76,800 × 720,000 px × 6 ≈ **330 GB** uncompressed. So the pipeline must **stream bands** end to end (render, color, screen, encode, send) and never hold the full page. Ghostscript's c-list banding fits this.
 - Tiling for nesting: render each nested PDF placement into its band, or (simpler) pre-impose the nest into one PDF first and RIP that.
-- White ink (630W/730W): generate the white plane as a named spot (from the PDF or synthesized from alpha/a mask) through the NCLR/colorant map.
+- White ink (630W/730W): generate the white plane as a named spot (from the PDF or synthesized from alpha/a mask) through the NCLR/colorant map. The Latex 560 is a secondary compatibility target for the same white-ink path.
 
 ## 6. Unknowns to resolve
 - Artifex, Global Graphics, and Adobe/Datalogics pricing, and whether they license to open-source plugin authors.
