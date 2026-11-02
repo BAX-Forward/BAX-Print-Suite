@@ -1,0 +1,17 @@
+name: Cutter support request
+description: Request export or driver support for a cutter or plotter
+labels: [cutter-support, triage]
+body:
+  - type: markdown
+    attributes:
+      value: "Please only reference publicly documented formats. No vendor SDK files or NDA material."
+  - type: input
+    id: model
+    attributes: {label: Manufacturer and model}
+    validations: {required: true}
+  - type: dropdown
+    id: format
+    attributes: {label: Known accepted formats, multiple: true, options: [HPGL/HP-GL/2, DXF, SVG, PDF cut path, Vendor format (publicly documented), Unknown]}
+  - type: textarea
+    id: registration
+    attributes: {label: Registration mark system / camera, description: Links to public docs.}

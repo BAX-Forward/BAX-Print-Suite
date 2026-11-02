@@ -1,0 +1,23 @@
+name: Printer support request
+description: Request a driver for a printer model
+labels: [printer-support, triage]
+body:
+  - type: markdown
+    attributes:
+      value: "Please don't post vendor SDK files, NDA documentation, or captured proprietary protocol data. Drivers that need a proprietary SDK live in separate plugin repos (ADR-0005)."
+  - type: input
+    id: model
+    attributes: {label: Manufacturer and model}
+    validations: {required: true}
+  - type: input
+    id: ink
+    attributes: {label: Ink technology and channels (e.g. CMYK+Lc+Lm+White)}
+  - type: textarea
+    id: interfaces
+    attributes: {label: Publicly documented interfaces (links), description: "e.g. IPP, PDF/TIFF direct, public SDK, developer program"}
+  - type: checkboxes
+    id: willing
+    attributes:
+      label: Help
+      options:
+        - label: I can test on this device.

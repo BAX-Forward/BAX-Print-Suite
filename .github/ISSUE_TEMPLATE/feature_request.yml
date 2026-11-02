@@ -1,0 +1,17 @@
+name: Feature request
+description: Suggest an improvement or new capability
+labels: [enhancement, triage]
+body:
+  - type: textarea
+    id: problem
+    attributes: {label: Problem / use case}
+    validations: {required: true}
+  - type: textarea
+    id: proposal
+    attributes: {label: Proposed solution}
+  - type: dropdown
+    id: area
+    attributes: {label: Area, options: [Intake/Queue, Preflight, Nesting/Layout, Render, Color, Screening, Printer output, Cut export, Dashboard/API, Plugin SDK, Other]}
+  - type: textarea
+    id: refs
+    attributes: {label: Public references (standards, docs)}
