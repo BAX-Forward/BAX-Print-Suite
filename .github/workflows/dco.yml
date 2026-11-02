@@ -1,0 +1,67 @@
+name: dco
+
+on:
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  dco:
+    name: dco
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check Signed-off-by trailers
+        shell: bash
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+          REPOSITORY: ${{ github.repository }}
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+
+          work="$(mktemp -d)"
+          trap 'rm -rf "$work"' EXIT
+          git init --quiet "$work"
+          git -C "$work" remote add origin "https://github.com/${REPOSITORY}.git"
+          git -C "$work" -c "http.extraHeader=AUTHORIZATION: bearer ${GH_TOKEN}" \
+            fetch --quiet --no-tags origin \
+            "${BASE_SHA}:refs/heads/base" \
+            "pull/${PR_NUMBER}/head:refs/heads/pr"
+
+          mapfile -t commits < <(git -C "$work" rev-list refs/heads/base..refs/heads/pr)
+          if [ "${#commits[@]}" -eq 0 ]; then
+            echo "No commits found between ${BASE_SHA} and pull/${PR_NUMBER}/head."
+            exit 1
+          fi
+
+          failed=0
+          for sha in "${commits[@]}"; do
+            author_email="$(git -C "$work" log -1 --format='%ae' "$sha")"
+            subject="$(git -C "$work" log -1 --format='%s' "$sha")"
+            ok=0
+            while IFS= read -r trailer || [ -n "$trailer" ]; do
+              case "$trailer" in
+                "Signed-off-by:"*)
+                  value="${trailer#"Signed-off-by:"}"
+                  value="${value#"${value%%[![:space:]]*}"}"
+                  signoff_email="$(printf '%s' "$value" | sed -n 's/^.*<\([^<>]*\)>[[:space:]]*$/\1/p')"
+                  if [ -n "$signoff_email" ] && [ "$signoff_email" = "$author_email" ]; then
+                    ok=1
+                    break
+                  fi
+                  ;;
+              esac
+            done < <(git -C "$work" log -1 --format='%B' "$sha" | git -C "$work" interpret-trailers --parse)
+
+            if [ "$ok" -eq 1 ]; then
+              printf 'ok %s %s %s\n' "$sha" "$author_email" "$subject"
+            else
+              echo "::error title=DCO::${sha} (${author_email}) is missing a Signed-off-by trailer for that author email"
+              printf 'fail %s %s %s\n' "$sha" "$author_email" "$subject"
+              failed=1
+            fi
+          done
+
+          exit "$failed"
