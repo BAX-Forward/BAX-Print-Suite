@@ -15,6 +15,8 @@ This project is an independent implementation built from **public standards, pub
 
 Integrations that need a proprietary SDK belong in a separate plugin repository (see [ADR-0005](docs/adr/0005-proprietary-sdk-plugins-separate-repos.md)).
 
+The observation, spec, and differential-test procedure is in [docs/research/clean-room-method.md](docs/research/clean-room-method.md).
+
 ## Developer Certificate of Origin
 We use the [Developer Certificate of Origin 1.1](https://developercertificate.org/) instead of a CLA. Every commit must carry a sign-off line:
 
