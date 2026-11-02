@@ -1,0 +1,8 @@
+{
+  "$comment": "Acceptance thresholds for Spec 003. Lowering any value requires maintainer review.",
+  "timeBudgetMs": 500,
+  "perfectSmall": { "maxN": 25, "maxMeanLengthRatio": 1.1 },
+  "perfectLarge": { "minN": 50, "maxN": 200, "minMeanUtilization": 0.9, "minWorstUtilization": 0.85 },
+  "shopMix": { "items": 40, "minUtilization": 0.85 },
+  "maxrectsBssf500": { "maxMs": 200, "ciFactor": 3 }
+}

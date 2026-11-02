@@ -1,0 +1,44 @@
+{
+  "name": "@bax-print/nest",
+  "version": "0.0.0",
+  "private": true,
+  "description": "Roll-media nesting, imposition and SVG preview for BAX Print Suite",
+  "license": "Apache-2.0",
+  "type": "module",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    }
+  },
+  "bin": {
+    "bps-nest": "./dist/bin.js"
+  },
+  "files": [
+    "dist"
+  ],
+  "engines": {
+    "node": ">=22"
+  },
+  "scripts": {
+    "build": "tsc -p tsconfig.build.json",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "test": "vitest run",
+    "bench": "tsx bench/run.ts"
+  },
+  "dependencies": {
+    "pdf-lib": "1.17.1"
+  },
+  "devDependencies": {
+    "@napi-rs/canvas": "0.1.65",
+    "@types/node": "22.10.2",
+    "fast-check": "3.23.2",
+    "fast-xml-parser": "4.5.0",
+    "pdfjs-dist": "4.10.38",
+    "tsx": "4.19.2",
+    "typescript": "5.8.3",
+    "vitest": "3.2.4"
+  }
+}
