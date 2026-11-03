@@ -1,0 +1,13 @@
+.scroll {
+  overflow-x: auto;
+}
+
+/* Fixed-height scroller so only visible rows are rendered (virtualized past 200 rows). */
+.virtualScroll {
+  overflow: auto;
+  max-height: 70vh;
+}
+
+.selected {
+  background: #e7f0fb;
+}

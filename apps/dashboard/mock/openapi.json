@@ -1,0 +1,484 @@
+{
+  "openapi": "3.1.0",
+  "info": {
+    "title": "BAX Print Suite API",
+    "version": "0.2.0-mock",
+    "description": "Fixture of the control-plane HTTP API: Spec 001 endpoints plus the Spec 002 additions. The dashboard mock (MSW) implements this document; the real document is served by apps/server at /openapi.json.",
+    "license": { "name": "Apache-2.0", "identifier": "Apache-2.0" }
+  },
+  "paths": {
+    "/health": {
+      "get": {
+        "operationId": "getHealth",
+        "responses": {
+          "200": { "description": "Service is up", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Health" } } } }
+        }
+      }
+    },
+    "/openapi.json": {
+      "get": {
+        "operationId": "getOpenApi",
+        "responses": { "200": { "description": "This document", "content": { "application/json": { "schema": { "type": "object" } } } } }
+      }
+    },
+    "/jobs": {
+      "get": {
+        "operationId": "listJobs",
+        "parameters": [
+          { "name": "status", "in": "query", "style": "form", "explode": true, "schema": { "type": "array", "items": { "$ref": "#/components/schemas/JobStatus" } } },
+          { "name": "q", "in": "query", "description": "Job name contains (case-insensitive)", "schema": { "type": "string" } },
+          { "name": "hotFolderId", "in": "query", "schema": { "type": "string" } },
+          { "name": "deviceId", "in": "query", "schema": { "type": "string" } },
+          { "name": "sort", "in": "query", "schema": { "$ref": "#/components/schemas/JobSort" } },
+          { "name": "cursor", "in": "query", "description": "Opaque cursor from a previous page's nextCursor", "schema": { "type": "string" } },
+          { "name": "limit", "in": "query", "schema": { "type": "integer", "minimum": 1, "maximum": 200, "default": 50 } }
+        ],
+        "responses": {
+          "200": { "description": "A page of jobs", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/JobPage" } } } },
+          "400": { "$ref": "#/components/responses/BadRequest" }
+        }
+      }
+    },
+    "/jobs/{id}": {
+      "parameters": [{ "$ref": "#/components/parameters/Id" }],
+      "get": {
+        "operationId": "getJob",
+        "responses": {
+          "200": { "description": "The job", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Job" } } } },
+          "404": { "$ref": "#/components/responses/NotFound" }
+        }
+      },
+      "patch": {
+        "operationId": "patchJob",
+        "description": "Change status (validated by the core state machine) and/or priority.",
+        "requestBody": { "required": true, "content": { "application/json": { "schema": { "$ref": "#/components/schemas/JobPatch" } } } },
+        "responses": {
+          "200": { "description": "The updated job", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Job" } } } },
+          "400": { "$ref": "#/components/responses/BadRequest" },
+          "404": { "$ref": "#/components/responses/NotFound" },
+          "409": { "$ref": "#/components/responses/Conflict" }
+        }
+      }
+    },
+    "/jobs/{id}/transitions": {
+      "parameters": [{ "$ref": "#/components/parameters/Id" }],
+      "get": {
+        "operationId": "getJobTransitions",
+        "description": "Statuses the job may move to from its current status, from the core transition table (Spec 002).",
+        "responses": {
+          "200": { "description": "Allowed transitions", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Transitions" } } } },
+          "404": { "$ref": "#/components/responses/NotFound" }
+        }
+      }
+    },
+    "/jobs/{id}/file": {
+      "parameters": [{ "$ref": "#/components/parameters/Id" }],
+      "get": {
+        "operationId": "getJobFile",
+        "description": "Streams the stored PDF. The path is resolved from the job record only (Spec 002).",
+        "responses": {
+          "200": { "description": "The stored PDF", "headers": { "Content-Disposition": { "schema": { "type": "string" } } }, "content": { "application/pdf": { "schema": { "type": "string", "contentMediaType": "application/pdf" } } } },
+          "404": { "$ref": "#/components/responses/NotFound" }
+        }
+      }
+    },
+    "/jobs/{id}/preview": {
+      "parameters": [
+        { "$ref": "#/components/parameters/Id" },
+        { "name": "page", "in": "query", "description": "1-based page number", "schema": { "type": "integer", "minimum": 1, "default": 1 } },
+        { "name": "w", "in": "query", "description": "Maximum edge length in pixels", "schema": { "type": "integer", "minimum": 16, "maximum": 2048, "default": 320 } }
+      ],
+      "get": {
+        "operationId": "getJobPreview",
+        "description": "Reserved contract. Returns 501 until a RenderEngine provides previews (M5); clients fall back to pdf.js.",
+        "responses": {
+          "200": { "description": "Rendered preview", "content": { "image/png": { "schema": { "type": "string", "contentMediaType": "image/png" } } } },
+          "400": { "$ref": "#/components/responses/BadRequest" },
+          "404": { "$ref": "#/components/responses/NotFound" },
+          "501": { "description": "No render engine", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/PreviewUnavailable" } } } }
+        }
+      }
+    },
+    "/jobs/{id}/print": {
+      "parameters": [{ "$ref": "#/components/parameters/Id" }],
+      "post": {
+        "operationId": "printJob",
+        "requestBody": { "required": true, "content": { "application/json": { "schema": { "$ref": "#/components/schemas/PrintRequest" } } } },
+        "responses": {
+          "202": { "description": "Accepted for output", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Job" } } } },
+          "400": { "$ref": "#/components/responses/BadRequest" },
+          "404": { "$ref": "#/components/responses/NotFound" },
+          "409": { "$ref": "#/components/responses/Conflict" }
+        }
+      }
+    },
+    "/hotfolders": {
+      "get": {
+        "operationId": "listHotFolders",
+        "responses": { "200": { "description": "Hot folders", "content": { "application/json": { "schema": { "type": "array", "items": { "$ref": "#/components/schemas/HotFolder" } } } } } }
+      },
+      "post": {
+        "operationId": "createHotFolder",
+        "requestBody": { "required": true, "content": { "application/json": { "schema": { "$ref": "#/components/schemas/HotFolderCreate" } } } },
+        "responses": {
+          "201": { "description": "Created", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/HotFolder" } } } },
+          "400": { "$ref": "#/components/responses/BadRequest" }
+        }
+      }
+    },
+    "/hotfolders/{id}": {
+      "parameters": [{ "$ref": "#/components/parameters/Id" }],
+      "patch": {
+        "operationId": "patchHotFolder",
+        "requestBody": { "required": true, "content": { "application/json": { "schema": { "$ref": "#/components/schemas/HotFolderPatch" } } } },
+        "responses": {
+          "200": { "description": "Updated", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/HotFolder" } } } },
+          "400": { "$ref": "#/components/responses/BadRequest" },
+          "404": { "$ref": "#/components/responses/NotFound" }
+        }
+      },
+      "delete": {
+        "operationId": "deleteHotFolder",
+        "description": "Stops the watcher. Never deletes files on disk.",
+        "responses": { "204": { "description": "Removed" }, "404": { "$ref": "#/components/responses/NotFound" } }
+      }
+    },
+    "/plugins": {
+      "get": {
+        "operationId": "listPlugins",
+        "responses": { "200": { "description": "Installed plugins", "content": { "application/json": { "schema": { "type": "array", "items": { "$ref": "#/components/schemas/Plugin" } } } } } }
+      }
+    },
+    "/devices": {
+      "get": {
+        "operationId": "listDevices",
+        "responses": { "200": { "description": "Devices", "content": { "application/json": { "schema": { "type": "array", "items": { "$ref": "#/components/schemas/Device" } } } } } }
+      },
+      "post": {
+        "operationId": "createDevice",
+        "requestBody": { "required": true, "content": { "application/json": { "schema": { "$ref": "#/components/schemas/DeviceCreate" } } } },
+        "responses": {
+          "201": { "description": "Created", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Device" } } } },
+          "400": { "$ref": "#/components/responses/BadRequest" }
+        }
+      }
+    },
+    "/devices/{id}": {
+      "parameters": [{ "$ref": "#/components/parameters/Id" }],
+      "patch": {
+        "operationId": "patchDevice",
+        "requestBody": { "required": true, "content": { "application/json": { "schema": { "$ref": "#/components/schemas/DevicePatch" } } } },
+        "responses": {
+          "200": { "description": "Updated", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Device" } } } },
+          "400": { "$ref": "#/components/responses/BadRequest" },
+          "404": { "$ref": "#/components/responses/NotFound" }
+        }
+      }
+    },
+    "/events": {
+      "get": {
+        "operationId": "streamEvents",
+        "description": "Server-Sent Events. Each message carries one CloudEvents 1.0 envelope as JSON in `data`; the SSE `event` field equals the CloudEvent type.",
+        "responses": { "200": { "description": "Event stream", "content": { "text/event-stream": { "schema": { "$ref": "#/components/schemas/CloudEvent" } } } } }
+      }
+    }
+  },
+  "components": {
+    "parameters": {
+      "Id": { "name": "id", "in": "path", "required": true, "schema": { "type": "string" } }
+    },
+    "responses": {
+      "BadRequest": { "description": "Validation failed", "content": { "application/problem+json": { "schema": { "$ref": "#/components/schemas/Problem" } } } },
+      "NotFound": { "description": "Not found", "content": { "application/problem+json": { "schema": { "$ref": "#/components/schemas/Problem" } } } },
+      "Conflict": { "description": "Not allowed in the current state", "content": { "application/problem+json": { "schema": { "$ref": "#/components/schemas/Problem" } } } }
+    },
+    "schemas": {
+      "Health": {
+        "type": "object",
+        "required": ["status", "version"],
+        "properties": { "status": { "type": "string", "enum": ["ok"] }, "version": { "type": "string" } }
+      },
+      "JobStatus": {
+        "type": "string",
+        "enum": ["received", "inspecting", "ready", "held", "queued", "processing", "sent_to_device", "printed", "done", "failed", "cancelled"]
+      },
+      "JobSort": {
+        "type": "string",
+        "enum": ["createdAt", "-createdAt", "priority", "-priority", "name", "-name"]
+      },
+      "Box": {
+        "type": "object",
+        "description": "Rectangle in PDF points (1/72 in)",
+        "required": ["x", "y", "width", "height"],
+        "properties": { "x": { "type": "number" }, "y": { "type": "number" }, "width": { "type": "number" }, "height": { "type": "number" } }
+      },
+      "Page": {
+        "type": "object",
+        "required": ["index", "widthPt", "heightPt"],
+        "properties": {
+          "index": { "type": "integer", "minimum": 0, "description": "0-based page index" },
+          "widthPt": { "type": "number" },
+          "heightPt": { "type": "number" },
+          "trimBox": { "oneOf": [{ "$ref": "#/components/schemas/Box" }, { "type": "null" }] }
+        }
+      },
+      "JobError": {
+        "type": "object",
+        "required": ["code", "message"],
+        "properties": { "code": { "type": "string" }, "message": { "type": "string" }, "detail": { "type": ["string", "null"] } }
+      },
+      "StepStatus": { "type": "string", "enum": ["pending", "running", "completed", "failed", "cancelled"] },
+      "JobStep": {
+        "type": "object",
+        "required": ["id", "stage", "status"],
+        "properties": {
+          "id": { "type": "string" },
+          "stage": { "type": "string", "description": "Pipeline stage, e.g. intake, inspect, output" },
+          "status": { "$ref": "#/components/schemas/StepStatus" },
+          "pluginId": { "type": ["string", "null"] },
+          "startedAt": { "type": ["string", "null"], "format": "date-time" },
+          "finishedAt": { "type": ["string", "null"], "format": "date-time" },
+          "error": { "oneOf": [{ "$ref": "#/components/schemas/JobError" }, { "type": "null" }] },
+          "result": { "type": ["object", "null"], "additionalProperties": true, "description": "Stage output, e.g. {deliveredPath, bytes, sha256} for output" }
+        }
+      },
+      "AuditEntry": {
+        "type": "object",
+        "required": ["id", "time", "type", "message"],
+        "properties": {
+          "id": { "type": "string" },
+          "time": { "type": "string", "format": "date-time" },
+          "type": { "type": "string" },
+          "message": { "type": "string" },
+          "data": { "type": ["object", "null"], "additionalProperties": true }
+        }
+      },
+      "Job": {
+        "type": "object",
+        "required": ["id", "name", "sizeBytes", "sha256", "pageCount", "pages", "status", "priority", "steps", "createdAt", "updatedAt"],
+        "properties": {
+          "id": { "type": "string", "description": "ULID" },
+          "name": { "type": "string" },
+          "sourcePath": { "type": ["string", "null"] },
+          "storedPath": { "type": ["string", "null"] },
+          "sizeBytes": { "type": "integer", "minimum": 0 },
+          "sha256": { "type": "string", "pattern": "^[0-9a-f]{64}$" },
+          "pageCount": { "type": "integer", "minimum": 0 },
+          "pages": { "type": "array", "items": { "$ref": "#/components/schemas/Page" } },
+          "status": { "$ref": "#/components/schemas/JobStatus" },
+          "priority": { "type": "integer", "minimum": 0, "maximum": 100 },
+          "hotFolderId": { "type": ["string", "null"] },
+          "ticketId": { "type": ["string", "null"] },
+          "deviceId": { "type": ["string", "null"] },
+          "steps": { "type": "array", "items": { "$ref": "#/components/schemas/JobStep" } },
+          "audit": { "type": "array", "items": { "$ref": "#/components/schemas/AuditEntry" } },
+          "createdAt": { "type": "string", "format": "date-time" },
+          "updatedAt": { "type": "string", "format": "date-time" },
+          "error": { "oneOf": [{ "$ref": "#/components/schemas/JobError" }, { "type": "null" }] }
+        }
+      },
+      "JobPage": {
+        "type": "object",
+        "required": ["items", "nextCursor"],
+        "properties": {
+          "items": { "type": "array", "items": { "$ref": "#/components/schemas/Job" } },
+          "nextCursor": { "type": ["string", "null"] }
+        }
+      },
+      "JobPatch": {
+        "type": "object",
+        "minProperties": 1,
+        "additionalProperties": false,
+        "properties": {
+          "status": { "$ref": "#/components/schemas/JobStatus" },
+          "priority": { "type": "integer", "minimum": 0, "maximum": 100 }
+        }
+      },
+      "Transitions": {
+        "type": "object",
+        "required": ["status", "allowed"],
+        "properties": {
+          "status": { "$ref": "#/components/schemas/JobStatus" },
+          "allowed": { "type": "array", "items": { "$ref": "#/components/schemas/JobStatus" } }
+        }
+      },
+      "PrintRequest": {
+        "type": "object",
+        "required": ["deviceId"],
+        "properties": { "deviceId": { "type": "string" } }
+      },
+      "HotFolderSettings": {
+        "type": "object",
+        "required": ["defaultPriority", "filePatterns", "dedupe"],
+        "properties": {
+          "moveProcessedTo": { "type": ["string", "null"], "description": "Folder for processed originals; null means <hotfolder>/_processed" },
+          "defaultPriority": { "type": "integer", "minimum": 0, "maximum": 100 },
+          "filePatterns": { "type": "array", "minItems": 1, "items": { "type": "string", "minLength": 1 } },
+          "dedupe": { "type": "boolean" },
+          "ticketTemplate": { "type": ["object", "null"], "additionalProperties": true },
+          "defaultDeviceId": { "type": ["string", "null"], "description": "Routing rule: jobs from this folder target this device" }
+        }
+      },
+      "HotFolderSettingsInput": {
+        "type": "object",
+        "properties": {
+          "moveProcessedTo": { "type": ["string", "null"] },
+          "defaultPriority": { "type": "integer", "minimum": 0, "maximum": 100 },
+          "filePatterns": { "type": "array", "minItems": 1, "items": { "type": "string", "minLength": 1 } },
+          "dedupe": { "type": "boolean" },
+          "defaultDeviceId": { "type": ["string", "null"] }
+        }
+      },
+      "HotFolder": {
+        "type": "object",
+        "required": ["id", "name", "path", "enabled", "settings", "createdAt", "updatedAt"],
+        "properties": {
+          "id": { "type": "string" },
+          "name": { "type": "string" },
+          "path": { "type": "string" },
+          "enabled": { "type": "boolean" },
+          "settings": { "$ref": "#/components/schemas/HotFolderSettings" },
+          "createdAt": { "type": "string", "format": "date-time" },
+          "updatedAt": { "type": "string", "format": "date-time" }
+        }
+      },
+      "HotFolderCreate": {
+        "type": "object",
+        "required": ["path"],
+        "properties": {
+          "name": { "type": "string" },
+          "path": { "type": "string" },
+          "enabled": { "type": "boolean" },
+          "settings": { "$ref": "#/components/schemas/HotFolderSettingsInput" }
+        }
+      },
+      "HotFolderPatch": {
+        "type": "object",
+        "properties": {
+          "name": { "type": "string" },
+          "enabled": { "type": "boolean" },
+          "settings": { "$ref": "#/components/schemas/HotFolderSettingsInput" }
+        }
+      },
+      "PluginInterface": {
+        "type": "object",
+        "required": ["interface", "versions"],
+        "properties": { "interface": { "type": "string" }, "versions": { "type": "string" } }
+      },
+      "Plugin": {
+        "type": "object",
+        "required": ["id", "name", "version", "license", "protocol", "provides", "trust", "state"],
+        "properties": {
+          "id": { "type": "string" },
+          "name": { "type": "string" },
+          "version": { "type": "string" },
+          "license": { "type": "string" },
+          "protocol": { "type": "string" },
+          "provides": { "type": "array", "items": { "$ref": "#/components/schemas/PluginInterface" } },
+          "trust": { "type": "string", "enum": ["builtin", "verified", "third-party"] },
+          "state": { "type": "string", "enum": ["running", "stopped", "error"] },
+          "capabilities": { "type": "object", "additionalProperties": true },
+          "configSchema": { "type": ["object", "null"], "additionalProperties": true, "description": "JSON Schema for device config (manifest configSchema)" }
+        }
+      },
+      "DeviceStatus": {
+        "type": "object",
+        "required": ["state"],
+        "properties": {
+          "state": { "type": "string", "enum": ["ready", "busy", "offline", "unknown"] },
+          "reason": { "type": ["string", "null"] },
+          "checkedAt": { "type": ["string", "null"], "format": "date-time" }
+        }
+      },
+      "Device": {
+        "type": "object",
+        "required": ["id", "name", "kind", "pluginId", "config", "autoDispatch", "maxConcurrency", "status", "createdAt", "updatedAt"],
+        "properties": {
+          "id": { "type": "string" },
+          "name": { "type": "string" },
+          "kind": { "type": "string", "enum": ["printer", "cutter"] },
+          "pluginId": { "type": "string" },
+          "config": { "type": "object", "additionalProperties": true },
+          "autoDispatch": { "type": "boolean" },
+          "maxConcurrency": { "type": "integer", "minimum": 1 },
+          "status": { "$ref": "#/components/schemas/DeviceStatus" },
+          "createdAt": { "type": "string", "format": "date-time" },
+          "updatedAt": { "type": "string", "format": "date-time" }
+        }
+      },
+      "DeviceCreate": {
+        "type": "object",
+        "required": ["name", "kind", "pluginId"],
+        "properties": {
+          "name": { "type": "string" },
+          "kind": { "type": "string", "enum": ["printer"] },
+          "pluginId": { "type": "string" },
+          "config": { "type": "object", "additionalProperties": true },
+          "autoDispatch": { "type": "boolean" },
+          "maxConcurrency": { "type": "integer", "minimum": 1 }
+        }
+      },
+      "DevicePatch": {
+        "type": "object",
+        "properties": {
+          "name": { "type": "string" },
+          "config": { "type": "object", "additionalProperties": true },
+          "autoDispatch": { "type": "boolean" },
+          "maxConcurrency": { "type": "integer", "minimum": 1 }
+        }
+      },
+      "FieldError": {
+        "type": "object",
+        "required": ["field", "message"],
+        "properties": { "field": { "type": "string", "description": "Dotted path of the offending field, e.g. path or config.targetDir" }, "message": { "type": "string" } }
+      },
+      "Problem": {
+        "type": "object",
+        "description": "RFC 9457 problem details",
+        "required": ["title", "status"],
+        "properties": {
+          "type": { "type": "string" },
+          "title": { "type": "string" },
+          "status": { "type": "integer" },
+          "detail": { "type": "string" },
+          "errors": { "type": "array", "items": { "$ref": "#/components/schemas/FieldError" } }
+        }
+      },
+      "PreviewUnavailable": {
+        "type": "object",
+        "required": ["reason"],
+        "properties": { "reason": { "type": "string", "enum": ["no-render-engine"] } }
+      },
+      "CloudEvent": {
+        "type": "object",
+        "description": "CloudEvents 1.0 envelope. Types: job.created, job.status.changed, step.started|progress|completed|failed, device.status, device.accounting, hotfolder.file.detected",
+        "required": ["specversion", "id", "type", "source", "time", "data"],
+        "properties": {
+          "specversion": { "type": "string", "enum": ["1.0"] },
+          "id": { "type": "string" },
+          "type": { "type": "string" },
+          "source": { "type": "string" },
+          "subject": { "type": "string" },
+          "time": { "type": "string", "format": "date-time" },
+          "datacontenttype": { "type": "string" },
+          "data": { "type": "object", "additionalProperties": true }
+        }
+      },
+      "JobCreatedData": {
+        "type": "object",
+        "required": ["jobId"],
+        "properties": { "jobId": { "type": "string" }, "job": { "$ref": "#/components/schemas/Job" } }
+      },
+      "JobStatusChangedData": {
+        "type": "object",
+        "required": ["jobId", "from", "to"],
+        "properties": {
+          "jobId": { "type": "string" },
+          "from": { "$ref": "#/components/schemas/JobStatus" },
+          "to": { "$ref": "#/components/schemas/JobStatus" },
+          "job": { "$ref": "#/components/schemas/Job" }
+        }
+      }
+    }
+  }
+}

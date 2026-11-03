@@ -1,0 +1,66 @@
+.errorPanel {
+  border: 2px solid var(--color-danger);
+  background: var(--color-danger-bg);
+  border-radius: var(--radius);
+  padding: var(--space-3) var(--space-4);
+  margin-bottom: var(--space-4);
+}
+
+.errorPanel h2 {
+  margin-top: 0;
+  color: var(--color-danger);
+}
+
+.errorPanel p {
+  margin: var(--space-1) 0;
+}
+
+.actions {
+  display: grid;
+  gap: var(--space-3);
+}
+
+.details {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
+  gap: var(--space-2) var(--space-4);
+  margin: 0;
+}
+
+.detailRow {
+  display: grid;
+  gap: 2px;
+}
+
+.detailRow dt {
+  font-weight: 600;
+  color: var(--color-text-muted);
+  font-size: 0.9rem;
+}
+
+.detailRow dd {
+  margin: 0;
+}
+
+.stepResult {
+  display: grid;
+  gap: var(--space-1);
+  margin: var(--space-1) 0 0 var(--space-4);
+}
+
+.timeline {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+  display: grid;
+  gap: var(--space-2);
+}
+
+.timeline li {
+  border-left: 3px solid var(--color-border);
+  padding-left: var(--space-3);
+}
+
+.timeline li[data-kind='step'] {
+  border-left-color: var(--color-primary);
+}
