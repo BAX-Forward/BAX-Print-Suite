@@ -7,6 +7,9 @@ coverage/
 .env.local
 .env.*.local
 
+# Default data directory of apps/server (BPS_DATA_DIR)
+/data/
+
 # Playwright
 playwright-report/
 test-results/
