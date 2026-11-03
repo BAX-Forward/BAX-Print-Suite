@@ -1,0 +1,29 @@
+{
+  "name": "@bax-print/cutter-summa-s2",
+  "version": "0.1.0",
+  "description": "CutterDriver/2 plugin for Summa S Class 2 roll cutters: HP-GL/2 export and file, USB device path or raw TCP delivery, from publicly documented behavior only",
+  "license": "Apache-2.0",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": "./src/driver.ts"
+  },
+  "engines": {
+    "node": ">=22"
+  },
+  "scripts": {
+    "start": "node --import tsx src/main.ts",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "test": "vitest run"
+  },
+  "dependencies": {
+    "@bax-print/cut-export": "workspace:*",
+    "@bax-print/plugin-sdk": "workspace:*",
+    "tsx": "4.19.2"
+  },
+  "devDependencies": {
+    "@types/node": "22.10.2",
+    "typescript": "5.8.3",
+    "vitest": "3.2.4"
+  }
+}

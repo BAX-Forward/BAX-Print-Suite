@@ -1,0 +1,30 @@
+{
+  "name": "@bax-print/cutter-summa-f",
+  "version": "0.1.0",
+  "description": "CutterDriver/2 plugin for Summa F-series flatbed cutters: layered PDF and DXF R12 cut files for the documented GoProduce folder and hot-folder import",
+  "license": "Apache-2.0",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": "./src/driver.ts"
+  },
+  "engines": {
+    "node": ">=22"
+  },
+  "scripts": {
+    "start": "node --import tsx src/main.ts",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "test": "vitest run"
+  },
+  "dependencies": {
+    "@bax-print/cut-export": "workspace:*",
+    "@bax-print/plugin-sdk": "workspace:*",
+    "tsx": "4.19.2"
+  },
+  "devDependencies": {
+    "@types/node": "22.10.2",
+    "pdf-lib": "1.17.1",
+    "typescript": "5.8.3",
+    "vitest": "3.2.4"
+  }
+}

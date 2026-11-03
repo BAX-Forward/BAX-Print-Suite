@@ -1,0 +1,25 @@
+{
+  "name": "@bax-print/plugin-sdk",
+  "version": "0.1.0",
+  "description": "BPS plugin protocol (BPP) stub and CutterDriver/2 interface with conformance kit",
+  "license": "Apache-2.0",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts",
+    "./conformance": "./src/conformance/index.ts"
+  },
+  "engines": {
+    "node": ">=22"
+  },
+  "scripts": {
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "test": "vitest run"
+  },
+  "devDependencies": {
+    "@types/node": "22.10.2",
+    "tsx": "4.19.2",
+    "typescript": "5.8.3",
+    "vitest": "3.2.4"
+  }
+}

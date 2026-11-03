@@ -1,0 +1,21 @@
+{
+  "id": "org.bax-print.cutter.summa-s2",
+  "name": "Summa S Class 2 roll cutter (HP-GL/2)",
+  "version": "0.1.0",
+  "license": "Apache-2.0",
+  "provides": [{ "interface": "CutterDriver", "versions": ">=2.0 <3" }],
+  "protocol": "bpp/1",
+  "exec": {
+    "command": "node",
+    "args": ["--import", "tsx", "src/main.ts"],
+    "platforms": ["win32-x64", "linux-x64", "darwin-arm64", "darwin-x64"]
+  },
+  "permissions": { "fs": ["spool:rw", "output:w"], "network": true, "devices": ["user-configured"] },
+  "capabilities": {
+    "machineClass": "roll",
+    "formats": ["hpgl"],
+    "reservedFormats": ["dmpl"],
+    "delivery": ["file", "usb", "tcp"],
+    "experimental": ["edge-mark-rows", "usb", "tcp"]
+  }
+}

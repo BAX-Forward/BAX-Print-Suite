@@ -1,0 +1,20 @@
+{
+  "id": "org.bax-print.cutter.summa-f",
+  "name": "Summa F-series flatbed cutter (GoProduce folder import)",
+  "version": "0.1.0",
+  "license": "Apache-2.0",
+  "provides": [{ "interface": "CutterDriver", "versions": ">=2.0 <3" }],
+  "protocol": "bpp/1",
+  "exec": {
+    "command": "node",
+    "args": ["--import", "tsx", "src/main.ts"],
+    "platforms": ["win32-x64", "linux-x64", "darwin-arm64", "darwin-x64"]
+  },
+  "permissions": { "fs": ["spool:rw", "output:w"], "network": false },
+  "capabilities": {
+    "machineClass": "flatbed",
+    "formats": ["pdf-cut", "dxf"],
+    "delivery": ["folder-import"],
+    "experimental": ["barcodeJobId"]
+  }
+}
