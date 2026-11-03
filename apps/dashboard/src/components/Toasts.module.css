@@ -1,0 +1,38 @@
+.region {
+  position: fixed;
+  right: var(--space-4);
+  bottom: var(--space-4);
+  z-index: 10;
+  display: grid;
+  gap: var(--space-2);
+  max-width: min(420px, calc(100vw - 32px));
+}
+
+.stack {
+  display: grid;
+  gap: var(--space-2);
+}
+
+.toast {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-3);
+  padding: var(--space-2) var(--space-3);
+  border-radius: var(--radius);
+  border: 1px solid var(--color-border);
+  background: var(--color-bg);
+  box-shadow: 0 2px 8px rgb(0 0 0 / 15%);
+}
+
+.toast[data-kind='error'] {
+  border-color: var(--color-danger);
+  background: var(--color-danger-bg);
+  color: var(--color-danger);
+}
+
+.toast[data-kind='success'] {
+  border-color: var(--color-success);
+  background: var(--color-success-bg);
+  color: var(--color-success);
+}
