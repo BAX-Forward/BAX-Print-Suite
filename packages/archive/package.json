@@ -1,0 +1,29 @@
+{
+  "name": "@bax-print/archive",
+  "version": "0.1.0",
+  "description": "Job packages (.bpsjob), archive policy, retention, search, reprint and import (Spec 008)",
+  "license": "Apache-2.0",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts",
+    "./schema/manifest.schema.json": "./schema/manifest.schema.json"
+  },
+  "engines": {
+    "node": ">=22"
+  },
+  "scripts": {
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "test": "vitest run"
+  },
+  "dependencies": {
+    "@bax-print/core": "workspace:*",
+    "@bax-print/events": "workspace:*",
+    "@bax-print/store": "workspace:*"
+  },
+  "devDependencies": {
+    "@types/node": "22.10.2",
+    "typescript": "5.8.3",
+    "vitest": "3.2.4"
+  }
+}

@@ -1,0 +1,44 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/BAX-Forward/BAX-Print-Suite/packages/archive/schema/manifest.schema.json",
+  "title": "BAX Print Suite job package manifest (.bpsjob)",
+  "type": "object",
+  "required": ["format", "packageVersion", "jobId", "createdAt", "generator", "members", "omittedProfiles"],
+  "properties": {
+    "format": { "const": "bpsjob" },
+    "packageVersion": { "const": 1 },
+    "jobId": { "type": "string", "minLength": 1 },
+    "createdAt": { "type": "string", "format": "date-time" },
+    "generator": { "type": "string" },
+    "members": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["path", "role", "sha256", "size"],
+        "properties": {
+          "path": { "type": "string", "minLength": 1 },
+          "role": {
+            "enum": ["job", "ticket", "color", "history", "source", "profile", "layout", "cut", "preview"]
+          },
+          "sha256": { "type": "string", "pattern": "^[0-9a-f]{64}$" },
+          "size": { "type": "integer", "minimum": 0 }
+        },
+        "additionalProperties": false
+      }
+    },
+    "omittedProfiles": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["revisionId", "profileId", "reason"],
+        "properties": {
+          "revisionId": { "type": "string", "minLength": 1 },
+          "profileId": { "type": "string", "minLength": 1 },
+          "reason": { "enum": ["not-redistributable", "unavailable"] }
+        },
+        "additionalProperties": false
+      }
+    }
+  },
+  "additionalProperties": true
+}

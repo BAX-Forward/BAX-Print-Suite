@@ -10,11 +10,20 @@
   "scripts": {
     "build": "pnpm -r build",
     "typecheck": "pnpm -r typecheck",
-    "test": "pnpm -r test"
+    "test": "pnpm -r test",
+    "test:scripts": "vitest run --config scripts/vitest.config.ts",
+    "lint": "eslint packages/core packages/events packages/store packages/archive apps/server scripts",
+    "check:vendor-neutral": "tsx scripts/check-vendor-neutral.ts",
+    "check:licenses": "license-checker-rseidelsohn --production --excludePrivatePackages --onlyAllow \"MIT;MIT-0;ISC;BSD-2-Clause;BSD-3-Clause;Apache-2.0;Zlib;0BSD;Unlicense;CC0-1.0;BlueOak-1.0.0;MPL-2.0\""
   },
   "devDependencies": {
+    "@eslint/js": "9.27.0",
     "@types/node": "22.10.2",
+    "eslint": "9.27.0",
+    "license-checker-rseidelsohn": "4.4.2",
+    "tsx": "4.19.2",
     "typescript": "5.8.3",
+    "typescript-eslint": "8.32.1",
     "vitest": "3.2.4"
   },
   "pnpm": {

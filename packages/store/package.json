@@ -1,0 +1,26 @@
+{
+  "name": "@bax-print/store",
+  "version": "0.1.0",
+  "description": "Storage/1 backends (memory, local directory), job repository and archive index",
+  "license": "Apache-2.0",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "engines": {
+    "node": ">=22"
+  },
+  "scripts": {
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "test": "vitest run"
+  },
+  "dependencies": {
+    "@bax-print/core": "workspace:*"
+  },
+  "devDependencies": {
+    "@types/node": "22.10.2",
+    "typescript": "5.8.3",
+    "vitest": "3.2.4"
+  }
+}

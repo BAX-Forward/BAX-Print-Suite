@@ -1,0 +1,32 @@
+{
+  "name": "@bax-print/server",
+  "version": "0.1.0",
+  "description": "HTTP API for the job archive, reprint, import and trash (Spec 008)",
+  "license": "Apache-2.0",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "engines": {
+    "node": ">=22"
+  },
+  "scripts": {
+    "start": "node --import tsx src/main.ts",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "test": "vitest run"
+  },
+  "dependencies": {
+    "@bax-print/archive": "workspace:*",
+    "@bax-print/core": "workspace:*",
+    "@bax-print/events": "workspace:*",
+    "@bax-print/store": "workspace:*",
+    "fastify": "5.2.1",
+    "tsx": "4.19.2"
+  },
+  "devDependencies": {
+    "@types/node": "22.10.2",
+    "typescript": "5.8.3",
+    "vitest": "3.2.4"
+  }
+}
