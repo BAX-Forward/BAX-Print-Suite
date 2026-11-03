@@ -1,0 +1,37 @@
+{
+  "name": "@bax-print/marks",
+  "version": "0.1.0",
+  "description": "Finishing marks and job labels for imposed layouts (Spec 006)",
+  "license": "Apache-2.0",
+  "type": "module",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    }
+  },
+  "files": [
+    "dist"
+  ],
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "test": "vitest run"
+  },
+  "dependencies": {
+    "pdf-lib": "1.17.1",
+    "qrcode": "1.5.4",
+    "zod": "3.24.1"
+  },
+  "devDependencies": {
+    "@napi-rs/canvas": "0.1.65",
+    "@types/node": "22.10.2",
+    "@types/qrcode": "1.5.5",
+    "@zxing/library": "0.21.3",
+    "fast-check": "3.23.2",
+    "jsqr": "1.4.0",
+    "pdfjs-dist": "4.10.38",
+    "typescript": "5.7.3",
+    "vitest": "3.2.4"
+  }
+}
