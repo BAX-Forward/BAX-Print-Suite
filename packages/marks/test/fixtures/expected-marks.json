@@ -1,0 +1,154 @@
+{
+  "description": "Hand-computed mark positions for the project's own fixture banners (Spec 006 acceptance test 3). Coordinates are layout-frame millimetres: x across the roll, y along the feed. Segments are [x1, y1, x2, y2]; centres are [x, y]; bounds are { x, y, w, h } with (x, y) the minimum corner.",
+  "toleranceMm": 0.05,
+  "fixtures": [
+    {
+      "name": "banner-2000x1000-grommets-crop-hem",
+      "notes": [
+        "Trim 2000 x 1000, bleed 5, footprint bottom-left at (10, 40), no rotation: item (x, y) -> layout (x + 15, y + 45).",
+        "Grommets, inset 25, spacing 600: long edges span 1950 -> 4 gaps of 487.5; short edges span 950 -> 2 gaps of 475. Walk: bottom, right, top, left; shared corners once.",
+        "Crop marks start at max(offset 3, bleed 5) = 5 and run 6 mm to 11 from the trim.",
+        "Hem lines 30 mm inside the bottom and top trim edges.",
+        "Label: code only (empty template); payload bps:job/F1 is a 21-module QR (version 1-M), side (21 + 2 x 4) x 0.5 = 14.5. Distance from trim = max(bleed 5, crop reach 11) + margin 3 = 14, so item y from -28.5 to -14."
+      ],
+      "pageMm": [2040, 1080],
+      "item": { "itemId": "banner-1", "widthMm": 2000, "heightMm": 1000, "bleedMm": 5 },
+      "placement": { "xMm": 10, "yMm": 40, "rotation": 0 },
+      "job": { "id": "F1", "date": "2026-01-01" },
+      "finishing": {
+        "marks": [
+          { "kind": "grommet" },
+          { "kind": "crop" },
+          { "kind": "hem-line", "edges": ["bottom", "top"], "offsetMm": 30 }
+        ],
+        "label": { "edge": "bottom", "template": "" }
+      },
+      "warnings": ["banner-1: crop offset 3 mm is inside the 5 mm bleed; marks start at the bleed edge"],
+      "expected": [
+        {
+          "markId": "grommet",
+          "kind": "grommet",
+          "parts": [
+            {
+              "type": "dots",
+              "diameterMm": 5,
+              "centers": [
+                [40, 70], [527.5, 70], [1015, 70], [1502.5, 70], [1990, 70],
+                [1990, 545], [1990, 1020],
+                [1502.5, 1020], [1015, 1020], [527.5, 1020], [40, 1020],
+                [40, 545]
+              ]
+            }
+          ]
+        },
+        {
+          "markId": "crop",
+          "kind": "crop",
+          "parts": [
+            {
+              "type": "lines",
+              "segments": [
+                [10, 45, 4, 45],
+                [15, 40, 15, 34],
+                [2020, 45, 2026, 45],
+                [2015, 40, 2015, 34],
+                [2020, 1045, 2026, 1045],
+                [2015, 1050, 2015, 1056],
+                [10, 1045, 4, 1045],
+                [15, 1050, 15, 1056]
+              ]
+            }
+          ]
+        },
+        {
+          "markId": "hem-line",
+          "kind": "hem-line",
+          "parts": [
+            {
+              "type": "lines",
+              "segments": [
+                [15, 75, 2015, 75],
+                [15, 1015, 2015, 1015]
+              ]
+            }
+          ]
+        },
+        {
+          "markId": "label",
+          "kind": "label",
+          "parts": [
+            {
+              "type": "label",
+              "edge": "bottom",
+              "bounds": { "x": 15, "y": 16.5, "w": 14.5, "h": 14.5 },
+              "code": { "payload": "bps:job/F1", "bounds": { "x": 15, "y": 16.5, "w": 14.5, "h": 14.5 } }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "banner-1200x600-rotated-fold-sew",
+      "notes": [
+        "Trim 1200 x 600, no bleed, rotated 90 degrees counter-clockwise, footprint (600 x 1200) bottom-left at (2100, 40): item (x, y) -> layout (2700 - y, 40 + x).",
+        "Grommets on bottom and top only, inset 20, spacing 500: span 1160 -> 3 gaps of 386.6667 at x = 20, 406.6667, 793.3333, 1180; bottom at y 20, then top (reversed) at y 580.",
+        "Vertical fold at x 600 with ticks from 3 to 9 mm outside the bottom and top trim edges.",
+        "Sew line 10 mm outside the left trim edge (offset -10).",
+        "Label on the item's right edge: code only, bps:job/F2 (21 modules, side 14.5); distance = margin 3, so item x 1203..1217.5, y 0..14.5."
+      ],
+      "pageMm": [2740, 1280],
+      "item": { "itemId": "banner-2", "widthMm": 1200, "heightMm": 600, "bleedMm": 0 },
+      "placement": { "xMm": 2100, "yMm": 40, "rotation": 90 },
+      "job": { "id": "F2", "date": "2026-01-01" },
+      "finishing": {
+        "marks": [
+          { "kind": "grommet", "edges": ["bottom", "top"], "insetMm": 20, "spacingMm": 500 },
+          { "kind": "fold-line", "axis": "vertical", "positionMm": 600 },
+          { "kind": "sew-line", "edges": ["left"], "offsetMm": -10 }
+        ],
+        "label": { "edge": "right", "template": "" }
+      },
+      "expected": [
+        {
+          "markId": "grommet",
+          "kind": "grommet",
+          "parts": [
+            {
+              "type": "dots",
+              "diameterMm": 5,
+              "centers": [
+                [2680, 60], [2680, 446.6667], [2680, 833.3333], [2680, 1220],
+                [2120, 1220], [2120, 833.3333], [2120, 446.6667], [2120, 60]
+              ]
+            }
+          ]
+        },
+        {
+          "markId": "fold-line",
+          "kind": "fold-line",
+          "parts": [
+            { "type": "lines", "segments": [[2700, 640, 2100, 640]] },
+            { "type": "lines", "segments": [[2703, 640, 2709, 640], [2097, 640, 2091, 640]] }
+          ]
+        },
+        {
+          "markId": "sew-line",
+          "kind": "sew-line",
+          "parts": [{ "type": "lines", "segments": [[2700, 30, 2100, 30]] }]
+        },
+        {
+          "markId": "label",
+          "kind": "label",
+          "parts": [
+            {
+              "type": "label",
+              "edge": "right",
+              "bounds": { "x": 2685.5, "y": 1243, "w": 14.5, "h": 14.5 },
+              "code": { "payload": "bps:job/F2", "bounds": { "x": 2685.5, "y": 1243, "w": 14.5, "h": 14.5 } }
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}
