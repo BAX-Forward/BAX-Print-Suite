@@ -1,0 +1,34 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- Synthetic CxF3 (ISO 17972) fixture written for BAX Print Suite tests. -->
+<cc:CxF xmlns:cc="http://colorexchangeformat.com/CxF3-core">
+  <cc:FileInformation>
+    <cc:Description>Synthetic Lab values &amp; one spectral-only object</cc:Description>
+  </cc:FileInformation>
+  <cc:Resources>
+    <cc:ObjectCollection>
+      <cc:Object ObjectType="Standard" Name="1" Id="o1">
+        <cc:ColorValues>
+          <cc:ColorCIELab ColorSpecification="cs1">
+            <cc:L>95.12</cc:L>
+            <cc:A>-0.45</cc:A>
+            <cc:B>2.31</cc:B>
+          </cc:ColorCIELab>
+        </cc:ColorValues>
+      </cc:Object>
+      <cc:Object ObjectType="Standard" Id="2">
+        <cc:ColorValues>
+          <cc:ColorCIELab ColorSpecification="cs1">
+            <cc:L>54.8</cc:L>
+            <cc:A>-36.2</cc:A>
+            <cc:B>-50.05</cc:B>
+          </cc:ColorCIELab>
+        </cc:ColorValues>
+      </cc:Object>
+      <cc:Object ObjectType="Standard" Name="spectral-only" Id="o3">
+        <cc:ColorValues>
+          <cc:ReflectanceSpectrum ColorSpecification="cs2" StartWL="400">0.9 0.9 0.9</cc:ReflectanceSpectrum>
+        </cc:ColorValues>
+      </cc:Object>
+    </cc:ObjectCollection>
+  </cc:Resources>
+</cc:CxF>
