@@ -21,6 +21,8 @@ import {
 } from "../src/index.js";
 
 const EPSILON = 1e-9;
+/** Explicit cap so a property run cannot grow without bound. */
+const PROPERTY_RUNS = 100;
 
 const sourceArb: fc.Arbitrary<PageSource> = fc
   .record({
@@ -58,6 +60,7 @@ describe("applyEdits properties (Spec 007 acceptance 3)", () => {
       fc.property(sourceArb, prefixArb, (source, prefix) => {
         expectSameGeometry(computeGeometry(source, [...prefix, rotate, rotate, rotate, rotate]), computeGeometry(source, prefix));
       }),
+      { numRuns: PROPERTY_RUNS },
     );
   });
 
@@ -67,6 +70,7 @@ describe("applyEdits properties (Spec 007 acceptance 3)", () => {
         const edits: JobEdit[] = [...prefix, { kind: "scale", percent }, { kind: "scale", percent: 10_000 / percent }];
         expectSameGeometry(computeGeometry(source, edits), computeGeometry(source, prefix));
       }),
+      { numRuns: PROPERTY_RUNS },
     );
   });
 
@@ -80,6 +84,7 @@ describe("applyEdits properties (Spec 007 acceptance 3)", () => {
         ];
         expectSameGeometry(computeGeometry(source, edits), base);
       }),
+      { numRuns: PROPERTY_RUNS },
     );
   });
 
@@ -89,6 +94,7 @@ describe("applyEdits properties (Spec 007 acceptance 3)", () => {
         const mirror: JobEdit = { kind: "mirror", axis };
         expectSameGeometry(computeGeometry(source, [...prefix, mirror, mirror]), computeGeometry(source, prefix));
       }),
+      { numRuns: PROPERTY_RUNS },
     );
   });
 
@@ -111,6 +117,7 @@ describe("applyEdits properties (Spec 007 acceptance 3)", () => {
         const area = (source.box.x1 - source.box.x0) * (source.box.y1 - source.box.y0) * unit * unit;
         expect(g.trimWidthPt * g.trimHeightPt).toBeCloseTo(area * g.scaleFactor ** 2, 3);
       }),
+      { numRuns: PROPERTY_RUNS },
     );
   });
 
