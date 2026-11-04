@@ -1,3 +1,4 @@
+import type { Hold } from './hold.js';
 import type { JobStatus } from './status.js';
 import type { JobTicket } from './ticket.js';
 import type { JobError, JobPage, JobStep } from './types.js';
@@ -7,9 +8,10 @@ export type JobLifecycle = 'active' | 'archived' | 'trashed';
 
 export const JOB_LIFECYCLES: readonly JobLifecycle[] = ['active', 'archived', 'trashed'];
 
-export type ArtifactRole = 'layout' | 'cut' | 'preview';
+/** `normalized`: a PDF/X or PDF/A rewrite of a source file (Spec 007 FR3). */
+export type ArtifactRole = 'layout' | 'cut' | 'preview' | 'normalized';
 
-export const ARTIFACT_ROLES: readonly ArtifactRole[] = ['layout', 'cut', 'preview'];
+export const ARTIFACT_ROLES: readonly ArtifactRole[] = ['layout', 'cut', 'preview', 'normalized'];
 
 export interface SourceFile {
   readonly name: string;
@@ -54,4 +56,6 @@ export interface Job {
   readonly steps?: readonly JobStep[];
   /** Why the job failed, when status is `failed`. */
   readonly error?: JobError;
+  /** Why the job is held (Spec 007), set only while status is `held`. */
+  readonly hold?: Hold;
 }

@@ -1,0 +1,31 @@
+{
+  "name": "@bax-print/inspector-ghostscript",
+  "version": "0.1.0",
+  "private": true,
+  "license": "Apache-2.0",
+  "type": "module",
+  "description": "Inspector/1 plugin: built-in checks plus fixup() through a user-installed Ghostscript, run as a separate program (ADR-0004)",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    }
+  },
+  "bin": {
+    "bps-inspector-ghostscript": "./dist/main.js"
+  },
+  "files": ["dist", "bps-plugin.json"],
+  "scripts": {
+    "build": "tsc -b",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "test": "vitest run"
+  },
+  "dependencies": {
+    "@bax-print/inspect": "workspace:*",
+    "@bax-print/plugin-sdk": "workspace:*",
+    "pdf-lib": "1.17.1"
+  },
+  "devDependencies": {
+    "vitest": "3.2.4"
+  }
+}

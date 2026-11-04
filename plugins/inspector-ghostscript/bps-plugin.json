@@ -1,0 +1,28 @@
+{
+  "id": "org.bax-print.inspector.ghostscript",
+  "name": "Ghostscript normalization",
+  "version": "0.1.0",
+  "license": "Apache-2.0",
+  "provides": [{ "interface": "Inspector", "versions": ">=1.0 <2" }],
+  "protocol": "bpp/1",
+  "exec": { "command": "node", "args": ["dist/main.js"], "platforms": ["win32-x64", "linux-x64", "darwin-arm64", "darwin-x64"] },
+  "externalDependencies": [
+    {
+      "name": "ghostscript",
+      "license": "AGPL-3.0-or-later",
+      "userInstalled": true,
+      "detect": "gs --version",
+      "detectWin32": "gswin64c --version"
+    }
+  ],
+  "permissions": { "fs": ["spool:rw", "input:r"], "network": false, "devices": [] },
+  "configSchema": {
+    "type": "object",
+    "additionalProperties": false,
+    "properties": {
+      "command": { "type": "string", "description": "Ghostscript executable. Default gs (gswin64c on Windows). Also read from BPS_GHOSTSCRIPT." },
+      "timeoutMs": { "type": "integer", "minimum": 1000, "maximum": 3600000, "default": 600000 }
+    }
+  },
+  "capabilities": { "fixupTargets": ["PDF/X-3:2002", "PDF/A-2b"] }
+}

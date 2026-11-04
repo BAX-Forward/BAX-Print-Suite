@@ -1,7 +1,9 @@
 import {
   InvalidArgumentError,
   SYSTEM_ACTOR,
+  parseTicketEdits,
   systemClock,
+  ticketEdits,
   ulid,
   validateAccountingReport,
   withStatus,
@@ -14,6 +16,7 @@ import {
   type JobTicket,
   type SourceFile,
 } from '@bax-print/core';
+import { applyEdits, type NestItem } from '@bax-print/edits';
 import { EventTypes, type CloudEvent, type EventBus } from '@bax-print/events';
 import { artifactKey, sourceKey, type JobRepository, type Storage } from '@bax-print/store';
 import { JobNotFoundError } from '@bax-print/archive';
@@ -79,6 +82,10 @@ export class JobService {
     if (!Number.isInteger(priority) || priority < 0 || priority > 100) {
       throw new InvalidArgumentError('priority must be an integer from 0 to 100');
     }
+    const edits = parseTicketEdits(input.ticket.edits);
+    if (!edits.ok) {
+      throw new InvalidArgumentError(`ticket.${edits.error.field}: ${edits.error.errors.join('; ')}`);
+    }
 
     const id = this.newId();
     const at = this.clock().toISOString();
@@ -121,6 +128,15 @@ export class JobService {
     await this.deps.jobs.save(updated);
     this.publishJob(EventTypes.jobStatusChanged, jobId, { jobId, from: job.status, to, actor: actor.id });
     return updated;
+  }
+
+  /**
+   * Layout input for a job (Spec 007 FR4, consumed by Spec 003): each nest item gets the
+   * ticket's edit stack, so its footprint reflects rotate, scale, crop, bleed and page size.
+   */
+  layoutItems<T extends NestItem>(job: Job, items: readonly T[]): T[] {
+    const edits = ticketEdits(job.ticket);
+    return items.map((item) => applyEdits({ ...item, jobId: item.jobId ?? job.id }, edits));
   }
 
   /** Stores a layout, cut or preview output of a step on the job. */

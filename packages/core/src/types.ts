@@ -82,6 +82,8 @@ export interface HotFolderSettings {
   /** Skip files whose sha256 matches a live job from the same hot folder. */
   readonly dedupe: boolean;
   readonly ticketTemplate?: JobTicket;
+  /** Preflight profile for jobs from this folder (Spec 007 FR2). A per-job ticket profile overrides it. */
+  readonly preflightProfileId?: string;
 }
 
 export const DEFAULT_HOT_FOLDER_SETTINGS: Readonly<HotFolderSettings> = Object.freeze({
@@ -104,6 +106,7 @@ export function withHotFolderDefaults(settings: Partial<HotFolderSettings> = {})
         : [...DEFAULT_HOT_FOLDER_SETTINGS.filePatterns],
     dedupe: settings.dedupe ?? DEFAULT_HOT_FOLDER_SETTINGS.dedupe,
     ...(settings.ticketTemplate ? { ticketTemplate: settings.ticketTemplate } : {}),
+    ...(settings.preflightProfileId ? { preflightProfileId: settings.preflightProfileId } : {}),
   };
 }
 

@@ -18,7 +18,7 @@
         "properties": {
           "path": { "type": "string", "minLength": 1 },
           "role": {
-            "enum": ["job", "ticket", "color", "history", "source", "profile", "layout", "cut", "preview"]
+            "enum": ["job", "ticket", "color", "history", "source", "profile", "layout", "cut", "preview", "normalized"]
           },
           "sha256": { "type": "string", "pattern": "^[0-9a-f]{64}$" },
           "size": { "type": "integer", "minimum": 0 }
