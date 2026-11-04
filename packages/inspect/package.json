@@ -1,0 +1,31 @@
+{
+  "name": "@bax-print/inspect",
+  "version": "0.0.0",
+  "private": true,
+  "license": "Apache-2.0",
+  "type": "module",
+  "description": "Built-in Inspector/1: content lexer, document model, preflight check registry and pdf-lib checks",
+  "exports": {
+    ".": "./src/index.ts",
+    "./fixtures": "./src/fixtures.ts"
+  },
+  "engines": {
+    "node": ">=22"
+  },
+  "scripts": {
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "test": "vitest run"
+  },
+  "dependencies": {
+    "@bax-print/core": "workspace:*",
+    "@bax-print/edits": "workspace:*",
+    "@bax-print/plugin-sdk": "workspace:*",
+    "@sinclair/typebox": "0.34.33",
+    "pdf-lib": "1.17.1"
+  },
+  "devDependencies": {
+    "@types/node": "22.10.2",
+    "typescript": "5.8.3",
+    "vitest": "3.2.4"
+  }
+}

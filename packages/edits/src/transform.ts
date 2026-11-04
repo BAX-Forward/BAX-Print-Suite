@@ -105,7 +105,7 @@ export function rectsOverlap(a: Rect, b: Rect): boolean {
 
 /** Largest absolute element difference. */
 export function matrixDistance(m1: Matrix, m2: Matrix): number {
-  return Math.max(...m1.map((v, i) => Math.abs(v - m2[i])));
+  return Math.max(...m1.map((v, i) => Math.abs(v - m2[i]!)));
 }
 
 /** Rounds values within `epsilon` of an integer, so output PDFs carry 0 rather than 6e-17. */
