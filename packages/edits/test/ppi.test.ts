@@ -8,6 +8,8 @@ const image: ImagePlacement = { pixelWidth: 300, pixelHeight: 300, ctm: [72, 0, 
 const page: PageSource = { box: { x0: 0, y0: 0, x1: mmToPt(210), y1: mmToPt(297) } };
 
 const ppiAfter = (edits: JobEdit[], source: PageSource = page): number => editedPpi(image, computeGeometry(source, edits)).min;
+/** Explicit cap so a property run cannot grow without bound. */
+const PROPERTY_RUNS = 100;
 
 describe("effective ppi after edits (Spec 007 acceptance 3)", () => {
   it("is the placed resolution without edits", () => {
@@ -61,6 +63,7 @@ describe("effective ppi after edits (Spec 007 acceptance 3)", () => {
         const restored = ppiAfter([...prefix, { kind: "scale", percent }, { kind: "scale", percent: 10_000 / percent }]);
         expect(Math.abs(restored - basePpi) / basePpi).toBeLessThan(1e-9);
       }),
+      { numRuns: PROPERTY_RUNS },
     );
   });
 
