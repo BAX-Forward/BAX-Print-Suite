@@ -76,10 +76,10 @@ describe('archive routes', () => {
   });
 
   it('GET /archive rejects invalid parameters and cursors with 400', async () => {
-    expect((await h.app.inject({ method: 'GET', url: '/archive?limit=0' })).json()).toMatchObject({ error: 'INVALID_ARGUMENT' });
+    expect((await h.app.inject({ method: 'GET', url: '/archive?limit=0' })).json()).toMatchObject({ error: { code: 'INVALID_ARGUMENT' } });
     const badCursor = await h.app.inject({ method: 'GET', url: '/archive?cursor=garbage' });
     expect(badCursor.statusCode).toBe(400);
-    expect(badCursor.json()).toMatchObject({ error: 'INVALID_CURSOR' });
+    expect(badCursor.json()).toMatchObject({ error: { code: 'INVALID_CURSOR' } });
   });
 
   it('GET /archive/:id and /archive/:id/package return the row and a valid package', async () => {
@@ -105,20 +105,20 @@ describe('archive routes', () => {
   it('answers 404 for unknown jobs and 409 for jobs still in production', async () => {
     const missing = await h.app.inject({ method: 'POST', url: '/jobs/job-9999/archive' });
     expect(missing.statusCode).toBe(404);
-    expect(missing.json()).toMatchObject({ error: 'JOB_NOT_FOUND' });
+    expect(missing.json()).toMatchObject({ error: { code: 'JOB_NOT_FOUND' } });
     expect((await h.app.inject({ method: 'GET', url: '/archive/job-9999' })).statusCode).toBe(404);
 
     const job = await h.jobs.create({ name: 'Busy', sources: [{ name: 'a.pdf', bytes: Buffer.from('%PDF') }], ticket: { intent: { quantity: 1 }, process: {} } });
     const busy = await h.app.inject({ method: 'POST', url: `/jobs/${job.id}/archive` });
     expect(busy.statusCode).toBe(409);
-    expect(busy.json()).toMatchObject({ error: 'INVALID_LIFECYCLE' });
+    expect(busy.json()).toMatchObject({ error: { code: 'INVALID_LIFECYCLE' } });
   });
 
   it('refuses viewers with 403', async () => {
     const id = await finishedJob(h, { name: 'Shop window' });
     const response = await h.app.inject({ method: 'POST', url: `/jobs/${id}/archive`, headers: as('viewer') });
     expect(response.statusCode).toBe(403);
-    expect(response.json()).toMatchObject({ error: 'FORBIDDEN' });
+    expect(response.json()).toMatchObject({ error: { code: 'FORBIDDEN' } });
   });
 });
 
@@ -148,14 +148,14 @@ describe('reprint route', () => {
   it('asks for a setup with 422 when the medium differs, then records the change', async () => {
     const missing = await h.app.inject({ method: 'POST', url: `/archive/${id}/reprint`, payload: { mediumId: MEDIUM_MATTE } });
     expect(missing.statusCode).toBe(422);
-    expect(missing.json()).toMatchObject({ error: 'COLOR_SETUP_REQUIRED' });
+    expect(missing.json()).toMatchObject({ error: { code: 'COLOR_SETUP_REQUIRED' } });
 
     const mismatch = await h.app.inject({
       method: 'POST',
       url: `/archive/${id}/reprint`,
       payload: { mediumId: MEDIUM_MATTE, colorSetupRevisionId: REV_GLOSS },
     });
-    expect(mismatch.json()).toMatchObject({ error: 'COLOR_SETUP_MISMATCH' });
+    expect(mismatch.json()).toMatchObject({ error: { code: 'COLOR_SETUP_MISMATCH' } });
 
     const picked = await h.app.inject({
       method: 'POST',
@@ -176,7 +176,7 @@ describe('reprint route', () => {
     }
     const zeroCopies = await h.app.inject({ method: 'POST', url: `/archive/${id}/reprint`, payload: { copies: 0 } });
     expect(zeroCopies.statusCode).toBe(400);
-    expect(zeroCopies.json()).toMatchObject({ error: 'INVALID_ARGUMENT' });
+    expect(zeroCopies.json()).toMatchObject({ error: { code: 'INVALID_ARGUMENT' } });
   });
 });
 
@@ -222,7 +222,7 @@ describe('import route', () => {
     tampered[Math.floor(tampered.length / 2)] ^= 0xff;
     const bad = await post(target, tampered);
     expect(bad.statusCode).toBe(422);
-    expect(bad.json()).toMatchObject({ error: 'PACKAGE_INTEGRITY' });
+    expect(bad.json()).toMatchObject({ error: { code: 'PACKAGE_INTEGRITY' } });
 
     const json = await target.app.inject({ method: 'POST', url: '/archive/import', payload: { not: 'a package' } });
     expect(json.statusCode).toBe(400);
@@ -263,7 +263,7 @@ describe('trash and legal hold routes', () => {
 
     const blocked = await h.app.inject({ method: 'DELETE', url: `/archive/${id}` });
     expect(blocked.statusCode).toBe(409);
-    expect(blocked.json()).toMatchObject({ error: 'LEGAL_HOLD' });
+    expect(blocked.json()).toMatchObject({ error: { code: 'LEGAL_HOLD' } });
 
     const byOperator = await h.app.inject({ method: 'PUT', url: `/jobs/${id}/legal-hold`, payload: { hold: false }, headers: as('operator') });
     expect(byOperator.statusCode).toBe(403);

@@ -44,7 +44,7 @@ const ERROR_SCHEMA: JsonSchema = {
       properties: {
         code: { type: 'string' },
         message: { type: 'string' },
-        details: { type: 'array', items: { type: 'string' } },
+        details: { oneOf: [{ type: 'array', items: { type: 'string' } }, { type: 'object' }] },
       },
     },
   },
