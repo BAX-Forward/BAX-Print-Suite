@@ -8,3 +8,9 @@ export * from './memory-storage.js';
 export * from './sqlite-hotfolders.js';
 export * from './sqlite-jobs.js';
 export * from './storage.js';
+// Spec 005: media library and profiling persistence
+export * from './media-repository.js';
+// Prefixed names so they cannot shadow the job store's exports from database.js.
+export { MEDIA_MIGRATIONS, migrate as migrateMediaStore } from './migrations.js';
+export { openDatabase as openSqliteDatabase } from './sqlite.js';
+export { SqliteMediaRepository, openMediaStore } from './sqlite-media-repository.js';
