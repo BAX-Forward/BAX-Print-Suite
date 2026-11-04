@@ -38,3 +38,8 @@ export function ulid(timeMs: number = Date.now(), random: Uint8Array = randomByt
 
   return time + randomPart;
 }
+
+/** A new ULID for media-library records; accepts fractional timestamps. */
+export function newId(now: number = Date.now()): string {
+  return ulid(Math.floor(now));
+}
