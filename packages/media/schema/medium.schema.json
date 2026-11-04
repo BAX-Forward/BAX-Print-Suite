@@ -1,0 +1,148 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/BAX-Forward/BAX-Print-Suite/packages/media/schema/medium.schema.json",
+  "title": "BAX Print Suite medium.json (.bpsmedia member)",
+  "description": "A medium, the output modes a device declares for it, and the color setup head of each mode. Contains no ids or timestamps so exports of the same state are byte-identical. Curves are stored in separate CGATS-like text members; profiles are referenced by SHA-256.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schemaVersion", "medium", "modes"],
+  "properties": {
+    "schemaVersion": { "const": 1 },
+    "medium": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["name", "kind", "widthsMm", "form", "sides"],
+      "properties": {
+        "name": { "type": "string", "minLength": 1, "maxLength": 200 },
+        "kind": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["tag"],
+          "properties": {
+            "tag": { "type": "string", "minLength": 1, "maxLength": 200 },
+            "term": { "enum": ["film", "paper", "textile", "rigid", "adhesive"] }
+          }
+        },
+        "widthsMm": { "type": "array", "items": { "type": "number", "exclusiveMinimum": 0 } },
+        "thicknessUm": { "type": "number", "exclusiveMinimum": 0 },
+        "form": { "enum": ["roll", "sheet"] },
+        "sides": { "enum": [1, 2] },
+        "deviceRef": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["deviceProfile", "mediumKey"],
+          "properties": {
+            "deviceProfile": { "type": "string", "minLength": 1 },
+            "mediumKey": { "type": "string", "minLength": 1 }
+          }
+        }
+      }
+    },
+    "modes": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/mode" }
+    }
+  },
+  "$defs": {
+    "colorantId": { "type": "string", "pattern": "^[A-Za-z0-9_-]+$" },
+    "renderingIntent": {
+      "enum": ["perceptual", "relative-colorimetric", "saturation", "absolute-colorimetric"]
+    },
+    "mode": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "deviceProfile",
+        "modeKey",
+        "name",
+        "resolutionDpi",
+        "passes",
+        "inkSet",
+        "direction",
+        "params",
+        "hidden",
+        "colorSetup"
+      ],
+      "properties": {
+        "deviceProfile": { "type": "string", "minLength": 1 },
+        "modeKey": { "type": "string", "minLength": 1 },
+        "name": { "type": "string", "minLength": 1 },
+        "resolutionDpi": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["x", "y"],
+          "properties": {
+            "x": { "type": "number", "exclusiveMinimum": 0 },
+            "y": { "type": "number", "exclusiveMinimum": 0 }
+          }
+        },
+        "passes": { "type": "integer", "minimum": 1 },
+        "inkSet": { "type": "array", "minItems": 1, "uniqueItems": true, "items": { "$ref": "#/$defs/colorantId" } },
+        "direction": { "enum": ["unidirectional", "bidirectional"] },
+        "params": { "type": "object", "description": "Opaque driver parameters; never interpreted by core." },
+        "colorDefaults": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "renderingIntent": { "$ref": "#/$defs/renderingIntent" },
+            "tacLimitPercent": { "type": "number", "exclusiveMinimum": 0 },
+            "channelLimitsPercent": { "$ref": "#/$defs/channelLimits" }
+          }
+        },
+        "hidden": { "type": "boolean" },
+        "colorSetup": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["content"],
+          "properties": {
+            "content": { "$ref": "#/$defs/content" },
+            "curvesFile": { "type": "string", "pattern": "^curves/mode-[0-9]+\\.txt$" }
+          }
+        }
+      }
+    },
+    "channelLimits": {
+      "type": "object",
+      "propertyNames": { "pattern": "^[A-Za-z0-9_-]+$" },
+      "additionalProperties": { "type": "number", "exclusiveMinimum": 0, "maximum": 100 }
+    },
+    "content": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["level", "renderingIntent"],
+      "properties": {
+        "level": { "enum": ["uncharacterized", "L1", "L2", "L3"] },
+        "renderingIntent": { "$ref": "#/$defs/renderingIntent" },
+        "channelLimitsPercent": { "$ref": "#/$defs/channelLimits" },
+        "tacLimitPercent": {
+          "type": "number",
+          "exclusiveMinimum": 0,
+          "description": "Total area coverage in percent of one full channel (300 = three channels at 100 %)."
+        },
+        "outputProfile": { "$ref": "#/$defs/profileRef" }
+      }
+    },
+    "profileRef": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["sha256", "description", "format", "mediaType", "colorants", "provenance"],
+      "properties": {
+        "sha256": { "type": "string", "pattern": "^[0-9a-f]{64}$" },
+        "description": { "type": "string", "minLength": 1 },
+        "format": { "enum": ["icc", "other"] },
+        "mediaType": { "type": "string", "minLength": 1 },
+        "colorants": { "type": "array", "minItems": 1, "items": { "$ref": "#/$defs/colorantId" } },
+        "provenance": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["source", "license", "redistributable"],
+          "properties": {
+            "source": { "type": "string", "minLength": 1 },
+            "license": { "type": "string", "minLength": 1 },
+            "redistributable": { "type": "boolean" }
+          }
+        }
+      }
+    }
+  }
+}

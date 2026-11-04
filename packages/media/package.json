@@ -1,0 +1,30 @@
+{
+  "name": "@bax-print/media",
+  "version": "0.1.0",
+  "description": "Media library, output modes, revisioned color setups and the profiling workflow (Spec 005)",
+  "license": "Apache-2.0",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts",
+    "./schema/medium.schema.json": "./schema/medium.schema.json"
+  },
+  "engines": {
+    "node": ">=22.13"
+  },
+  "scripts": {
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "test": "vitest run"
+  },
+  "dependencies": {
+    "@bax-print/core": "workspace:*",
+    "@bax-print/plugin-sdk": "workspace:*",
+    "@bax-print/store": "workspace:*",
+    "fflate": "0.8.2"
+  },
+  "devDependencies": {
+    "@types/node": "22.10.2",
+    "typescript": "5.8.3",
+    "vitest": "3.2.4"
+  }
+}

@@ -1,0 +1,15 @@
+CGATS.17   # identifier, followed by a comment
+# A hand-edited file: comments, unquoted header text, a split data format and extra spaces.
+ORIGINATOR "Another tool"
+DESCRIPTOR Unquoted descriptor text
+CREATED "2026-11-02"
+NUMBER_OF_FIELDS    4
+BEGIN_DATA_FORMAT
+SAMPLE_ID
+XYZ_X XYZ_Y XYZ_Z
+END_DATA_FORMAT
+NUMBER_OF_SETS 2
+BEGIN_DATA
+A1   96.42   100   82.49   # paper white (D50)
+A2 "18.0" 19.0 15.0
+END_DATA
