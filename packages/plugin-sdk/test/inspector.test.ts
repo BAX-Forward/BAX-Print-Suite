@@ -3,7 +3,6 @@ import { Value } from "@sinclair/typebox/value";
 import { describe, expect, it } from "vitest";
 import {
   FindingSchema,
-  RpcFrameDecoder as FrameDecoder,
   InspectRequestSchema,
   PreflightReportSchema,
   RemoteInspector,
@@ -94,15 +93,5 @@ describe("Inspector/1 over BPP", () => {
     const remote = await connected(new FakeInspector());
     await expect(remote.inspect({ document: { kind: "file", path: "" } })).rejects.toThrow(/invalid inspect request/);
     await remote.close();
-  });
-});
-
-describe("FrameDecoder", () => {
-  it("reassembles a message split across chunks", () => {
-    const body = JSON.stringify({ jsonrpc: "2.0", method: "$/ping" });
-    const frame = Buffer.from(`Content-Length: ${Buffer.byteLength(body)}\r\n\r\n${body}`);
-    const decoder = new FrameDecoder();
-    expect(decoder.push(frame.subarray(0, 10))).toEqual([]);
-    expect(decoder.push(frame.subarray(10))).toEqual([JSON.parse(body)]);
   });
 });

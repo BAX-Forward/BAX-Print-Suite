@@ -2,7 +2,8 @@ import { spawn } from "node:child_process";
 import type { Readable, Writable } from "node:stream";
 import type { TSchema } from "@sinclair/typebox";
 import { Value } from "@sinclair/typebox/value";
-import { RPC_ERRORS, RpcConnection } from "./bpp.js";
+import { Connection } from "./bpp/connection.js";
+import { ErrorCodes } from "./bpp/jsonrpc.js";
 import { BPP_PROTOCOL, RpcError } from "./stub.js";
 import {
   FixupRequestSchema,
@@ -50,8 +51,8 @@ export interface InspectorServeOptions {
 }
 
 /** Serves an `Inspector` implementation on stdio (or the given streams). Plugin side. */
-export function serveInspector(inspector: Inspector, options: InspectorServeOptions = {}): RpcConnection {
-  const connection = new RpcConnection(options.input ?? process.stdin, options.output ?? process.stdout);
+export function serveInspector(inspector: Inspector, options: InspectorServeOptions = {}): Connection {
+  const connection = new Connection(options.input ?? process.stdin, options.output ?? process.stdout);
   const fixupTargets = inspector.fixup ? [...(inspector.fixupTargets ?? [])] : [];
   connection.onRequest("initialize", async (): Promise<InspectorInitializeResult> => ({
     protocol: BPP_PROTOCOL,
@@ -60,15 +61,18 @@ export function serveInspector(inspector: Inspector, options: InspectorServeOpti
     capabilities: { ...(await options.capabilities?.()), fixupTargets },
   }));
   connection.onRequest("$/ping", () => ({}));
-  connection.onRequest(INSPECT_METHOD, (params, signal) =>
-    inspector.inspect(checked<InspectRequest>(InspectRequestSchema, params, "inspect request", RPC_ERRORS.invalidParams), signal),
+  connection.onRequest(INSPECT_METHOD, (params, context) =>
+    inspector.inspect(
+      checked<InspectRequest>(InspectRequestSchema, params, "inspect request", ErrorCodes.InvalidParams),
+      context.signal,
+    ),
   );
-  connection.onRequest(FIXUP_METHOD, (params, signal) => {
-    const request = checked<FixupRequest>(FixupRequestSchema, params, "fixup request", RPC_ERRORS.invalidParams);
+  connection.onRequest(FIXUP_METHOD, (params, context) => {
+    const request = checked<FixupRequest>(FixupRequestSchema, params, "fixup request", ErrorCodes.InvalidParams);
     if (!inspector.fixup || !fixupTargets.includes(request.target)) {
-      throw new RpcError(RPC_ERRORS.invalidParams, `fixup target ${JSON.stringify(request.target)} is not supported`);
+      throw new RpcError(ErrorCodes.InvalidParams, `fixup target ${JSON.stringify(request.target)} is not supported`);
     }
-    return inspector.fixup(request, signal);
+    return inspector.fixup(request, context.signal);
   });
   connection.onRequest("shutdown", () => null);
   connection.onNotification("exit", () => {
@@ -84,10 +88,10 @@ export class RemoteInspector implements Inspector {
   readonly version: string;
   readonly fixupTargets: readonly string[];
   readonly capabilities: Readonly<Record<string, unknown>>;
-  private readonly connection: RpcConnection;
+  private readonly connection: Connection;
   private readonly terminate: () => void;
 
-  constructor(connection: RpcConnection, init: InspectorInitializeResult, terminate: () => void = () => {}) {
+  constructor(connection: Connection, init: InspectorInitializeResult, terminate: () => void = () => {}) {
     this.connection = connection;
     this.id = init.plugin.id;
     this.version = init.plugin.version;
@@ -98,7 +102,7 @@ export class RemoteInspector implements Inspector {
 
   /** Connects over existing streams and runs `initialize`. */
   static async connect(input: Readable, output: Writable, terminate?: () => void): Promise<RemoteInspector> {
-    const connection = new RpcConnection(input, output);
+    const connection = new Connection(input, output);
     const init = (await connection.request("initialize", { protocol: BPP_PROTOCOL, host: { name: "bps" } })) as InspectorInitializeResult;
     if (init?.protocol !== BPP_PROTOCOL) throw new Error(`plugin speaks ${String(init?.protocol)}, expected ${BPP_PROTOCOL}`);
     const major = INSPECTOR_INTERFACE_VERSION.split(".")[0];
@@ -108,17 +112,17 @@ export class RemoteInspector implements Inspector {
   }
 
   async inspect(request: InspectRequest, signal?: AbortSignal): Promise<PreflightReport> {
-    const result = await this.connection.request(INSPECT_METHOD, request, signal);
-    return checked<PreflightReport>(PreflightReportSchema, result, "inspect result", RPC_ERRORS.internalError);
+    const result = await this.connection.request(INSPECT_METHOD, request, { signal });
+    return checked<PreflightReport>(PreflightReportSchema, result, "inspect result", ErrorCodes.InternalError);
   }
 
   readonly fixup = async (request: FixupRequest, signal?: AbortSignal): Promise<FixupResult> => {
-    const result = await this.connection.request(FIXUP_METHOD, request, signal);
-    return checked<FixupResult>(FixupResultSchema, result, "fixup result", RPC_ERRORS.internalError);
+    const result = await this.connection.request(FIXUP_METHOD, request, { signal });
+    return checked<FixupResult>(FixupResultSchema, result, "fixup result", ErrorCodes.InternalError);
   };
 
   async close(): Promise<void> {
-    if (!this.connection.closed) {
+    if (!this.connection.isClosed) {
       try {
         await this.connection.request("shutdown");
         this.connection.notify("exit");
