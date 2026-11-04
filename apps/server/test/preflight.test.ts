@@ -16,8 +16,6 @@ const MIN_PPI = 300;
 const IMAGE = { pixelWidth: 150, pixelHeight: 150, ctm: [72, 0, 0, 72, 10, 10] };
 const PAGE_BOX = [0, 0, 200, 200];
 const OPERATOR = { id: "operator-1", role: "admin" } as const;
-/** A released preflight hold: `ready`, or `queued` where core's status machine releases holds there. */
-const RELEASED = ["ready", "queued"];
 const TICKET: JobTicket = { intent: { quantity: 1 }, process: {} };
 
 /** Reports one source-space resolution finding under the resolution check it was asked to run. */
@@ -92,7 +90,7 @@ describe("preflight hold and override (Spec 007 test 2)", () => {
     const { id, service, repository, actions } = await setup();
     await service.inspectJob(id);
     const cleared = await service.clearHold(id, "Customer accepted low resolution", OPERATOR);
-    expect(RELEASED).toContain(cleared.status);
+    expect(cleared.status).toBe("ready");
     expect(cleared.hold).toBeUndefined();
     expect((await repository.get(id))?.status).toBe(cleared.status);
     const override = actions().find((d) => d.action === "preflight.override");
@@ -130,7 +128,7 @@ describe("PATCH edits (Spec 007 test 5)", () => {
     expect(held.status).toBe("held");
     const { job, report } = await service.updateEdits(id, [{ kind: "scale", percent: 50 }]);
     expect(report?.findings).toHaveLength(0);
-    expect(RELEASED).toContain(job.status);
+    expect(job.status).toBe("ready");
     expect(job.hold).toBeUndefined();
   });
 

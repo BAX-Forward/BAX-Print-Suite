@@ -13,13 +13,14 @@ import {
 /**
  * The Spec 001 job machine, written out independently of the implementation:
  * received → inspecting → ready → (held ⇄ queued) → processing → sent_to_device → printed → done,
- * sent_to_device → done, and any non-terminal status → failed | cancelled.
+ * sent_to_device → done, any non-terminal status → failed | cancelled,
+ * and Spec 007's preflight release: held → ready.
  */
 const EXPECTED: Record<JobStatus, readonly JobStatus[]> = {
   received: ['inspecting', 'failed', 'cancelled'],
   inspecting: ['ready', 'failed', 'cancelled'],
   ready: ['held', 'queued', 'failed', 'cancelled'],
-  held: ['queued', 'failed', 'cancelled'],
+  held: ['ready', 'queued', 'failed', 'cancelled'],
   queued: ['held', 'processing', 'failed', 'cancelled'],
   processing: ['sent_to_device', 'failed', 'cancelled'],
   sent_to_device: ['printed', 'done', 'failed', 'cancelled'],

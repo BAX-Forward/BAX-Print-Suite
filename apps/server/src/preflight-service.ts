@@ -268,7 +268,8 @@ export class PreflightService {
 
   /**
    * Clears a preflight hold with the operator's reason, published as a `preflight.override`
-   * event. The job goes to `ready`, or to `queued` where core's status machine releases holds there.
+   * event. The job goes to `ready`. Queuing is a later operator step. A job that cannot
+   * enter `ready` is a conflict.
    */
   clearHold(jobId: string, reason: string, actor: Actor = SYSTEM_ACTOR): Promise<Job> {
     return this.serialized(jobId, async () => {
@@ -277,7 +278,7 @@ export class PreflightService {
       const trimmed = reason.trim().slice(0, MAX_OVERRIDE_REASON_LENGTH);
       if (trimmed.length === 0) throw invalid("Clearing a preflight hold needs a reason");
       const at = this.now();
-      const moved = tryStatus(job, "ready", at) ?? tryStatus(job, "queued", at);
+      const moved = tryStatus(job, "ready", at);
       if (!moved) throw conflict(`Job ${jobId} can't leave held`);
       const cleared = withoutHold(moved);
       await this.options.jobs.save(cleared);
@@ -359,7 +360,7 @@ export class PreflightService {
       return { ...held, hold };
     }
     if (job.status !== "held") return job;
-    const released = tryStatus(job, "ready", at) ?? tryStatus(job, "queued", at);
+    const released = tryStatus(job, "ready", at);
     if (!released) throw conflict(`Job ${job.id} can't leave held`);
     entries.push(statusEntry(at, job.status, released.status));
     return withoutHold(released);
