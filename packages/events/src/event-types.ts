@@ -17,6 +17,8 @@ export const EventTypes = {
   jobImported: 'job.imported',
   jobLegalHoldChanged: 'job.legalhold.changed',
   reprintSetupChanged: 'reprint.setup.changed',
+  hotFolderFileDetected: 'hotfolder.file.detected',
+  hotFolderFileSkipped: 'hotfolder.file.skipped',
 } as const;
 
 export type EventType = (typeof EventTypes)[keyof typeof EventTypes];
