@@ -1,0 +1,16 @@
+// Test fixtures are a separate entry point: "@bax-print/inspect/fixtures".
+export * from "./check.js";
+export * from "./checks/color-spaces.js";
+export * from "./checks/conformance.js";
+export * from "./checks/document.js";
+export * from "./checks/fonts.js";
+export * from "./checks/image-resolution.js";
+export * from "./checks/output-intent.js";
+export * from "./checks/page-boxes.js";
+export * from "./checks/printable-width.js";
+export * from "./checks/transparency-overprint.js";
+export * from "./colorspace.js";
+export * from "./content-lexer.js";
+export * from "./content-scan.js";
+export * from "./document-model.js";
+export * from "./registry.js";

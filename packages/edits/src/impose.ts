@@ -40,7 +40,7 @@ function rectFromArray(context: PDFContext, obj: PDFObject | undefined): Rect | 
   if (!(arr instanceof PDFArray) || arr.size() !== 4) return undefined;
   const values = arr.asArray().map((v) => resolve(context, v));
   if (!values.every((v): v is PDFNumber => v instanceof PDFNumber)) return undefined;
-  const [x0, y0, x1, y1] = values.map((v) => v.asNumber());
+  const [x0, y0, x1, y1] = values.map((v) => v.asNumber()) as [number, number, number, number];
   return normalizeRect(x0, y0, x1, y1);
 }
 

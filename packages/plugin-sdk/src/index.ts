@@ -72,3 +72,4 @@ export type {
   SubmitParams,
   SubmitResult,
 } from "./bpp/index.js";
+export * from "./inspector.js";

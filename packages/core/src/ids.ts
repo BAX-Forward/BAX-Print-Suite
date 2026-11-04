@@ -27,7 +27,7 @@ export function ulid(timeMs: number = Date.now(), random: Uint8Array = randomByt
   let buffered = 0;
   let bits = 0;
   for (let i = 0; i < RANDOM_BYTES; i++) {
-    buffered = (buffered << 8) | random[i];
+    buffered = (buffered << 8) | random[i]!;
     bits += 8;
     while (bits >= 5) {
       randomPart += CROCKFORD[(buffered >>> (bits - 5)) & 31];

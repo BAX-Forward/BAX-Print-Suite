@@ -396,7 +396,7 @@ function parseVersion(version: string): [number, number, number] {
 }
 
 function compareVersions(a: [number, number, number], b: [number, number, number]): number {
-  for (let i = 0; i < 3; i++) if (a[i] !== b[i]) return a[i] - b[i];
+  for (let i = 0; i < 3; i++) if (a[i] !== b[i]) return a[i]! - b[i]!;
   return 0;
 }
 
@@ -409,7 +409,7 @@ export function satisfiesRange(version: string, range: string): boolean {
     .every((comparator) => {
       const match = /^(>=|<=|>|<|=)?(.+)$/.exec(comparator);
       if (!match) return false;
-      const cmp = compareVersions(v, parseVersion(match[2]));
+      const cmp = compareVersions(v, parseVersion(match[2]!));
       switch (match[1] ?? "=") {
         case ">=":
           return cmp >= 0;
