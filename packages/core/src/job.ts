@@ -1,5 +1,6 @@
 import type { JobStatus } from './status.js';
 import type { JobTicket } from './ticket.js';
+import type { JobError, JobPage, JobStep } from './types.js';
 
 /** Archive axis, orthogonal to the print status machine. */
 export type JobLifecycle = 'active' | 'archived' | 'trashed';
@@ -46,4 +47,11 @@ export interface Job {
   readonly trashedAt?: string;
   readonly legalHold: boolean;
   readonly reprintOf?: string;
+  /** Inspection result (Spec 001), set when the job reaches `ready`. */
+  readonly pageCount?: number;
+  readonly pages?: readonly JobPage[];
+  /** Pipeline steps run for this job (Spec 001). */
+  readonly steps?: readonly JobStep[];
+  /** Why the job failed, when status is `failed`. */
+  readonly error?: JobError;
 }
