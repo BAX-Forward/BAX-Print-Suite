@@ -73,3 +73,7 @@ export type {
   SubmitResult,
 } from "./bpp/index.js";
 export * from "./inspector.js";
+// Inspector JSON-RPC transport (spec 007a2): explicit names; FrameDecoder/FramingError renamed to avoid clashing with the BPP block
+export { PARSE_ERROR, RPC_ERRORS, RpcConnection, FrameDecoder as RpcFrameDecoder, FramingError as RpcFramingError } from "./bpp.js";
+export type { JsonRpcId as RpcJsonRpcId, RpcNotificationHandler, RpcRequestHandler } from "./bpp.js";
+export * from "./inspector-rpc.js";
