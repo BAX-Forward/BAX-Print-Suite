@@ -1,31 +1,28 @@
 import Fastify, { type FastifyInstance, type FastifyRequest } from 'fastify';
-import {
-  ColorSetupMismatchError,
-  ColorSetupNotFoundError,
-  ColorSetupRequiredError,
-  JobNotFoundError,
-  PackageIntegrityError,
-  parseSearchQuery,
-  RemapRequiredError,
-  type ArchiveService,
-} from '@bax-print/archive';
-import {
-  BpsError,
-  ForbiddenError,
-  IllegalTransitionError,
-  InvalidArgumentError,
-  InvalidLifecycleError,
-  LegalHoldError,
-  type Actor,
-} from '@bax-print/core';
+import { parseSearchQuery, type ArchiveService } from '@bax-print/archive';
+import { InvalidArgumentError, type Actor } from '@bax-print/core';
 import { toJsonl } from '@bax-print/events';
-import { InvalidCursorError, sanitizeKeySegment } from '@bax-print/store';
+import { sanitizeKeySegment } from '@bax-print/store';
+import { registerMediaRoutes } from './media-routes.js';
+import type { MediaService } from './media-service.js';
+import { OpenApiCollector } from './openapi.js';
 import { parseImportQuery, parseLegalHoldBody, parseReprintBody } from './parse.js';
+import { registerErrorHandler, registerPreflightRoutes, type RouteDeps } from './routes.js';
 
 export const DEFAULT_IMPORT_BODY_LIMIT = 1024 ** 3;
+export const DEFAULT_API_VERSION = '0.1.0';
+
+/** The Spec 007 services behind the preflight routes. */
+export type PreflightDeps = Omit<RouteDeps, 'authenticate'>;
 
 export interface ServerDeps {
   readonly archive: ArchiveService;
+  /** Mounts the Spec 007 preflight routes. */
+  readonly preflight?: PreflightDeps;
+  /** Mounts the Spec 005 media routes and `GET /openapi.json`. */
+  readonly media?: MediaService;
+  /** `info.version` of the OpenAPI document. */
+  readonly version?: string;
   /**
    * Resolves the caller. Single-PC mode binds to loopback without auth (ARCHITECTURE §6),
    * so the default treats the local caller as admin. Server mode must supply a real authenticator.
@@ -37,32 +34,10 @@ export interface ServerDeps {
 
 const LOCAL_ADMIN: Actor = { id: 'local', role: 'admin' };
 
-const STATUS_BY_ERROR: readonly [new (...args: never[]) => BpsError, number][] = [
-  [JobNotFoundError, 404],
-  [ForbiddenError, 403],
-  [InvalidLifecycleError, 409],
-  [LegalHoldError, 409],
-  [IllegalTransitionError, 409],
-  [ColorSetupRequiredError, 422],
-  [ColorSetupMismatchError, 422],
-  [ColorSetupNotFoundError, 422],
-  [PackageIntegrityError, 422],
-  [RemapRequiredError, 422],
-  [InvalidArgumentError, 400],
-  [InvalidCursorError, 400],
-];
-
-function statusFor(error: unknown): number {
-  for (const [type, status] of STATUS_BY_ERROR) {
-    if (error instanceof type) return status;
-  }
-  if (error instanceof BpsError) return 400;
-  if (typeof error === 'object' && error !== null && 'statusCode' in error && typeof error.statusCode === 'number') {
-    return error.statusCode;
-  }
-  return 500;
-}
-
+/**
+ * One Fastify instance for the archive, preflight and media routes. Every route answers errors
+ * with `{ error: { code, message, details? } }` from the one handler in `registerErrorHandler`.
+ */
 export function buildServer(deps: ServerDeps): FastifyInstance {
   const app = Fastify({ logger: deps.logger ?? false });
   const actorOf = (request: FastifyRequest): Actor => (deps.authenticate ?? (() => LOCAL_ADMIN))(request);
@@ -73,19 +48,16 @@ export function buildServer(deps: ServerDeps): FastifyInstance {
     done(null, body);
   });
 
-  app.setErrorHandler((error, request, reply) => {
-    const status = statusFor(error);
-    if (status >= 500) request.log.error(error);
-    const body: Record<string, unknown> = {
-      error: error instanceof BpsError ? error.code : (error.code ?? 'ERROR'),
-      message: status >= 500 ? 'internal server error' : error.message,
-    };
-    if (error instanceof RemapRequiredError) {
-      body.unknownDevices = error.unknownDevices;
-      body.unknownMedia = error.unknownMedia;
-    }
-    return reply.status(status).send(body);
-  });
+  registerErrorHandler(app);
+
+  // Registered first so its `onRoute` hook documents the media routes.
+  if (deps.media) {
+    registerMediaRoutes(app, { media: deps.media, openapi: new OpenApiCollector(deps.version ?? DEFAULT_API_VERSION) });
+  }
+
+  if (deps.preflight) {
+    registerPreflightRoutes(app, { ...deps.preflight, authenticate: actorOf });
+  }
 
   app.get('/archive', async (request) => archive.search(parseSearchQuery(request.query as Record<string, unknown>)));
 

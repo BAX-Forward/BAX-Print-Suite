@@ -1,7 +1,7 @@
 import type { FastifyInstance, FastifyReply, FastifyRequest } from "fastify";
 import { SYSTEM_ACTOR, type Actor } from "@bax-print/core";
 import type { CheckRegistry } from "@bax-print/inspect";
-import { HttpError, invalid } from "./errors.js";
+import { errorBody, errorResponse, invalid } from "./errors.js";
 import type { PreflightService } from "./preflight-service.js";
 import type { ProfileService } from "./profiles.js";
 
@@ -38,22 +38,14 @@ function bodyRecord(body: unknown): Record<string, unknown> {
   return body;
 }
 
-function sendError(reply: FastifyReply, statusCode: number, code: string, message: string, details?: readonly string[]): FastifyReply {
-  return reply.code(statusCode).send({ error: { code, message, ...(details && details.length > 0 ? { details } : {}) } });
-}
-
+/** The server's one error handler and 404 handler; bodies come from `errorResponse`. */
 export function registerErrorHandler(app: FastifyInstance): void {
-  app.setErrorHandler((error: unknown, request, reply) => {
-    if (error instanceof HttpError) return sendError(reply, error.statusCode, error.code, error.message, error.details);
-    const status = isRecord(error) && typeof error.statusCode === "number" ? error.statusCode : 500;
-    if (status >= 400 && status < 500) {
-      // Fastify's own client errors: malformed JSON, wrong content type, body too large.
-      return sendError(reply, status, "invalid_request", (error as Error).message);
-    }
-    request.log.error({ err: error }, "request failed");
-    return sendError(reply, 500, "internal_error", "Internal server error");
+  app.setErrorHandler((error: unknown, request, reply: FastifyReply) => {
+    const { statusCode, body } = errorResponse(error);
+    if (statusCode >= 500) request.log.error({ err: error }, "request failed");
+    return reply.code(statusCode).send(body);
   });
-  app.setNotFoundHandler((request, reply) => sendError(reply, 404, "not_found", `No route for ${request.method} ${request.url}`));
+  app.setNotFoundHandler((request, reply) => reply.code(404).send(errorBody("not_found", `No route for ${request.method} ${request.url}`)));
 }
 
 export function registerPreflightRoutes(app: FastifyInstance, deps: RouteDeps): void {
