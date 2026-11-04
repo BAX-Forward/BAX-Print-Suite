@@ -17,14 +17,19 @@
   },
   "files": ["dist"],
   "scripts": {
-    "build": "tsc -b"
+    "build": "tsc -p tsconfig.build.json",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "test": "vitest run"
   },
   "dependencies": {
     "@bax-print/core": "workspace:*",
     "pdf-lib": "1.17.1"
   },
   "devDependencies": {
+    "@types/node": "22.10.2",
     "fast-check": "3.23.2",
-    "pdfjs-dist": "5.3.31"
+    "pdfjs-dist": "5.3.31",
+    "typescript": "5.8.3",
+    "vitest": "3.2.4"
   }
 }
