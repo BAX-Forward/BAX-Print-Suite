@@ -1,0 +1,22 @@
+{
+  "id": "org.bax-print.printer.mock",
+  "name": "Mock Printer Driver",
+  "version": "0.1.0",
+  "license": "Apache-2.0",
+  "description": "Reference PrinterDriver/1 plugin. Accepts file-transport bands, writes a submission summary JSON to the spool, and reports status and accounting. Prints nothing.",
+  "provides": [{ "interface": "PrinterDriver", "versions": ">=1.0 <2" }],
+  "protocol": "bpp/1",
+  "exec": {
+    "command": "node",
+    "args": ["dist/main.js"],
+    "platforms": ["win32-x64", "win32-arm64", "linux-x64", "linux-arm64", "darwin-x64", "darwin-arm64"]
+  },
+  "externalDependencies": [],
+  "permissions": { "fs": ["spool:rw"], "network": false, "devices": [] },
+  "capabilities": {
+    "input": "bands",
+    "colorants": ["C", "M", "Y", "K"],
+    "bitsPerSample": [8],
+    "transports": ["file"]
+  }
+}
