@@ -1,0 +1,30 @@
+{
+  "name": "@bax-print/edits",
+  "version": "0.0.0",
+  "private": true,
+  "license": "Apache-2.0",
+  "type": "module",
+  "description": "Job edit stack geometry shared by layout, preview and preflight",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    },
+    "./impose": {
+      "types": "./dist/impose.d.ts",
+      "default": "./dist/impose.js"
+    }
+  },
+  "files": ["dist"],
+  "scripts": {
+    "build": "tsc -b"
+  },
+  "dependencies": {
+    "@bax-print/core": "workspace:*",
+    "pdf-lib": "1.17.1"
+  },
+  "devDependencies": {
+    "fast-check": "3.23.2",
+    "pdfjs-dist": "5.3.31"
+  }
+}
