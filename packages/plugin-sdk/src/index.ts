@@ -74,3 +74,14 @@ export type {
 } from "./bpp/index.js";
 export * from "./inspector.js";
 export * from "./inspector-rpc.js";
+
+// Spec 005: PrinterDriver/1.1 listModes, ColorEngine/1.1 profiling, Measurement/1 (explicit names; no star re-exports)
+export type { SdkLab, SdkMeasurementCondition, SdkRenderingIntent } from "./common.js";
+export { PRINTER_DRIVER_INTERFACE, PRINTER_DRIVER_MEDIA_VERSION } from "./printer-driver.js";
+export type { DeviceColorDefaults, DeviceMediumReport, OutputModeReport, PrinterDriverMediaApi } from "./printer-driver.js";
+export { COLOR_ENGINE_INTERFACE, COLOR_ENGINE_PROFILING_VERSION } from "./color-engine.js";
+export type { BuildProfileRequest, ColorEngineProfilingApi, EvaluateOptions, EvaluateResult, ProfileData, ProfilePatch } from "./color-engine.js";
+export { MEASUREMENT_INTERFACE, MEASUREMENT_VERSION } from "./measurement.js";
+export type { InstrumentInfo, MeasureStripResult, MeasuredPatch, MeasurementApi, MeasurementLayout, MeasurementStrip } from "./measurement.js";
+export { checkOutputModeReport, runColorEngineProfilingConformance, runMeasurementConformance, runPrinterDriverMediaConformance } from "./conformance.js";
+export type { ConformanceResult } from "./conformance.js";
