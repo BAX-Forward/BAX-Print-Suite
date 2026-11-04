@@ -1,0 +1,18 @@
+{
+  "$comment": "Licenses allowed for production (linked or bundled) dependencies. Source: docs/LICENSING.md §1. Python-2.0 is case by case; add packages to `exceptions` only with a maintainer decision.",
+  "allowed": [
+    "MIT",
+    "MIT-0",
+    "ISC",
+    "BSD-2-Clause",
+    "BSD-3-Clause",
+    "Apache-2.0",
+    "Zlib",
+    "0BSD",
+    "Unlicense",
+    "CC0-1.0",
+    "BlueOak-1.0.0",
+    "MPL-2.0"
+  ],
+  "exceptions": {}
+}

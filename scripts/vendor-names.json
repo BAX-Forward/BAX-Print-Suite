@@ -34,5 +34,13 @@
     "DMPL",
     "GPGL",
     "OPOS"
-  ]
+  ],
+  "allowedCommandLanguages": {
+    "description": "HP-GL/2 is the de facto standard cutter command language; a generic encoder belongs in packages/cut-export. Exact, case-sensitive tokens only: a bare vendor name or a model name is still flagged outside plugins/.",
+    "tokens": [
+      "HPGL",
+      "hpgl",
+      "HP-GL/2"
+    ]
+  }
 }

@@ -5,8 +5,7 @@ BAX Print Suite is licensed under **Apache-2.0** (ADR-0002). This policy keeps e
 ## 1. Allowlist for linked / bundled dependencies
 Allowed in any package in this repo (CI-enforced):
 - MIT, MIT-0, ISC, BSD-2-Clause, BSD-3-Clause, Apache-2.0, Zlib, 0BSD, Unlicense, CC0-1.0 (data), BlueOak-1.0.0, Python-2.0 (case by case)
-- **MPL-2.0:** allowed (file-level copyleft). Don't modify the MPL files, or publish any modifications to them.
-- MPL-2.0 is allowed only as an unmodified third-party dependency (it is file-level copyleft, so changes to those files must be shared).
+- **MPL-2.0:** allowed only as an unmodified third-party dependency (it is file-level copyleft, so changes to those files must be shared). Today that is only the dev-only `@axe-core/playwright` and `axe-core`.
 
 Not allowed in linked/bundled code: GPL-*, LGPL-* (case-by-case exception by ADR only), AGPL-*, SSPL, BUSL, Commons Clause, "non-commercial" licenses, and anything with no license.
 
