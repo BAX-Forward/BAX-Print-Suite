@@ -1,8 +1,8 @@
 // Usage: tsx scripts/check-vendor-neutral.ts [dir ...]
-// Without arguments, scans the core directories added by Spec 008.
-import { loadVendorNames, REPO_ROOT, scanRepository, SPEC_008_ROOTS } from './vendor-neutral.js';
+// Without arguments, scans every directory under packages/ and apps/ (plugins/ and docs/research/ are exempt).
+import { defaultRoots, loadVendorNames, REPO_ROOT, scanRepository } from './vendor-neutral.js';
 
-const roots = process.argv.length > 2 ? process.argv.slice(2) : SPEC_008_ROOTS;
+const roots = process.argv.length > 2 ? process.argv.slice(2) : await defaultRoots(REPO_ROOT);
 const findings = await scanRepository(REPO_ROOT, roots, await loadVendorNames());
 
 if (findings.length > 0) {

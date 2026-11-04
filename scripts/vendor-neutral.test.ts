@@ -2,7 +2,15 @@ import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
-import { buildMatcher, findTerms, loadVendorNames, scanRepository, type VendorNames } from './vendor-neutral.js';
+import {
+  buildMatcher,
+  defaultRoots,
+  EXEMPT_ROOTS,
+  findTerms,
+  loadVendorNames,
+  scanRepository,
+  type VendorNames,
+} from './vendor-neutral.js';
 
 const NAMES: VendorNames = { names: ['acme', 'acme-gl'] };
 
@@ -44,6 +52,54 @@ describe('scanRepository', () => {
 
     expect(await scanRepository(root, ['packages', 'missing'], NAMES)).toEqual([
       { file: 'packages/core/src/device.ts', line: 2, term: 'Acme' },
+    ]);
+  });
+
+  it('defaults to every packages/* and apps/* dir, never plugins/ or docs/research/', async () => {
+    for (const dir of ['packages/core', 'packages/store', 'apps/server', 'apps/x', 'plugins/acme', 'docs/research/notes']) {
+      await mkdir(join(root, dir), { recursive: true });
+    }
+    await writeFile(join(root, 'packages', 'README.md'), 'not a package dir');
+
+    const roots = await defaultRoots(root);
+
+    expect(roots).toEqual(['apps/server', 'apps/x', 'packages/core', 'packages/store']);
+    for (const exempt of EXEMPT_ROOTS) {
+      expect(roots.some((r) => r === exempt || r.startsWith(`${exempt}/`))).toBe(false);
+    }
+  });
+
+  it('returns no default roots when packages/ and apps/ are absent', async () => {
+    expect(await defaultRoots(root)).toEqual([]);
+  });
+
+  it('reports a vendor name planted in a new apps/ dir with the default roots', async () => {
+    await mkdir(join(root, 'apps', 'x', 'src'), { recursive: true });
+    await mkdir(join(root, 'plugins', 'acme'), { recursive: true });
+    await mkdir(join(root, 'docs', 'research'), { recursive: true });
+    await writeFile(join(root, 'apps', 'x', 'src', 'main.ts'), 'const ok = 1;\nconst driver = "acme-gl";\n');
+    await writeFile(join(root, 'plugins', 'acme', 'index.ts'), 'acme');
+    await writeFile(join(root, 'docs', 'research', 'notes.md'), 'acme');
+
+    expect(await scanRepository(root, await defaultRoots(root), NAMES)).toEqual([
+      { file: 'apps/x/src/main.ts', line: 2, term: 'acme-gl' },
+    ]);
+  });
+
+  it('allows only the exact command-language tokens from vendor-names.json', async () => {
+    const shared = await loadVendorNames();
+    expect(shared.allowedTokens).toEqual(['HPGL', 'hpgl', 'HP-GL/2']);
+    await mkdir(join(root, 'packages', 'cut-export', 'src'), { recursive: true });
+    await mkdir(join(root, 'apps', 'server', 'src'), { recursive: true });
+    await mkdir(join(root, 'plugins', 'printer-x'), { recursive: true });
+    await writeFile(join(root, 'packages', 'cut-export', 'src', 'enc.ts'), '// HPGL and hpgl encoder\n// emits HP-GL/2\n');
+    await writeFile(join(root, 'apps', 'server', 'src', 'dev.ts'), '// HP device\n// DesignJet output\n// Hpgl and HP-GL\n');
+    await writeFile(join(root, 'plugins', 'printer-x', 'index.ts'), 'HP DesignJet');
+    expect(await scanRepository(root, await defaultRoots(root), shared)).toEqual([
+      { file: 'apps/server/src/dev.ts', line: 1, term: 'HP' },
+      { file: 'apps/server/src/dev.ts', line: 2, term: 'DesignJet' },
+      { file: 'apps/server/src/dev.ts', line: 3, term: 'Hpgl' },
+      { file: 'apps/server/src/dev.ts', line: 3, term: 'HP-GL' },
     ]);
   });
 });
