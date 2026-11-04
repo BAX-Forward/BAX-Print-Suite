@@ -133,6 +133,23 @@ describe('job package pack → unpack', () => {
     expect(sha256Hex(repacked)).toBe(sha256Hex(first));
   });
 
+  it('packs and unpacks a normalized artifact (Spec 007 FR3)', () => {
+    const input = packInput();
+    const NORMALIZED = bytesOf('%PDF-1.6 PDF/X-4 rewrite');
+    const job = {
+      ...input.job,
+      artifacts: [
+        ...input.job.artifacts,
+        { ...fileRecord('artwork-pdfx4.pdf', NORMALIZED, 'jobs/pkg-001/normalized/3-artwork-pdfx4.pdf'), role: 'normalized' as const },
+      ],
+    };
+    const { bytes, manifest } = pack({ ...input, job, artifacts: [...input.artifacts, NORMALIZED] });
+    expect(manifest.members.find((m) => m.role === 'normalized')?.path).toBe('normalized/3-artwork-pdfx4.pdf');
+    const unpacked = unpack(bytes);
+    expect(unpacked.job.artifacts.map((a) => a.role)).toEqual(['layout', 'cut', 'preview', 'normalized']);
+    expect(sha256Hex(unpacked.artifacts[3] as Uint8Array)).toBe(sha256Hex(NORMALIZED));
+  });
+
   it('leaves out profiles that are not redistributable and says so', () => {
     const { bytes, manifest, warnings } = pack(packInput());
     expect(manifest.omittedProfiles).toEqual([{ revisionId: 'rev-1', profileId: 'prof-licensed', reason: 'not-redistributable' }]);

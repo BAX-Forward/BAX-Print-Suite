@@ -6,7 +6,7 @@ import { PackageIntegrityError } from './errors.js';
 export const PACKAGE_FORMAT = 'bpsjob';
 export const PACKAGE_VERSION = 1;
 
-export const MEMBER_ROLES = ['job', 'ticket', 'color', 'history', 'source', 'profile', 'layout', 'cut', 'preview'] as const;
+export const MEMBER_ROLES = ['job', 'ticket', 'color', 'history', 'source', 'profile', 'layout', 'cut', 'preview', 'normalized'] as const;
 export type MemberRole = (typeof MEMBER_ROLES)[number];
 
 export const OMISSION_REASONS = ['not-redistributable', 'unavailable'] as const;
