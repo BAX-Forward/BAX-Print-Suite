@@ -1,0 +1,35 @@
+{
+  "name": "@bax-print/plugin-color-sim",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Simulated color device plugin for BAX Print Suite: a Measurement/1 instrument backed by a deterministic CMYK-to-Lab model with seeded noise",
+  "license": "Apache-2.0",
+  "type": "module",
+  "main": "./dist/main.js",
+  "bin": {
+    "bps-color-sim": "./dist/main.js"
+  },
+  "exports": {
+    ".": {
+      "types": "./dist/simulator.d.ts",
+      "default": "./dist/simulator.js"
+    },
+    "./bps-plugin.json": "./bps-plugin.json"
+  },
+  "files": [
+    "dist",
+    "bps-plugin.json"
+  ],
+  "scripts": {
+    "build": "tsc -b",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "test": "vitest run"
+  },
+  "dependencies": {
+    "@bax-print/plugin-sdk": "workspace:*"
+  },
+  "devDependencies": {
+    "typescript": "5.9.3",
+    "vitest": "3.2.4"
+  }
+}
