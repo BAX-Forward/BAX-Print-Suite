@@ -6,6 +6,8 @@ coverage/
 .DS_Store
 .env.local
 .env.*.local
+*.sqlite
+*.sqlite-journal
 
 # Default data directory of apps/server (BPS_DATA_DIR)
 /data/
