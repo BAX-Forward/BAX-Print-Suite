@@ -1,7 +1,7 @@
 {
   "name": "@bax-print/plugin-sdk",
   "version": "0.1.0",
-  "description": "BPS plugin protocol (BPP) stub and CutterDriver/2 interface with conformance kit",
+  "description": "BPS plugin protocol (BPP), CutterDriver/2 and Inspector/1 interfaces with conformance kit",
   "license": "Apache-2.0",
   "private": true,
   "type": "module",
