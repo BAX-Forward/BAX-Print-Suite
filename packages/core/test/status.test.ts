@@ -31,6 +31,12 @@ describe("job status machine, Spec 007 preflight path", () => {
     }
   });
 
+  it("releases a hold to ready (Spec 007)", () => {
+    const released = withStatus(job("held"), "ready", LATER);
+    expect(released.status).toBe("ready");
+    expect(released.updatedAt).toBe(LATER);
+  });
+
   it("does not mutate the input job", () => {
     const original = job("received");
     withStatus(original, "inspecting", LATER);

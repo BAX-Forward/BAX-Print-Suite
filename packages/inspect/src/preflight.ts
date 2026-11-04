@@ -8,7 +8,7 @@ import { BUILTIN_CHECKS } from "./registry.js";
  * reason `preflight`; an operator may release the hold with a reason, which is written to the
  * audit trail. Status changes go through core's `withStatus`, so the core status machine
  * decides what is legal: a preflight hold is `inspecting → ready → held`, and a release is
- * `held → queued`.
+ * `held → ready` (Spec 007). Queuing is a later operator step.
  */
 
 /** Checks whose result depends on the job's edits. They rerun when the edits change (FR5). */
@@ -87,13 +87,13 @@ export class OverrideReasonRequiredError extends Error {
 
 export const MAX_OVERRIDE_REASON_LENGTH = 1000;
 
-/** Releases a preflight hold (`held → queued`), with the operator's reason in the audit trail. */
+/** Releases a preflight hold (`held → ready`), with the operator's reason in the audit trail. */
 export function clearPreflightHold<T extends PreflightJob>(job: T, options: ActionOptions & { reason: string }): T {
   if (job.status !== "held" || job.hold?.reason !== "preflight") throw new NotPreflightHoldError(job.id);
   const reason = options.reason.trim().slice(0, MAX_OVERRIDE_REASON_LENGTH);
   if (reason.length === 0) throw new OverrideReasonRequiredError();
   const audited = withAudit(job, options, "preflight.override", { reason, hold: job.hold.detail });
-  return moveTo(audited, "queued", options);
+  return moveTo(audited, "ready", options);
 }
 
 /** A hot folder's preflight binding. Core hot folders without one are accepted as-is. */

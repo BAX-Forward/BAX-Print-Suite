@@ -109,7 +109,7 @@ describe('Timeline and errors', () => {
 describe('Actions', () => {
   it('enables only the transitions GET /transitions allows', async () => {
     const { db } = await renderJob(HELD_JOB);
-    expect(db.getTransitions(HELD_JOB).allowed).toEqual(['queued', 'failed', 'cancelled']);
+    expect(db.getTransitions(HELD_JOB).allowed).toEqual(['ready', 'queued', 'failed', 'cancelled']);
     await waitFor(() => expect(statusButton(t.actions.queued)).toBeEnabled());
     expect(statusButton(t.actions.cancelled)).toBeEnabled();
     expect(statusButton(t.actions.held)).toBeDisabled();

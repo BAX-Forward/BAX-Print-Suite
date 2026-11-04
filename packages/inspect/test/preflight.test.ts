@@ -74,11 +74,11 @@ describe("preflight state (acceptance 2)", () => {
     expect(held.audit?.[0].detail).toMatchObject({ profileId: "default", summary: inspected.summary });
   });
 
-  it("clearing the hold with a reason queues the job and logs the override in the audit trail", async () => {
+  it("clearing the hold with a reason returns the job to ready and logs the override", async () => {
     const inspected = await inspectBytes(await fontFixture({ font: "unembedded" }));
     const held = applyPreflightReport(job(), inspected, { at: AT });
     const released = clearPreflightHold(held, { at: LATER, actor: "operator-1", reason: "  customer approved system font  " });
-    expect(released.status).toBe("queued");
+    expect(released.status).toBe("ready");
     expect(released.hold).toBeUndefined();
     const override = released.audit?.find((e) => e.type === "preflight.override");
     expect(override).toEqual({
@@ -87,7 +87,7 @@ describe("preflight state (acceptance 2)", () => {
       actor: "operator-1",
       detail: { reason: "customer approved system font", hold: held.hold?.detail },
     });
-    expect(released.audit?.at(-1)?.detail).toEqual({ from: "held", to: "queued" });
+    expect(released.audit?.at(-1)?.detail).toEqual({ from: "held", to: "ready" });
     expect(held.status).toBe("held");
   });
 

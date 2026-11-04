@@ -11,7 +11,7 @@ const FORWARD: Record<JobStatus, readonly JobStatus[]> = {
   received: ['inspecting'],
   inspecting: ['ready'],
   ready: ['held', 'queued'],
-  held: ['queued'],
+  held: ['ready', 'queued'],
   queued: ['held', 'processing'],
   processing: ['sent_to_device'],
   // `sent_to_device → done`: output whose print confirmation is not observable (handoff).

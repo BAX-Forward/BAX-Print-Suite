@@ -23,7 +23,8 @@ const ALLOWED: Readonly<Record<JobStatus, readonly JobStatus[]>> = {
   received: ['inspecting', 'failed', 'cancelled'],
   inspecting: ['ready', 'failed', 'cancelled'],
   ready: ['queued', 'held', 'failed', 'cancelled'],
-  held: ['queued', 'failed', 'cancelled'],
+  // Spec 007: releasing a preflight hold returns the job to `ready`. Queuing stays a separate step.
+  held: ['ready', 'queued', 'failed', 'cancelled'],
   queued: ['held', 'processing', 'failed', 'cancelled'],
   processing: ['sent_to_device', 'failed', 'cancelled'],
   sent_to_device: ['printed', 'done', 'failed', 'cancelled'],
