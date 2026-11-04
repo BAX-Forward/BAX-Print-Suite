@@ -1,0 +1,16 @@
+{
+  "id": "org.bax-print.color.sim",
+  "name": "Simulated Color Device",
+  "version": "0.1.0",
+  "license": "Apache-2.0",
+  "description": "Reference Measurement/1 plugin. Simulates printing CMYK charts on a fixed device model (per-channel TRC, 3x4 matrix to XYZ, Lab D50) and measures them with seeded, deterministic noise. Touches no hardware.",
+  "provides": [{ "interface": "Measurement", "versions": ">=1.0 <2" }],
+  "protocol": "bpp/1",
+  "exec": {
+    "command": "node",
+    "args": ["dist/main.js"],
+    "platforms": ["win32-x64", "win32-arm64", "linux-x64", "linux-arm64", "darwin-x64", "darwin-arm64"]
+  },
+  "externalDependencies": [],
+  "permissions": { "fs": [], "network": false, "devices": [] }
+}

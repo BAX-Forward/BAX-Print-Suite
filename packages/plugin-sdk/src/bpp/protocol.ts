@@ -33,6 +33,7 @@ export const INTERFACE_NAMES = [
   'CutterDriver',
   'Inspector',
   'Storage',
+  'Measurement',
 ] as const;
 
 export type InterfaceName = (typeof INTERFACE_NAMES)[number];
@@ -46,6 +47,8 @@ export const INTERFACE_VERSIONS: Readonly<Record<InterfaceName, string>> = Objec
   CutterDriver: '2.0.0',
   Inspector: '1.0.0',
   Storage: '1.0.0',
+  /** Spec 005: optional spectrophotometer interface (`../measurement.ts`). */
+  Measurement: '1.0.0',
 });
 
 export interface PeerInfo {
