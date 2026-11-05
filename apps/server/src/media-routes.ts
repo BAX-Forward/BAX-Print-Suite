@@ -3,6 +3,7 @@ import { invalid } from "./errors.js";
 import type { MediaService, MediumInput, OutputModeInput, PresetInput, ProfilingSessionInput } from "./media-service.js";
 import type { Attributes } from "./media-stores.js";
 import { doc, OpenApiCollector } from "./openapi.js";
+import { guardRoutes, LOCAL_ADMIN } from "./route-permissions.js";
 import { registerErrorHandler } from "./routes.js";
 
 /**
@@ -232,10 +233,11 @@ export function registerMediaRoutes(app: FastifyInstance, deps: MediaRouteDeps):
   );
 }
 
-/** A standalone Spec 005 app: error handler, OpenAPI collector and the media routes. */
+/** A standalone Spec 005 app: error handler, OpenAPI collector and the media routes, guarded for the local admin (Spec 024b). */
 export function buildMediaServer(deps: { media: MediaService; version?: string; logger?: boolean }): FastifyInstance {
   const app = Fastify({ logger: deps.logger ?? false });
   registerErrorHandler(app);
+  guardRoutes(app, () => LOCAL_ADMIN);
   registerMediaRoutes(app, { media: deps.media, openapi: new OpenApiCollector(deps.version ?? "0.1.0") });
   return app;
 }

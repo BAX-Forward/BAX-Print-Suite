@@ -1,5 +1,6 @@
 import type { FastifySchema, RouteOptions } from 'fastify';
-import { FINISHING_STEP_KINDS } from '@bax-print/core';
+import { FINISHING_STEP_KINDS, type Permission } from '@bax-print/core';
+import { routePermission } from './route-permissions.js';
 
 type JsonSchema = Record<string, unknown>;
 
@@ -35,7 +36,7 @@ export function doc(route: RouteDoc): FastifySchema {
 
 export interface OpenApiDocument {
   openapi: '3.1.0';
-  info: { title: string; version: string; license: { name: string; identifier: string } };
+  info: { title: string; version: string; description: string; license: { name: string; identifier: string } };
   paths: Record<string, Record<string, unknown>>;
   components: { schemas: Record<string, JsonSchema> };
 }
@@ -315,7 +316,14 @@ function parameters(schema: JsonSchema | undefined, location: 'path' | 'query'):
   }));
 }
 
-function operation(route: RouteDoc): Record<string, unknown> {
+/** Spec 024b: the 403 of a route that needs `permission`, unless the route documents its own. */
+function withForbidden(responses: Record<string, string> | undefined, permission: Permission | undefined): Record<string, string> {
+  const declared = responses ?? { 200: 'OK' };
+  if (permission === undefined || declared['403'] !== undefined) return declared;
+  return { ...declared, 403: `The caller's role lacks the \`${permission}\` permission (\`forbidden\`, \`details.permission\` names it)` };
+}
+
+function operation(route: RouteDoc, permission?: Permission): Record<string, unknown> {
   const op: Record<string, unknown> = {
     operationId: route.operationId,
     summary: route.summary,
@@ -336,7 +344,7 @@ function operation(route: RouteDoc): Record<string, unknown> {
     };
   }
   const responses: Record<string, unknown> = {};
-  for (const [status, description] of Object.entries(route.responses ?? { 200: 'OK' })) {
+  for (const [status, description] of Object.entries(withForbidden(route.responses, permission))) {
     const ok = Number(status) < 300 && Number(status) !== 204;
     if (!ok) {
       responses[status] = { description };
@@ -356,6 +364,14 @@ function operation(route: RouteDoc): Record<string, unknown> {
   return op;
 }
 
+/** Spec 024b: how callers are authorized, including the no-resolver default. */
+const API_DESCRIPTION = [
+  "Every route except `GET /openapi.json` needs a permission of the caller's role and answers 403 `forbidden`",
+  'without it; `details.permission` names the missing permission.',
+  'Without a configured actor resolver every caller is treated as the local admin, which holds every permission.',
+  'The server binds 127.0.0.1 by default; do not expose it beyond loopback without a resolver.',
+].join(' ');
+
 /** Collects documented routes through Fastify's `onRoute` hook. */
 export class OpenApiCollector {
   readonly document: OpenApiDocument;
@@ -366,6 +382,7 @@ export class OpenApiCollector {
       info: {
         title: 'BAX Print Suite media library and profiling API',
         version,
+        description: API_DESCRIPTION,
         license: { name: 'Apache-2.0', identifier: 'Apache-2.0' },
       },
       paths: {},
@@ -382,7 +399,7 @@ export class OpenApiCollector {
       const lower = String(method).toLowerCase();
       if (lower === 'head') continue;
       const entry = (this.document.paths[path] ??= {});
-      entry[lower] = operation(schema as RouteDoc);
+      entry[lower] = operation(schema as RouteDoc, routePermission(lower, route.url));
     }
   }
 }

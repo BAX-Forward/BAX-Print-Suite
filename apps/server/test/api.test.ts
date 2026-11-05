@@ -118,7 +118,7 @@ describe('archive routes', () => {
     const id = await finishedJob(h, { name: 'Shop window' });
     const response = await h.app.inject({ method: 'POST', url: `/jobs/${id}/archive`, headers: as('viewer') });
     expect(response.statusCode).toBe(403);
-    expect(response.json()).toMatchObject({ error: { code: 'FORBIDDEN' } });
+    expect(response.json()).toMatchObject({ error: { code: 'forbidden', details: { permission: 'archive:write' } } });
   });
 });
 

@@ -67,7 +67,6 @@ export interface ErrorResponse {
 /** Statuses of the core, store and archive errors; any other `BpsError` is a 400. */
 const STATUS_BY_ERROR: readonly [new (...args: never[]) => BpsError, number][] = [
   [JobNotFoundError, 404],
-  [ForbiddenError, 403],
   [InvalidLifecycleError, 409],
   [LegalHoldError, 409],
   [IllegalTransitionError, 409],
@@ -115,6 +114,10 @@ export function errorResponse(error: unknown): ErrorResponse {
   // Spec 004d: checked before the other core errors so the API's code is lowercase.
   if (error instanceof InvalidFinishingTransitionError) {
     return { statusCode: 409, body: errorBody("finishing_transition_invalid", error.message, error.details) };
+  }
+  // Spec 024b: lowercase too; a permission check names the missing permission in `details.permission`.
+  if (error instanceof ForbiddenError) {
+    return { statusCode: 403, body: errorBody("forbidden", error.message, error.details) };
   }
   if (error instanceof BpsError) {
     return { statusCode: bpsStatus(error), body: errorBody(error.code, error.message, bpsDetails(error)) };
