@@ -31,13 +31,19 @@ export interface HotFolderStore {
   get(id: string): Promise<HotFolder | undefined>;
 }
 
+/** A subscription without its signing secret. */
+export type WebhookSubscriptionSummary = Omit<WebhookSubscription, "secret">;
+
 /**
  * Spec 019b webhook subscriptions. Synchronous because the dispatcher reads the list on every
- * event; a persistent store keeps a cached copy.
+ * event. The store package's `SqliteWebhookSubscriptionRepository` satisfies it (Spec 019c).
  */
 export interface WebhookSubscriptionStore {
-  list(): WebhookSubscription[];
-  get(id: string): WebhookSubscription | undefined;
+  /** Ordered by id. Never includes secrets. */
+  list(): WebhookSubscriptionSummary[];
+  get(id: string): WebhookSubscriptionSummary | undefined;
+  /** The only read that returns the secret; for delivery, never for API responses. */
+  getWithSecret(id: string): WebhookSubscription | undefined;
   put(subscription: WebhookSubscription): void;
   delete(id: string): boolean;
 }
@@ -94,12 +100,21 @@ export class MemoryProfileStore extends MemoryMap<PreflightProfile> implements P
   }
 }
 
+function withoutSecret({ id, url, eventTypes, active }: WebhookSubscription): WebhookSubscriptionSummary {
+  return { id, url, eventTypes, active };
+}
+
 export class MemoryWebhookSubscriptionStore extends MemoryMap<WebhookSubscription> implements WebhookSubscriptionStore {
-  list(): WebhookSubscription[] {
-    return [...this.items.keys()].sort().flatMap((id) => this.read(id) ?? []);
+  list(): WebhookSubscriptionSummary[] {
+    return [...this.items.keys()].sort().flatMap((id) => this.get(id) ?? []);
   }
 
-  get(id: string): WebhookSubscription | undefined {
+  get(id: string): WebhookSubscriptionSummary | undefined {
+    const subscription = this.read(id);
+    return subscription === undefined ? undefined : withoutSecret(subscription);
+  }
+
+  getWithSecret(id: string): WebhookSubscription | undefined {
     return this.read(id);
   }
 

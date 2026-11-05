@@ -10,9 +10,12 @@ import {
   type CloudEvent,
   type WebhookRequest,
   type WebhookRetryScheduler,
+  type WebhookTargetPolicy,
 } from '@bax-print/events';
-import { MemoryArchiveIndex, MemoryJobRepository, MemoryStorage } from '@bax-print/store';
+import { MemoryArchiveIndex, MemoryJobRepository, MemoryStorage, openDatabase, SqliteWebhookSubscriptionRepository } from '@bax-print/store';
 import { buildServer } from '../src/app.js';
+import type { WebhookSubscriptionStore } from '../src/stores.js';
+import { parseAllowLanTargets } from '../src/webhook-routes.js';
 import { JobService } from '../src/jobs.js';
 import { MediaService } from '../src/media-service.js';
 import { memoryMediaStores } from '../src/media-stores.js';
@@ -40,8 +43,22 @@ interface WebhookHarness {
   readonly statuses: number[];
 }
 
-/** Archive, job and media services on one bus, with webhooks on a fake `send`, clock and scheduler. */
-function createWebhookHarness(): WebhookHarness {
+/** A documentation-range address the guard treats as public. */
+const PUBLIC_ADDRESS = '203.0.113.10';
+
+/** Fake DNS: hosts map to answers; any other host resolves to `PUBLIC_ADDRESS`. No real lookups. */
+function fakeResolver(answers: Readonly<Record<string, readonly string[]>> = {}): WebhookTargetPolicy['resolve'] {
+  return async (host) => [...(answers[host] ?? [PUBLIC_ADDRESS])];
+}
+
+interface HarnessOptions {
+  readonly resolve?: WebhookTargetPolicy['resolve'];
+  readonly allowLanTargets?: boolean;
+  readonly store?: WebhookSubscriptionStore;
+}
+
+/** Archive, job and media services on one bus, with webhooks on a fake `send`, resolver, clock and scheduler. */
+function createWebhookHarness(options: HarnessOptions = {}): WebhookHarness {
   const time = fakeClock('2026-03-01T08:00:00.000Z');
   const outbox = new MemoryOutbox();
   const bus = new EventBus(outbox, { clock: time.clock, newId: sequentialIds('evt') });
@@ -81,6 +98,9 @@ function createWebhookHarness(): WebhookHarness {
         requests.push(request);
         return { status: statuses.shift() ?? 204 };
       },
+      resolve: options.resolve ?? fakeResolver(),
+      ...(options.allowLanTargets !== undefined ? { allowLanTargets: options.allowLanTargets } : {}),
+      ...(options.store !== undefined ? { store: options.store } : {}),
       now: () => time.clock().getTime(),
       schedule,
       newId: sequentialIds('wh'),
@@ -298,6 +318,104 @@ describe('webhook routes (Spec 019b)', () => {
     expect(requestSchema?.properties.secret).toMatchObject({ type: 'string', writeOnly: true });
     expect(document.components.schemas.WebhookSubscription?.properties).not.toHaveProperty('secret');
     expect(document.components.schemas.WebhookDelivery?.properties).toHaveProperty('attempt');
+  });
+});
+
+describe('webhook target guard (Spec 019c)', () => {
+  let h: WebhookHarness;
+
+  afterEach(async () => {
+    await h.app.close();
+  });
+
+  async function post(url: string): Promise<{ statusCode: number; json: () => unknown }> {
+    return h.app.inject({ method: 'POST', url: '/webhooks', payload: { url, secret: SECRET, eventTypes: ['*'] } });
+  }
+
+  it('answers 400 with the error envelope for blocked targets and stores nothing', async () => {
+    h = createWebhookHarness({ resolve: fakeResolver({ 'mixed.example.com': [PUBLIC_ADDRESS, '10.1.2.3'], 'void.example.com': [] }) });
+    for (const url of [
+      'https://10.0.0.5/hook',
+      'https://169.254.169.254/latest',
+      'https://[::ffff:192.168.0.1]/hook',
+      'https://[fd00::1]/hook',
+      'https://mixed.example.com/hook',
+      'https://void.example.com/hook',
+    ]) {
+      const response = await post(url);
+      expect(response.statusCode, url).toBe(400);
+      expect(response.json(), url).toEqual({ error: { code: 'BLOCKED_WEBHOOK_DESTINATION', message: expect.any(String) } });
+    }
+    expect((await h.app.inject({ method: 'GET', url: '/webhooks' })).json()).toEqual({ items: [] });
+  });
+
+  it('answers 400 when the host cannot be resolved', async () => {
+    h = createWebhookHarness({
+      resolve: async () => {
+        throw new Error('no such host');
+      },
+    });
+    const response = await post(HOOK_URL);
+    expect(response.statusCode).toBe(400);
+    expect(response.json()).toEqual({ error: { code: 'invalid_request', message: 'webhook subscription "url" host could not be resolved' } });
+  });
+
+  it('keeps the localhost development allowance', async () => {
+    h = createWebhookHarness({ resolve: fakeResolver({ localhost: ['127.0.0.1', '::1'] }) });
+    expect((await post('http://localhost:9000/hook')).statusCode).toBe(201);
+    expect((await post('http://127.0.0.1:9000/hook')).statusCode).toBe(201);
+  });
+
+  it('accepts private targets only with allowLanTargets', async () => {
+    h = createWebhookHarness({ allowLanTargets: true });
+    expect((await post('https://192.168.10.20/hook')).statusCode).toBe(201);
+    expect((await post('https://169.254.1.1/hook')).statusCode).toBe(400);
+  });
+
+  it('records a blocked delivery as one failed attempt with no retry and no request', async () => {
+    const answers = new Map<string, string[]>([['hooks.example.com', [PUBLIC_ADDRESS]]]);
+    h = createWebhookHarness({ resolve: async (host) => [...(answers.get(host) ?? [])] });
+    const { id } = await subscribe(h);
+
+    // The name now answers with a private address (DNS rebinding).
+    answers.set('hooks.example.com', ['10.0.0.7']);
+    await createJob(h);
+
+    expect(h.requests).toHaveLength(0);
+    expect(h.scheduled).toHaveLength(0);
+    const deliveries = (await h.app.inject({ method: 'GET', url: `/webhooks/${id}/deliveries` })).json<{ items: unknown[] }>();
+    expect(deliveries.items).toEqual([expect.objectContaining({ attempt: 1, ok: false, error: 'blocked-destination' })]);
+  });
+
+  it('keeps subscriptions in a SQLite database across server instances', async () => {
+    const db = openDatabase();
+    h = createWebhookHarness({ store: new SqliteWebhookSubscriptionRepository(db) });
+    const { id } = await subscribe(h, { eventTypes: ['job.created'] });
+    await h.app.close();
+
+    h = createWebhookHarness({ store: new SqliteWebhookSubscriptionRepository(db) });
+    const listed = await h.app.inject({ method: 'GET', url: '/webhooks' });
+    expect(listed.json()).toEqual({ items: [{ id, url: HOOK_URL, eventTypes: ['job.created'], active: true }] });
+    expect(listed.body).not.toContain(SECRET);
+
+    await createJob(h);
+    const [request] = h.requests;
+    const nowSeconds = Math.floor(h.time.clock().getTime() / 1_000);
+    expect(verifySignature(SECRET, request?.headers[WEBHOOK_SIGNATURE_HEADER] ?? '', request?.body ?? '', nowSeconds)).toBe(true);
+    db.close();
+  });
+});
+
+describe('parseAllowLanTargets', () => {
+  it('defaults to false and accepts only true/false/1/0', () => {
+    expect(parseAllowLanTargets(undefined)).toBe(false);
+    expect(parseAllowLanTargets('')).toBe(false);
+    expect(parseAllowLanTargets('false')).toBe(false);
+    expect(parseAllowLanTargets('0')).toBe(false);
+    expect(parseAllowLanTargets('true')).toBe(true);
+    expect(parseAllowLanTargets(' TRUE ')).toBe(true);
+    expect(parseAllowLanTargets('1')).toBe(true);
+    expect(() => parseAllowLanTargets('yes')).toThrow(RangeError);
   });
 });
 
