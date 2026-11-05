@@ -6,6 +6,7 @@ export * from './cost-report.js';
 export * from './costing.js';
 export * from './edits.js';
 export * from './errors.js';
+export * from './finishing-steps.js';
 export * from './ids.js';
 export * from './job.js';
 export * from './lifecycle.js';
