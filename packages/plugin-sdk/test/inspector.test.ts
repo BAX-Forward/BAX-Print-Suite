@@ -77,7 +77,7 @@ describe("Inspector/1 over BPP", () => {
     const report = await remote.inspect({ document: DOCUMENT, profileId: "default", checks: { fonts: {} } });
     expect(Value.Check(PreflightReportSchema, report)).toBe(true);
     expect(report.findings).toEqual(FINDINGS);
-    expect(plugin.requests[0].document).toEqual(DOCUMENT);
+    expect(plugin.requests[0]?.document).toEqual(DOCUMENT);
     await remote.close();
   });
 

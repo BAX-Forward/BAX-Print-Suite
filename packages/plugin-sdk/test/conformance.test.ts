@@ -75,8 +75,8 @@ describe("CutterDriver/2 conformance kit", () => {
   it("reports profile problems from describe", async () => {
     const report = await runCutterDriverConformance(fakeDriver({ describe: () => ({ ...PROFILE, roll: undefined, tools: [] }) }));
     expect(report.passed).toBe(false);
-    expect(report.checks[0].detail).toContain("roll machines must declare `roll`");
-    expect(report.checks[0].detail).toContain("tools must be a non-empty array");
+    expect(report.checks[0]?.detail).toContain("roll machines must declare `roll`");
+    expect(report.checks[0]?.detail).toContain("tools must be a non-empty array");
   });
 
   it("checks profiles structurally", () => {
@@ -98,6 +98,6 @@ describe("CutterDriver/2 conformance kit", () => {
     const marked = sampleCutJob({ ...PROFILE, registration: { methods: ["camera-marks"], markShapes: ["circle"], markSizeMm: { min: 5, max: 5, unit: "mm" } } });
     expect(marked.marks?.method).toBe("camera-marks");
     expect(marked.marks?.marks).toHaveLength(4);
-    expect(marked.marks?.marks[0].dPt).toBeCloseTo((5 * 72) / 25.4, 9);
+    expect(marked.marks?.marks[0]?.dPt).toBeCloseTo((5 * 72) / 25.4, 9);
   });
 });
