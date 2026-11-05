@@ -58,8 +58,8 @@ export function buildCutContentStream(input: PdfCutInput): string {
   input.layers.forEach((layer, i) => {
     lines.push(`/OC /L${i} BDC`, "q", scale, `${strokeWidth} w`, "0 0 0 RG");
     for (const path of layer.paths) {
-      if (path.points.length < 2) continue;
       const [first, ...rest] = path.points;
+      if (!first || rest.length === 0) continue;
       lines.push(`${n(first[0])} ${n(first[1])} m`, ...rest.map(([x, y]) => `${n(x)} ${n(y)} l`));
       lines.push(...(path.closed ? ["h", "S"] : ["S"]));
     }

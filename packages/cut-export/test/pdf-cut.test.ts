@@ -55,6 +55,7 @@ async function inspect(bytes: Uint8Array): Promise<{ content: string; layerNames
   const properties = page.node.Resources()?.lookup(PDFName.of("Properties"), PDFDict);
   const layerNames: Record<string, string> = {};
   for (const [, id] of content.matchAll(/\/OC \/(\w+) BDC/g)) {
+    if (id === undefined) throw new Error("BDC without a property name");
     const ocg = properties?.lookup(PDFName.of(id), PDFDict);
     const name = ocg?.lookup(PDFName.of("Name"));
     if (!(name instanceof PDFString || name instanceof PDFHexString)) throw new Error(`OCG ${id} has no name`);

@@ -83,11 +83,13 @@ describe("DXF R12 writer", () => {
       ["POLYLINE", "CREASE", false],
     ]);
     contours.forEach((contour, i) => {
-      const vertices = dxf.entities[i].vertices ?? [];
+      const vertices = dxf.entities[i]?.vertices ?? [];
       expect(vertices).toHaveLength(contour.points.length);
       contour.points.forEach(([xPt, yPt], j) => {
-        expect(Math.abs(vertices[j].x - ptToMm(xPt))).toBeLessThanOrEqual(0.0001 + 1e-9);
-        expect(Math.abs(vertices[j].y - ptToMm(yPt))).toBeLessThanOrEqual(0.0001 + 1e-9);
+        // vertices has contour.points.length entries (checked above).
+        const vertex = vertices[j]!;
+        expect(Math.abs(vertex.x - ptToMm(xPt))).toBeLessThanOrEqual(0.0001 + 1e-9);
+        expect(Math.abs(vertex.y - ptToMm(yPt))).toBeLessThanOrEqual(0.0001 + 1e-9);
       });
     });
   });
@@ -96,7 +98,7 @@ describe("DXF R12 writer", () => {
     const job = jobOf({ contours: [rectMm("c1", "kiss", 25.4, 0, 50.8, 12.7)] });
     const { text } = writeDxf(job, parseDxfOptions({ units: "in" }));
     expect(text).toContain("999\r\nBAX Print Suite cut export; units=in\r\n");
-    const vertices = parseDxf(text).entities[0].vertices ?? [];
+    const vertices = parseDxf(text).entities[0]?.vertices ?? [];
     expect(vertices.map((v) => [v.x, v.y])).toEqual([
       [1, 0],
       [2, 0],
@@ -117,7 +119,7 @@ describe("DXF R12 writer", () => {
   it("uses '.' as decimal separator and exactly 4 decimals", () => {
     const job = jobOf({ contours: [polylineMm("c", "kiss", [[1 / 3, 2 / 3], [10.123456, 0.00004]])] });
     const lines = writeDxf(job).text.split("\r\n");
-    const values = lines.filter((_, i) => i > 0 && ["10", "20"].includes(lines[i - 1]));
+    const values = lines.filter((_, i) => i > 0 && ["10", "20"].includes(lines[i - 1]!));
     expect(values.length).toBeGreaterThan(0);
     for (const v of values) expect(v).toMatch(/^-?\d+\.\d{4}$/);
     expect(values).toContain("0.3333");

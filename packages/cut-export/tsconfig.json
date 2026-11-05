@@ -2,8 +2,7 @@
   "extends": "../../tsconfig.base.json",
   "compilerOptions": {
     "types": ["node"],
-    "noEmit": true,
-    "noUncheckedIndexedAccess": false
+    "noEmit": true
   },
   "include": ["src", "test", "vitest.config.ts"]
 }

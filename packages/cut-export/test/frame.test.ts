@@ -5,7 +5,11 @@ import { jobOf, marksMm, parseHpgl, polylineMm, rectMm } from "./helpers.js";
 
 // 200 x 100 mm frame, rectangle from (10, 10) to (110, 60) mm.
 const job = jobOf({ contours: [rectMm("r", "kiss", 10, 10, 110, 60)] });
-const [bl, br, tr, tl] = job.contours[0].points;
+const [rect] = job.contours;
+if (!rect) throw new Error("job has no rectangle contour");
+const [bl, br, tr, tl] = rect.points;
+if (!bl || !br || !tr || !tl) throw new Error("rectangle contour needs four corners");
+const corners = [bl, br, tr, tl];
 
 type Pair = [number, number];
 
@@ -25,14 +29,16 @@ const TABLE: { origin: Corner; swapXY: boolean; expected: [Pair, Pair, Pair, Pai
 describe("origins and axes", () => {
   it.each(TABLE)("origin $origin, swapXY $swapXY", ({ origin, swapXY, expected }) => {
     const toFrame = createFrameTransform(job, { origin, swapXY });
-    [bl, br, tr, tl].forEach((p, i) => {
-      const [x, y] = toFrame(p);
-      expect(x).toBeCloseTo(expected[i][0], 9);
-      expect(y).toBeCloseTo(expected[i][1], 9);
-    });
+    for (const [i, [ex, ey]] of expected.entries()) {
+      const corner = corners[i];
+      if (!corner) throw new Error(`no corner ${i}`);
+      const [x, y] = toFrame(corner);
+      expect(x).toBeCloseTo(ex, 9);
+      expect(y).toBeCloseTo(ey, 9);
+    }
     // The same mapping reaches the HPGL output (40 units per mm).
     const { paths } = parseHpgl(writeHpgl(job, { origin, swapXY }).text);
-    expect(paths[0].points.slice(0, 4)).toEqual(expected.map(([x, y]) => [x * 40, y * 40]));
+    expect(paths[0]?.points.slice(0, 4)).toEqual(expected.map(([x, y]) => [x * 40, y * 40]));
   });
 
   it("applies scale, then offset", () => {
@@ -87,6 +93,6 @@ describe("rounding (documented: half away from zero)", () => {
       marks: marksMm([[100, 50]], 5),
     });
     const { paths } = parseHpgl(writeHpgl(centered).text);
-    expect(paths[0].points).toEqual([[49, 182], [-49, -182]]);
+    expect(paths[0]?.points).toEqual([[49, 182], [-49, -182]]);
   });
 });

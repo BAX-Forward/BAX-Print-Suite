@@ -136,8 +136,11 @@ export function writeDxf(job: CutJob, options: DxfOptions = {}): DxfResult {
       const last = pts[pts.length - 1];
       if (!last || last[0] !== p[0] || last[1] !== p[1]) pts.push(p);
     }
-    if (contour.closed && pts.length > 2 && pts[0][0] === pts[pts.length - 1][0] && pts[0][1] === pts[pts.length - 1][1]) pts.pop();
-    if (pts.length < 2) {
+    const head = pts[0];
+    const tail = pts[pts.length - 1];
+    if (contour.closed && head && tail && pts.length > 2 && head[0] === tail[0] && head[1] === tail[1]) pts.pop();
+    const [start] = pts;
+    if (!start || pts.length < 2) {
       warnings.push(`contour ${contour.id}: fewer than 2 distinct points after rounding, skipped`);
       continue;
     }
@@ -150,7 +153,7 @@ export function writeDxf(job: CutJob, options: DxfOptions = {}): DxfResult {
     entities.push([0, "SEQEND"], [8, layer]);
     if (options.labels) {
       const height = (options.textHeightMm ?? 2.5) * unitScale;
-      entities.push([0, "TEXT"], [8, layer], [10, num(pts[0][0])], [20, num(pts[0][1])], [30, zero], [40, num(height)], [1, contour.id]);
+      entities.push([0, "TEXT"], [8, layer], [10, num(start[0])], [20, num(start[1])], [30, zero], [40, num(height)], [1, contour.id]);
     }
   }
 

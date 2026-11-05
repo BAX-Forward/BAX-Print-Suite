@@ -62,11 +62,15 @@ describe("HPGL writer", () => {
     const { text } = writeHpgl(jobOf({ contours: [contour] }));
     const { paths } = parseHpgl(text);
     expect(paths).toHaveLength(1);
+    const [path] = paths;
+    if (!path) throw new Error("expected one path");
     // Closed contours return to their start point.
-    expect(paths[0].points).toHaveLength(51);
-    expect(paths[0].points[50]).toEqual(paths[0].points[0]);
+    expect(path.points).toHaveLength(51);
+    expect(path.points[50]).toEqual(path.points[0]);
     contour.points.forEach(([xPt, yPt], i) => {
-      const [x, y] = paths[0].points[i];
+      const point = path.points[i];
+      if (!point) throw new Error(`path has no point ${i}`);
+      const [x, y] = point;
       expect(Math.abs(x - ptToMm(xPt) * HPGL_UNITS_PER_MM)).toBeLessThanOrEqual(1);
       expect(Math.abs(y - ptToMm(yPt) * HPGL_UNITS_PER_MM)).toBeLessThanOrEqual(1);
     });
@@ -78,7 +82,7 @@ describe("HPGL writer", () => {
     const { commands, paths } = parseHpgl(text);
     const pdPairs = commands.filter((c) => c.startsWith("PD")).map((c) => c.slice(2).split(",").length / 2);
     expect(pdPairs).toEqual([256, 256, 87]);
-    expect(paths[0].points).toHaveLength(600);
+    expect(paths[0]?.points).toHaveLength(600);
   });
 
   it("honors a smaller maxPairsPerPD", () => {
@@ -97,7 +101,7 @@ describe("HPGL writer", () => {
 
   it("falls back to SP1 with a warning for tools without a pen number", () => {
     const { text, warnings } = writeHpgl(jobOf({ contours: [rectMm("c1", "foil", 0, 0, 10, 10)] }));
-    expect(parseHpgl(text).paths[0].pen).toBe(1);
+    expect(parseHpgl(text).paths[0]?.pen).toBe(1);
     expect(warnings).toEqual(['tool "foil": no pen number in penMap, using SP1']);
   });
 
