@@ -1,6 +1,7 @@
 import { createHmac, timingSafeEqual } from 'node:crypto';
 import { BpsError } from '@bax-print/core';
 import type { CloudEvent } from './cloudevent.js';
+import { BlockedWebhookDestinationError, WEBHOOK_BLOCKED_DESTINATION } from './webhook-ssrf.js';
 
 /** Outbound job-status webhooks (Spec 019a): subscription checks, signing, one delivery attempt, retry schedule. */
 
@@ -50,6 +51,8 @@ export interface WebhookDeliveryResult {
   readonly status?: number;
   readonly error?: string;
   readonly attempt: number;
+  /** `false` when another attempt cannot succeed (a blocked destination); retry otherwise. */
+  readonly retryable?: false;
 }
 
 export class InvalidWebhookSubscriptionError extends BpsError {
@@ -213,6 +216,9 @@ export async function deliverWebhook(
     }
     return { ok: false, status, error: `webhook endpoint answered HTTP ${status}`, attempt };
   } catch (error) {
+    if (error instanceof BlockedWebhookDestinationError) {
+      return { ok: false, error: WEBHOOK_BLOCKED_DESTINATION, attempt, retryable: false };
+    }
     return { ok: false, error: errorMessage(error), attempt };
   }
 }

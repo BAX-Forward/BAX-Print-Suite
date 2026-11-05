@@ -106,7 +106,7 @@ export class WebhookDispatcher {
         ...(result.error !== undefined ? { error: result.error } : {}),
         at: new Date(this.options.now()).toISOString(),
       });
-      if (!result.ok) this.scheduleRetry(subscription.id, event, attempt);
+      if (!result.ok && result.retryable !== false) this.scheduleRetry(subscription.id, event, attempt);
     } catch (error) {
       this.onError(error, event);
     }
