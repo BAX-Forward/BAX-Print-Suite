@@ -14,6 +14,7 @@ export * from './lifecycle.js';
 export * from './media-color.js';
 export * from './media-errors.js';
 export * from './media.js';
+export * from './production-report.js';
 export * from './profiling-session.js';
 export * from './state-machine.js';
 export * from './status.js';

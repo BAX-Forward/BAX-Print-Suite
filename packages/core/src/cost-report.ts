@@ -1,24 +1,25 @@
 import type { AccountingCost, CostEstimate } from './costing.js';
 import { MINOR_UNITS_PER_MAJOR } from './costing.js';
 import { InvalidArgumentError } from './errors.js';
+import {
+  compareKeys,
+  CSV_LINE_BREAK,
+  csvField,
+  groupKey,
+  isInWindow,
+  parseReportWindow,
+  parseUtc,
+  TOTAL_ROW_LABEL,
+  type ReportGroupBy,
+} from './report-common.js';
 
-export type CostReportGroupBy = 'customer' | 'device' | 'day' | 'none';
+export { ALL_GROUP_KEY, TOTAL_ROW_LABEL, UNASSIGNED_GROUP_KEY } from './report-common.js';
 
-/** Group key for records with no customer or device. */
-export const UNASSIGNED_GROUP_KEY = 'unassigned';
-/** Group key used when the report is not grouped. */
-export const ALL_GROUP_KEY = 'all';
-/** Label of the totals row in CSV output. */
-export const TOTAL_ROW_LABEL = 'total';
+export type CostReportGroupBy = ReportGroupBy;
 
-const GROUP_BY: readonly CostReportGroupBy[] = ['customer', 'device', 'day', 'none'];
-/** ISO 8601 date-time in UTC: seconds and fractions optional, `Z` designator required. */
-const UTC_DATE_TIME_PATTERN = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}(?::\d{2}(?:\.\d{1,9})?)?Z$/;
-const ISO_DATE_LENGTH = 10;
+const CONTEXT = 'cost report';
 const CSV_DECIMALS = 2;
-const CSV_LINE_BREAK = '\r\n';
 const CSV_HEADER = ['group', 'jobs', 'currency', 'estimated', 'actual', 'variance', 'unpriced_jobs'] as const;
-const CSV_QUOTE_NEEDED = /[",\r\n]/;
 
 export interface JobCostRecord {
   readonly jobId: string;
@@ -66,18 +67,6 @@ export interface CostReport {
 
 const EMPTY_TOTALS: CostReportTotals = { jobs: 0, estimatedMinor: 0, actualMinor: 0, varianceMinor: 0, unpricedJobs: 0 };
 
-/** Parses an ISO 8601 UTC date-time to epoch milliseconds, rejecting impossible calendar dates. */
-function parseUtc(value: unknown, field: string): number {
-  if (typeof value !== 'string' || !UTC_DATE_TIME_PATTERN.test(value)) {
-    throw new InvalidArgumentError(`cost report: ${field} must be an ISO 8601 UTC date-time ending in Z`);
-  }
-  const ms = Date.parse(value);
-  if (Number.isNaN(ms) || new Date(ms).toISOString().slice(0, ISO_DATE_LENGTH) !== value.slice(0, ISO_DATE_LENGTH)) {
-    throw new InvalidArgumentError(`cost report: ${field} is not a valid date-time`);
-  }
-  return ms;
-}
-
 function minorAmount(value: number, field: string): number {
   if (!Number.isSafeInteger(value)) {
     throw new InvalidArgumentError(`cost report: ${field} must be an integer number of minor units`);
@@ -91,23 +80,6 @@ function safeAdd(a: number, b: number): number {
     throw new InvalidArgumentError('cost report: amount is too large to represent exactly');
   }
   return sum;
-}
-
-function labelOrUnassigned(value: string | undefined): string {
-  return value === undefined || value.trim() === '' ? UNASSIGNED_GROUP_KEY : value;
-}
-
-function groupKey(record: JobCostRecord, completedMs: number, groupBy: CostReportGroupBy): string {
-  switch (groupBy) {
-    case 'customer':
-      return labelOrUnassigned(record.customer);
-    case 'device':
-      return labelOrUnassigned(record.deviceId);
-    case 'day':
-      return new Date(completedMs).toISOString().slice(0, ISO_DATE_LENGTH);
-    case 'none':
-      return ALL_GROUP_KEY;
-  }
 }
 
 function isUnpriced(record: JobCostRecord): boolean {
@@ -148,14 +120,7 @@ function reportCurrency(records: readonly JobCostRecord[]): string | null {
 
 /** Aggregates per-job costs completed in [from, to) into groups and totals. */
 export function buildCostReport(records: readonly JobCostRecord[], options: CostReportOptions): CostReport {
-  const fromMs = parseUtc(options.from, 'from');
-  const toMs = parseUtc(options.to, 'to');
-  if (fromMs >= toMs) {
-    throw new InvalidArgumentError('cost report: from must be earlier than to');
-  }
-  if (!GROUP_BY.includes(options.groupBy)) {
-    throw new InvalidArgumentError(`cost report: groupBy must be one of ${GROUP_BY.join(', ')}`);
-  }
+  const window = parseReportWindow(options, CONTEXT);
 
   const seen = new Set<string>();
   const inWindow: { readonly record: JobCostRecord; readonly completedMs: number }[] = [];
@@ -167,8 +132,8 @@ export function buildCostReport(records: readonly JobCostRecord[], options: Cost
       throw new InvalidArgumentError(`cost report: duplicate job "${record.jobId}"`);
     }
     seen.add(record.jobId);
-    const completedMs = parseUtc(record.completedAt, `records[${index}].completedAt`);
-    if (completedMs >= fromMs && completedMs < toMs) inWindow.push({ record, completedMs });
+    const completedMs = parseUtc(record.completedAt, `records[${index}].completedAt`, CONTEXT);
+    if (isInWindow(completedMs, window)) inWindow.push({ record, completedMs });
   }
 
   const currency = reportCurrency(inWindow.map((entry) => entry.record));
@@ -181,7 +146,7 @@ export function buildCostReport(records: readonly JobCostRecord[], options: Cost
   }
 
   const groups = [...byKey.entries()]
-    .sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0))
+    .sort(([a], [b]) => compareKeys(a, b))
     .map(([key, group]): CostReportGroup => ({ key, ...group }));
   return { currency, from: options.from, to: options.to, groups, totals };
 }
@@ -193,11 +158,6 @@ function formatMajor(minor: number): string {
   const major = Math.floor(abs / MINOR_UNITS_PER_MAJOR);
   const fraction = abs % MINOR_UNITS_PER_MAJOR;
   return `${sign}${major}.${String(fraction).padStart(CSV_DECIMALS, '0')}`;
-}
-
-/** Quotes a field per RFC 4180 when it contains a comma, double quote or line break. */
-function csvField(value: string): string {
-  return CSV_QUOTE_NEEDED.test(value) ? `"${value.replaceAll('"', '""')}"` : value;
 }
 
 /** Leading characters a spreadsheet may treat as the start of a formula. */
