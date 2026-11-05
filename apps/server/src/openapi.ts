@@ -157,6 +157,28 @@ const STEP_REPEAT_RESULT_SCHEMA: JsonSchema = {
   },
 };
 
+const LAYOUT_TEMPLATE_SUMMARY_PROPERTIES: Readonly<Record<string, JsonSchema>> = {
+  id: { type: 'string' },
+  name: { type: 'string', minLength: 1, maxLength: 120 },
+  createdAt: { type: 'string', format: 'date-time' },
+  updatedAt: { type: 'string', format: 'date-time' },
+  rollWidthMm: { type: 'number', exclusiveMinimum: 0 },
+};
+
+/** A saved layout template (Spec 003w/003x) without its layout document, as `GET /layout-templates` lists it. */
+const LAYOUT_TEMPLATE_SUMMARY_SCHEMA: JsonSchema = {
+  type: 'object',
+  required: ['id', 'name', 'createdAt', 'updatedAt', 'rollWidthMm'],
+  properties: LAYOUT_TEMPLATE_SUMMARY_PROPERTIES,
+};
+
+/** A saved layout template with its layout document: JSON text of an object with a `placements` array, exactly as saved. */
+const LAYOUT_TEMPLATE_SCHEMA: JsonSchema = {
+  type: 'object',
+  required: ['id', 'name', 'createdAt', 'updatedAt', 'rollWidthMm', 'layoutJson'],
+  properties: { ...LAYOUT_TEMPLATE_SUMMARY_PROPERTIES, layoutJson: { type: 'string', contentMediaType: 'application/json' } },
+};
+
 const itemsOf = (name: string): JsonSchema => ({
   type: 'object',
   required: ['items'],
@@ -171,6 +193,9 @@ const COMPONENT_SCHEMAS: Readonly<Record<string, JsonSchema>> = {
   WebhookDeliveryList: itemsOf('WebhookDelivery'),
   CutJobResult: CUT_JOB_RESULT_SCHEMA,
   StepRepeatResult: STEP_REPEAT_RESULT_SCHEMA,
+  LayoutTemplate: LAYOUT_TEMPLATE_SCHEMA,
+  LayoutTemplateSummary: LAYOUT_TEMPLATE_SUMMARY_SCHEMA,
+  LayoutTemplateSummaryList: itemsOf('LayoutTemplateSummary'),
 };
 
 function parameters(schema: JsonSchema | undefined, location: 'path' | 'query'): unknown[] {
