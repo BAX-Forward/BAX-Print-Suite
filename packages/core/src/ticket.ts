@@ -1,5 +1,7 @@
 import type { Static } from "@sinclair/typebox";
+import { parseAccountingId } from "./accounting-id.js";
 import { parseEdits, type JobEditListSchema } from "./edits.js";
+import { InvalidArgumentError } from "./errors.js";
 
 export interface FinishedSize {
   readonly widthMm: number;
@@ -25,6 +27,8 @@ export interface JobTicket {
   readonly edits?: TicketEdits;
   /** Finishing mark specs (Spec 006), kept opaque here. */
   readonly marks?: readonly unknown[];
+  /** Customer or cost-center code used to group device accounting reports (Spec 017c). */
+  readonly accountingId?: string;
 }
 
 /** A validation error tied to one ticket field, e.g. `edits`. */
@@ -40,6 +44,19 @@ export function parseTicketEdits(input: unknown): TicketEditsResult {
   if (input === undefined) return { ok: true, value: undefined };
   const parsed = parseEdits(input);
   return parsed.ok ? { ok: true, value: parsed.value } : { ok: false, error: { field: "edits", errors: parsed.errors } };
+}
+
+export type TicketAccountingIdResult = { ok: true; value: string | undefined } | { ok: false; error: TicketFieldError };
+
+/** Validates the `accountingId` field of an incoming ticket. An absent field is valid (no ID); a valid ID is trimmed. */
+export function parseTicketAccountingId(input: unknown): TicketAccountingIdResult {
+  if (input === undefined) return { ok: true, value: undefined };
+  try {
+    return { ok: true, value: parseAccountingId(input) };
+  } catch (error) {
+    if (!(error instanceof InvalidArgumentError)) throw error;
+    return { ok: false, error: { field: "accountingId", errors: [error.message] } };
+  }
 }
 
 /** The ticket's edit stack; an empty list when the ticket has none. */

@@ -1,4 +1,5 @@
 export * from './accounting.js';
+export * from './accounting-id.js';
 export * from './actor.js';
 export * from './canonical-json.js';
 export * from './color.js';
