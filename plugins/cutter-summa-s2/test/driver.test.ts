@@ -30,12 +30,14 @@ function goldenJob(patch: Partial<CutJob> = {}): CutJob {
   };
 }
 
+const MARK_CENTERS_MM: [number, number][] = [[5, 5], [195, 5], [5, 95], [195, 95]];
+
 /** Square sensor marks in rows down both long edges (generic edge-rows pattern). */
 const edgeRowMarks = (): RegistrationMarks => ({
   method: "edge-mark-rows",
   shape: "square",
   originMarkId: "m0",
-  marks: [[5, 5], [195, 5], [5, 95], [195, 95]].map(([x, y], i) => ({ id: `m${i}`, xPt: mmToPt(x), yPt: mmToPt(y), dPt: mmToPt(3) })),
+  marks: MARK_CENTERS_MM.map(([x, y], i) => ({ id: `m${i}`, xPt: mmToPt(x), yPt: mmToPt(y), dPt: mmToPt(3) })),
 });
 
 const GOLDEN_HPGL = [
@@ -153,7 +155,7 @@ describe("cutter-summa-s2 profile", () => {
   it("makes core validation reject edge-mark-rows by default, with a hint", () => {
     const report = validateCutJob(goldenJob({ marks: edgeRowMarks() }), buildS2Profile(parseS2DeviceConfig(DEVICE)));
     expect(report.errors.map((e) => e.code)).toEqual(["registration-unsupported"]);
-    expect(report.errors[0].message).toContain("experimental");
+    expect(report.errors[0]?.message).toContain("experimental");
   });
 
   it.each([
