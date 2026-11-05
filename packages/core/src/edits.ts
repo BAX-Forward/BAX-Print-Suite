@@ -18,6 +18,7 @@ export const MAX_EDIT_METADATA_ENTRIES = 50;
 export const MAX_CUT_SPOT_NAMES = 8;
 /** Outward (+) or inward (-) offset of a trim-box cut contour. */
 export const MAX_CUT_OFFSET_MM = 50;
+export const MAX_PAGE_SELECTION_LENGTH = 256;
 const METADATA_KEY = /^[A-Za-z0-9_.-]{1,64}$/;
 
 const EditId = Type.Optional(Type.String({ minLength: 1, maxLength: 64 }));
@@ -119,6 +120,13 @@ export const CutContourEditSchema = Type.Object({
   source: CutContourSourceSchema,
 });
 
+export const PagesEditSchema = Type.Object({
+  id: EditId,
+  kind: Type.Literal("pages"),
+  /** Pages to print, 1-based, e.g. `"1-3,5,8-"` (an open end runs to the last page). The last `pages` edit wins. */
+  selection: Type.String({ minLength: 1, maxLength: MAX_PAGE_SELECTION_LENGTH }),
+});
+
 export const MetadataEditSchema = Type.Object({
   id: EditId,
   kind: Type.Literal("metadata"),
@@ -136,6 +144,7 @@ export const JobEditSchema = Type.Union([
   CopiesEditSchema,
   SpotMapEditSchema,
   CutContourEditSchema,
+  PagesEditSchema,
   MetadataEditSchema,
 ]);
 
@@ -152,6 +161,7 @@ export type SpotTarget = Static<typeof SpotTargetSchema>;
 export type SpotMapEdit = Static<typeof SpotMapEditSchema>;
 export type CutContourSource = Static<typeof CutContourSourceSchema>;
 export type CutContourEdit = Static<typeof CutContourEditSchema>;
+export type PagesEdit = Static<typeof PagesEditSchema>;
 export type MetadataEdit = Static<typeof MetadataEditSchema>;
 export type JobEdit = Static<typeof JobEditSchema>;
 export type JobEditKind = JobEdit["kind"];
@@ -166,6 +176,7 @@ const SCHEMA_BY_KIND: Readonly<Record<JobEditKind, TSchema>> = {
   copies: CopiesEditSchema,
   spotMap: SpotMapEditSchema,
   cutContour: CutContourEditSchema,
+  pages: PagesEditSchema,
   metadata: MetadataEditSchema,
 };
 
@@ -181,6 +192,62 @@ function isRecord(value: unknown): value is Record<string, unknown> {
 
 function isEditKind(value: unknown): value is JobEditKind {
   return typeof value === "string" && Object.hasOwn(SCHEMA_BY_KIND, value);
+}
+
+interface PageRange {
+  text: string;
+  /** 1-based, inclusive. */
+  first: number;
+  /** 1-based, inclusive; `null` runs to the last page. */
+  last: number | null;
+}
+
+const PAGE_RANGE = /^(\d+)(?:\s*(-)\s*(\d*))?$/;
+
+/** Syntax of a page selection, independent of the page count. */
+function pageRangesOf(selection: string): EditParseResult<PageRange[]> {
+  const ranges: PageRange[] = [];
+  const errors: string[] = [];
+  for (const part of selection.split(",")) {
+    const text = part.trim();
+    const match = PAGE_RANGE.exec(text);
+    if (!match) {
+      errors.push(`invalid page range ${JSON.stringify(text)}`);
+      continue;
+    }
+    const [, firstText = "", dash, lastText = ""] = match;
+    const first = Number(firstText);
+    const last = dash === undefined ? first : lastText === "" ? null : Number(lastText);
+    if (first < 1 || last === 0) errors.push(`page range "${text}": pages are numbered from 1`);
+    else if (!Number.isSafeInteger(first) || (last !== null && !Number.isSafeInteger(last))) errors.push(`page range "${text}": page number is too large`);
+    else if (last !== null && last < first) errors.push(`page range "${text}" is reversed`);
+    else ranges.push({ text, first, last });
+  }
+  return errors.length > 0 ? { ok: false, errors } : { ok: true, value: ranges };
+}
+
+/**
+ * Resolves a `pages` selection such as `"1-3,5,8-"` (1-based, an open end runs to the last page)
+ * to 0-based page indices, ascending and without duplicates.
+ */
+export function parsePageRanges(selection: string, pageCount: number): EditParseResult<number[]> {
+  if (!Number.isSafeInteger(pageCount) || pageCount < 1) {
+    return { ok: false, errors: [`page count must be a positive integer, got ${pageCount}`] };
+  }
+  if (selection.length > MAX_PAGE_SELECTION_LENGTH) {
+    return { ok: false, errors: [`page selection is longer than ${MAX_PAGE_SELECTION_LENGTH} characters`] };
+  }
+  const parsed = pageRangesOf(selection);
+  if (!parsed.ok) return parsed;
+  const errors = parsed.value
+    .filter(({ first, last }) => (last ?? first) > pageCount)
+    .map(({ text }) => `page range "${text}" is beyond the last page (${pageCount})`);
+  if (errors.length > 0) return { ok: false, errors };
+  const selected = new Set<number>();
+  for (const { first, last } of parsed.value) {
+    for (let page = first; page <= (last ?? pageCount); page++) selected.add(page - 1);
+  }
+  return { ok: true, value: [...selected].sort((a, b) => a - b) };
 }
 
 function semanticErrors(edit: JobEdit, at: string): string[] {
@@ -201,6 +268,10 @@ function semanticErrors(edit: JobEdit, at: string): string[] {
       return edit.source.kind === "spot" && new Set(edit.source.names).size !== edit.source.names.length
         ? [`${at}: cutContour lists a spot name more than once`]
         : [];
+    case "pages": {
+      const parsed = pageRangesOf(edit.selection);
+      return parsed.ok ? [] : parsed.errors.slice(0, MAX_ERRORS_PER_EDIT).map((error) => `${at}: ${error}`);
+    }
     default:
       return [];
   }
