@@ -196,6 +196,9 @@ export function computeGeometry(source: PageSource, edits: readonly JobEdit[] = 
       case "spotMap":
         spotMappings.push({ from: edit.from, target: edit.to });
         break;
+      case "cutContour":
+        // No effect on geometry; see `resolveCutContour`.
+        break;
       case "metadata":
         Object.assign(metadata, edit.values);
         break;
