@@ -39,4 +39,12 @@ export {
 export { draw, marksHook, composeHooks, type DrawInput, type DrawOptions } from "./draw.js";
 
 export { parsePreset, importPresets, exportPresets, selectPreset, resolveFinishing, type PresetLookup } from "./presets.js";
+export {
+  PROOF_WATERMARK_TEXT,
+  ProofWatermarkSchema,
+  parseProofWatermark,
+  proofWatermark,
+  type ProofWatermark,
+  type ProofWatermarkInput,
+} from "./proof-watermark.js";
 export { labelPreviewSvg, labelPartSvg, type LabelPreview, type LabelPreviewInput } from "./label-preview.js";

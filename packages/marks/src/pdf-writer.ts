@@ -53,7 +53,7 @@ export function decodePdfText(obj: PDFObject | undefined): string | undefined {
   return obj instanceof PDFString || obj instanceof PDFHexString ? obj.decodeText() : undefined;
 }
 
-function childDict(context: PDFContext, parent: PDFDict, key: string): PDFDict {
+export function childDict(context: PDFContext, parent: PDFDict, key: string): PDFDict {
   const existing = parent.lookupMaybe(PDFName.of(key), PDFDict);
   if (existing) return existing;
   const dict = PDFDict.withContext(context);
@@ -117,7 +117,7 @@ function ensureColorSpace(doc: PDFDocument, colorant: Exclude<Colorant, "process
 }
 
 /** Binds `ref` under `base`, `base1`, … in `dict`, reusing an existing binding. */
-function bindResource(dict: PDFDict, base: string, ref: PDFRef): string {
+export function bindResource(dict: PDFDict, base: string, ref: PDFRef): string {
   for (let i = 0; ; i++) {
     const name = i === 0 ? base : `${base}${i}`;
     const current = dict.get(PDFName.of(name));
