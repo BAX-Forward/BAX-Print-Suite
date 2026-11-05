@@ -17,3 +17,4 @@ export * from "./inspector.js";
 export * from "./preflight.js";
 export * from "./profile.js";
 export * from "./registry.js";
+export * from "./spot-name.js";

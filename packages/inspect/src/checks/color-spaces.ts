@@ -2,11 +2,13 @@ import { Type } from "@sinclair/typebox";
 import { mapColorant, spotMappingsOf } from "@bax-print/edits";
 import { defineCheck, formatPages, sortedPages, type RawFinding } from "../check.js";
 import { isSpotColorant } from "../colorspace.js";
+import { spotNameKey } from "../spot-name.js";
 
 /**
  * Colour spaces used and named colorants of Separation/DeviceN spaces (ISO 32000-1 §8.6.6).
  * Colorants matching the job's cut-contour names (Spec 004 `CutConfig.spotNames`) are listed
  * as cut contours. `spotMap` edits are honoured: a mapped colorant is judged by its new name.
+ * When `librarySpotNames` is set, spot colorants missing from that library are reported (Spec 010b).
  */
 export const colorSpacesCheck = defineCheck({
   id: "color-spaces",
@@ -24,12 +26,21 @@ export const colorSpacesCheck = defineCheck({
       defaultSeverity: "error",
       description: "A colour space family listed in `disallowedFamilies` is used.",
     },
+    "spot-not-in-library": {
+      defaultSeverity: "warn",
+      description: "A spot colorant (after `spotMap` edits) is not in the shop's spot library.",
+    },
   },
   params: Type.Object({
     /** Added to the job's configured cut-contour names. Matched exactly, as names are case-sensitive in PDF. */
     cutSpotNames: Type.Array(Type.String({ minLength: 1, maxLength: 127 }), { default: [], maxItems: 100 }),
     /** E.g. `["DeviceRGB"]` for a CMYK-only workflow. */
     disallowedFamilies: Type.Array(Type.String({ minLength: 1, maxLength: 64 }), { default: [], maxItems: 20 }),
+    /**
+     * Names of the shop's spot library (e.g. a media `SpotLibrary`'s colour names). Matched
+     * ignoring case and whitespace differences, see `spotNameKey`. Empty: no library check.
+     */
+    librarySpotNames: Type.Array(Type.String({ minLength: 1, maxLength: 127 }), { default: [], maxItems: 5000 }),
   }),
   run(doc, params) {
     const findings: RawFinding[] = [];
@@ -69,6 +80,8 @@ export const colorSpacesCheck = defineCheck({
 
     const cutNames = new Set([...(doc.context.cutSpotNames ?? []), ...params.cutSpotNames]);
     const mappings = spotMappingsOf(doc.context.edits ?? []);
+    const library = new Set(params.librarySpotNames.map(spotNameKey));
+    const notInLibrary: RawFinding[] = [];
     let cutFound = false;
     for (const [name, pageSet] of [...colorants].sort(([a], [b]) => a.localeCompare(b))) {
       const pages = sortedPages(pageSet);
@@ -77,6 +90,14 @@ export const colorSpacesCheck = defineCheck({
       const mappedTo = effective === name ? undefined : (effective ?? "process");
       const isCut = effective !== null && cutNames.has(effective);
       cutFound ||= isCut;
+      if (library.size > 0 && effective !== null && isSpotColorant(effective) && !isCut && !library.has(spotNameKey(effective))) {
+        notInLibrary.push({
+          rule: "spot-not-in-library",
+          page: pages[0],
+          message: `Spot colorant "${effective}"${effective === name ? "" : ` (from "${name}")`} is not in the spot library; used on ${formatPages(pages)}`,
+          data: { colorant: name, effectiveName: effective, pages },
+        });
+      }
       const mapping = mappedTo ? ` (mapped to ${mappedTo === "process" ? "process" : `"${mappedTo}"`})` : "";
       findings.push({
         rule: isCut ? "cut-contour-colorant" : "spot-colorant",
@@ -96,6 +117,7 @@ export const colorSpacesCheck = defineCheck({
         data: { cutSpotNames: names },
       });
     }
+    findings.push(...notInLibrary);
     return findings;
   },
 });
