@@ -29,7 +29,8 @@ export type ValidationCode =
   | "mark-shape-unsupported"
   | "mark-size-out-of-range"
   | "origin-mark-missing"
-  | "invalid-panel";
+  | "invalid-panel"
+  | "no-cut-contours";
 
 export interface ValidationIssue {
   severity: "error" | "warning";
