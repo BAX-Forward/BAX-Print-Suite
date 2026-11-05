@@ -45,6 +45,19 @@ export const MIGRATIONS: readonly Migration[] = Object.freeze([
       );
     `,
   },
+  {
+    version: 2,
+    name: 'webhook subscriptions',
+    sql: `
+      CREATE TABLE webhook_subscriptions (
+        id TEXT PRIMARY KEY,
+        url TEXT NOT NULL,
+        event_types TEXT NOT NULL,
+        active INTEGER NOT NULL,
+        secret TEXT NOT NULL
+      );
+    `,
+  },
 ]);
 
 function applyMigrations(db: DatabaseSync): void {
