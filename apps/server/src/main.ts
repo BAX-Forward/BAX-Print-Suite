@@ -19,7 +19,7 @@ const archiveAfter = process.env.BPS_ARCHIVE_AFTER;
 const retention = process.env.BPS_TRASH_RETENTION;
 const blobsDir = join(dataDir, 'blobs');
 
-// Job rows, the archive index, the outbox, findings, profiles and media are in memory until the SQLite store (Spec 001) lands.
+// Job rows, the archive index, the outbox, findings, profiles, media and webhook subscriptions are in memory until the SQLite store (Spec 001) lands.
 const outbox = new MemoryOutbox();
 const bus = new EventBus(outbox);
 const jobRepository = new MemoryJobRepository();
@@ -50,7 +50,7 @@ const preflight = new PreflightService({
 });
 const media = new MediaService({ stores: memoryMediaStores(), bus, jobs: jobRepository });
 
-const app = buildServer({ archive, preflight: { preflight, profiles, registry }, media, logger: true });
+const app = buildServer({ archive, preflight: { preflight, profiles, registry }, media, webhooks: { bus }, logger: true });
 const scheduler = startArchiveScheduler(archive, { onError: (error) => app.log.error(error) });
 
 const shutdown = (): void => {
@@ -60,5 +60,5 @@ const shutdown = (): void => {
 process.once('SIGINT', shutdown);
 process.once('SIGTERM', shutdown);
 
-app.log.warn('job rows, archive index, history, findings, profiles and media are kept in memory in this build');
+app.log.warn('job rows, archive index, history, findings, profiles, media and webhook subscriptions are kept in memory in this build');
 await app.listen({ host, port });
