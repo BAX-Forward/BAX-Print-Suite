@@ -13,8 +13,15 @@ export const SYSTEM_ACTOR: Actor = { id: 'system', role: 'admin' };
 const RANK: Readonly<Record<Role, number>> = { viewer: 0, operator: 1, admin: 2 };
 
 export class ForbiddenError extends BpsError {
-  constructor(action: string, required: Role) {
-    super('FORBIDDEN', `${action} requires the ${required} role`);
+  /** `required` is a minimum role, or a named permission (spec 024a). */
+  constructor(action: string, required: Role | { readonly permission: string }) {
+    super(
+      'FORBIDDEN',
+      typeof required === 'string'
+        ? `${action} requires the ${required} role`
+        : `${action} requires the ${required.permission} permission`,
+      typeof required === 'string' ? undefined : { details: { permission: required.permission } },
+    );
   }
 }
 
