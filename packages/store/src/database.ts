@@ -72,6 +72,18 @@ export const MIGRATIONS: readonly Migration[] = Object.freeze([
       );
     `,
   },
+  {
+    version: 4,
+    name: 'finishing plans',
+    sql: `
+      CREATE TABLE finishing_plans (
+        job_id TEXT PRIMARY KEY,
+        plan_json TEXT NOT NULL,
+        updated_at TEXT NOT NULL
+      );
+      CREATE INDEX finishing_plans_updated ON finishing_plans (updated_at, job_id);
+    `,
+  },
 ]);
 
 function applyMigrations(db: DatabaseSync): void {
