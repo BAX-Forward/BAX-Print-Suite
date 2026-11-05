@@ -132,8 +132,9 @@ export interface CxfLabObject {
   b: number;
 }
 
-function labComponent(lab: XmlElement, name: string, id: string): number {
-  const text = findFirst(lab, name)?.text.trim() ?? '';
+/** The finite number in the first `name` descendant of `parent`; `id` names the object in errors. */
+export function cxfNumber(parent: XmlElement, name: string, id: string): number {
+  const text = findFirst(parent, name)?.text.trim() ?? '';
   const value = Number(text);
   if (text === '' || !Number.isFinite(value)) throw new ValidationError(`CxF: object ${id} has no numeric ${name} value`);
   return value;
@@ -153,7 +154,7 @@ export function readCxfLab(text: string): CxfLabObject[] {
     if (!lab) continue;
     const id = (object.attributes.Name ?? object.attributes.Id ?? '').trim();
     if (id === '') throw new ValidationError('CxF: an object with a Lab value has neither Name nor Id');
-    objects.push({ id, L: labComponent(lab, 'L', id), a: labComponent(lab, 'A', id), b: labComponent(lab, 'B', id) });
+    objects.push({ id, L: cxfNumber(lab, 'L', id), a: cxfNumber(lab, 'A', id), b: cxfNumber(lab, 'B', id) });
   }
   if (objects.length === 0) throw new ValidationError('CxF: no objects with CIELAB values');
   return objects;
