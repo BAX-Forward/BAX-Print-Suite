@@ -2,6 +2,7 @@ export * from './accounting.js';
 export * from './actor.js';
 export * from './canonical-json.js';
 export * from './color.js';
+export * from './costing.js';
 export * from './edits.js';
 export * from './errors.js';
 export * from './ids.js';
