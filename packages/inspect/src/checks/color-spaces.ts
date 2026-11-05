@@ -1,13 +1,25 @@
 import { Type } from "@sinclair/typebox";
-import { mapColorant, spotMappingsOf } from "@bax-print/edits";
+import { mapColorant, resolveCutSource, spotMappingsOf, type CutSource } from "@bax-print/edits";
 import { defineCheck, formatPages, sortedPages, type RawFinding } from "../check.js";
 import { isSpotColorant } from "../colorspace.js";
 import { spotNameKey } from "../spot-name.js";
 
 /**
+ * The cut-contour colorant names to look for. A `cutContour` edit (Spec 007e) replaces the
+ * job's configured names: a `spot` source names them, while `trimBox` and `none` mean the job
+ * is not cut along a spot colorant, so no colorant is a cut contour. Profile names are added
+ * only when the cut comes from spot colorants.
+ */
+function cutSpotNamesOf(source: CutSource | undefined, configured: readonly string[] | undefined, fromProfile: readonly string[]): Set<string> {
+  if (source === undefined) return new Set([...(configured ?? []), ...fromProfile]);
+  return source.kind === "spot" ? new Set([...source.names, ...fromProfile]) : new Set();
+}
+
+/**
  * Colour spaces used and named colorants of Separation/DeviceN spaces (ISO 32000-1 §8.6.6).
- * Colorants matching the job's cut-contour names (Spec 004 `CutConfig.spotNames`) are listed
- * as cut contours. `spotMap` edits are honoured: a mapped colorant is judged by its new name.
+ * Colorants matching the job's cut-contour names (Spec 004 `CutConfig.spotNames`, or a
+ * `cutContour` edit) are listed as cut contours. `spotMap` edits are honoured: a mapped
+ * colorant is judged by its new name.
  * When `librarySpotNames` is set, spot colorants missing from that library are reported (Spec 010b).
  */
 export const colorSpacesCheck = defineCheck({
@@ -78,8 +90,9 @@ export const colorSpacesCheck = defineCheck({
       });
     }
 
-    const cutNames = new Set([...(doc.context.cutSpotNames ?? []), ...params.cutSpotNames]);
-    const mappings = spotMappingsOf(doc.context.edits ?? []);
+    const edits = doc.context.edits ?? [];
+    const cutNames = cutSpotNamesOf(resolveCutSource(edits), doc.context.cutSpotNames, params.cutSpotNames);
+    const mappings = spotMappingsOf(edits);
     const library = new Set(params.librarySpotNames.map(spotNameKey));
     const notInLibrary: RawFinding[] = [];
     let cutFound = false;
