@@ -9,6 +9,7 @@ import type { MediaService } from './media-service.js';
 import { OpenApiCollector } from './openapi.js';
 import { parseImportQuery, parseLegalHoldBody, parseReprintBody } from './parse.js';
 import { registerErrorHandler, registerPreflightRoutes, type RouteDeps } from './routes.js';
+import { registerStepRepeatRoutes, type StepRepeatRouteOptions } from './step-repeat-routes.js';
 import { registerWebhookRoutes, type WebhookOptions } from './webhook-routes.js';
 
 export const DEFAULT_IMPORT_BODY_LIMIT = 1024 ** 3;
@@ -32,6 +33,8 @@ export interface ServerDeps {
   readonly jobs?: CutJobLookup;
   /** Reads a job's page for `POST /jobs/:id/cut-job`; without one that route answers 501. Tests inject a fake. */
   readonly cutExtractor?: CutExtractor;
+  /** With `jobs`, mounts the Spec 003u `POST /jobs/:id/step-repeat` route. Tests replace `run`. */
+  readonly stepRepeat?: StepRepeatRouteOptions;
   /** `info.version` of the OpenAPI document. */
   readonly version?: string;
   /**
@@ -76,6 +79,10 @@ export function buildServer(deps: ServerDeps): FastifyInstance {
 
   if (deps.jobs) {
     registerCutRoutes(app, { jobs: deps.jobs, ...(deps.cutExtractor ? { extractor: deps.cutExtractor } : {}) });
+  }
+
+  if (deps.jobs && deps.stepRepeat) {
+    registerStepRepeatRoutes(app, { jobs: deps.jobs, ...deps.stepRepeat });
   }
 
   app.get('/archive', async (request) => archive.search(parseSearchQuery(request.query as Record<string, unknown>)));

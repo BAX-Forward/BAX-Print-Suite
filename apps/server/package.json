@@ -23,6 +23,7 @@
     "@bax-print/edits": "workspace:*",
     "@bax-print/events": "workspace:*",
     "@bax-print/inspect": "workspace:*",
+    "@bax-print/nest": "workspace:*",
     "@bax-print/plugin-sdk": "workspace:*",
     "@bax-print/store": "workspace:*",
     "fastify": "5.2.1",

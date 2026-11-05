@@ -131,6 +131,32 @@ const CUT_JOB_RESULT_SCHEMA: JsonSchema = {
   ],
 };
 
+/** `POST /jobs/:id/step-repeat` (Spec 003u): the roll layout, one trim contour per copy and the imposed PDF. */
+const STEP_REPEAT_RESULT_SCHEMA: JsonSchema = {
+  type: 'object',
+  required: ['layout', 'cutContours', 'warnings', 'imposedPdfBase64'],
+  properties: {
+    layout: {
+      type: 'object',
+      required: ['placements', 'mediaWidthPt', 'lengthUsedPt', 'utilization', 'unplaced', 'algorithm'],
+      properties: {
+        placements: { type: 'array', items: { type: 'object' } },
+        mediaWidthPt: { type: 'number' },
+        lengthUsedPt: { type: 'number' },
+        utilization: { type: 'number' },
+        unplaced: { type: 'array' },
+        algorithm: { type: 'string' },
+        elapsedMs: { type: 'number' },
+        media: { type: 'object' },
+        panels: { type: 'array', items: { type: 'object' } },
+      },
+    },
+    cutContours: { type: 'array', items: CUT_CONTOUR_SCHEMA },
+    warnings: { type: 'array', items: { type: 'object' } },
+    imposedPdfBase64: { type: 'string', contentEncoding: 'base64', contentMediaType: 'application/pdf' },
+  },
+};
+
 const itemsOf = (name: string): JsonSchema => ({
   type: 'object',
   required: ['items'],
@@ -144,6 +170,7 @@ const COMPONENT_SCHEMAS: Readonly<Record<string, JsonSchema>> = {
   WebhookDelivery: WEBHOOK_DELIVERY_SCHEMA,
   WebhookDeliveryList: itemsOf('WebhookDelivery'),
   CutJobResult: CUT_JOB_RESULT_SCHEMA,
+  StepRepeatResult: STEP_REPEAT_RESULT_SCHEMA,
 };
 
 function parameters(schema: JsonSchema | undefined, location: 'path' | 'query'): unknown[] {
