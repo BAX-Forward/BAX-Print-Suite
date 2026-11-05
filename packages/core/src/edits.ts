@@ -15,6 +15,9 @@ export const MAX_EDIT_BLEED_MM = 100;
 export const MAX_EDIT_COPIES = 100_000;
 export const MAX_EDITS = 200;
 export const MAX_EDIT_METADATA_ENTRIES = 50;
+export const MAX_CUT_SPOT_NAMES = 8;
+/** Outward (+) or inward (-) offset of a trim-box cut contour. */
+export const MAX_CUT_OFFSET_MM = 50;
 const METADATA_KEY = /^[A-Za-z0-9_.-]{1,64}$/;
 
 const EditId = Type.Optional(Type.String({ minLength: 1, maxLength: 64 }));
@@ -94,6 +97,28 @@ export const SpotMapEditSchema = Type.Object({
   to: SpotTargetSchema,
 });
 
+export const CutContourSourceSchema = Type.Union([
+  /** Paths painted in any of these colorants, by name after earlier `spotMap` edits (Spec 004 `CutConfig.spotNames`). */
+  Type.Object({
+    kind: Type.Literal("spot"),
+    names: Type.Array(ColorantName, { minItems: 1, maxItems: MAX_CUT_SPOT_NAMES }),
+  }),
+  /** A rectangle on the edited trim box (TrimBox, else CropBox, else MediaBox), offset outward (+) or inward (-). */
+  Type.Object({
+    kind: Type.Literal("trimBox"),
+    offsetMm: Type.Number({ minimum: -MAX_CUT_OFFSET_MM, maximum: MAX_CUT_OFFSET_MM }),
+  }),
+  /** The job is not cut. */
+  Type.Object({ kind: Type.Literal("none") }),
+]);
+
+export const CutContourEditSchema = Type.Object({
+  id: EditId,
+  kind: Type.Literal("cutContour"),
+  /** Where the job's cut contour comes from. The last `cutContour` edit wins. */
+  source: CutContourSourceSchema,
+});
+
 export const MetadataEditSchema = Type.Object({
   id: EditId,
   kind: Type.Literal("metadata"),
@@ -110,6 +135,7 @@ export const JobEditSchema = Type.Union([
   PageSizeEditSchema,
   CopiesEditSchema,
   SpotMapEditSchema,
+  CutContourEditSchema,
   MetadataEditSchema,
 ]);
 
@@ -124,6 +150,8 @@ export type PageSizeEdit = Static<typeof PageSizeEditSchema>;
 export type CopiesEdit = Static<typeof CopiesEditSchema>;
 export type SpotTarget = Static<typeof SpotTargetSchema>;
 export type SpotMapEdit = Static<typeof SpotMapEditSchema>;
+export type CutContourSource = Static<typeof CutContourSourceSchema>;
+export type CutContourEdit = Static<typeof CutContourEditSchema>;
 export type MetadataEdit = Static<typeof MetadataEditSchema>;
 export type JobEdit = Static<typeof JobEditSchema>;
 export type JobEditKind = JobEdit["kind"];
@@ -137,6 +165,7 @@ const SCHEMA_BY_KIND: Readonly<Record<JobEditKind, TSchema>> = {
   pageSize: PageSizeEditSchema,
   copies: CopiesEditSchema,
   spotMap: SpotMapEditSchema,
+  cutContour: CutContourEditSchema,
   metadata: MetadataEditSchema,
 };
 
@@ -168,6 +197,10 @@ function semanticErrors(edit: JobEdit, at: string): string[] {
     }
     case "spotMap":
       return edit.to.kind === "colorant" && edit.to.name === edit.from ? [`${at}: spotMap maps "${edit.from}" to itself`] : [];
+    case "cutContour":
+      return edit.source.kind === "spot" && new Set(edit.source.names).size !== edit.source.names.length
+        ? [`${at}: cutContour lists a spot name more than once`]
+        : [];
     default:
       return [];
   }
