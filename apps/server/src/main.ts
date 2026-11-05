@@ -73,6 +73,8 @@ const app = buildServer({
   cutExtractor: rollCut.cutExtractor,
   // Spec 003u: step and repeat reads the same stored source PDF as the cut extractor.
   stepRepeat: { blobPath, ...rollCut.stepRepeat },
+  // Spec 004a: the proof watermark reads the same stored source PDF.
+  proof: { blobPath },
   // Spec 003x: saved layout templates live in the job database, so the routes need BPS_DATABASE.
   ...(database ? { layoutTemplates: new SqliteLayoutTemplateRepository(database) } : {}),
   logger: true,

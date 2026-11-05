@@ -30,6 +30,10 @@ export const invalid = (message: string, details?: readonly string[]): HttpError
 
 export const conflict = (message: string): HttpError => new HttpError(409, "conflict", message);
 
+/** Spec 004a: proof watermark options the marks package rejects; `details` are its zod issues. */
+export const proofWatermarkInvalid = (message: string, details: readonly string[]): HttpError =>
+  new HttpError(422, "proof_watermark_invalid", message, details);
+
 /** A list of problems (validation) or structured context (e.g. the ids an import must remap). */
 export type ErrorDetails = readonly string[] | Readonly<Record<string, unknown>>;
 
