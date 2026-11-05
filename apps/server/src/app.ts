@@ -12,6 +12,7 @@ import { OpenApiCollector } from './openapi.js';
 import { parseImportQuery, parseLegalHoldBody, parseReprintBody } from './parse.js';
 import { registerProductionReportRoutes, type ProductionReportRouteOptions } from './production-report-routes.js';
 import { registerProofRoutes, type ProofRouteOptions } from './proof-routes.js';
+import { guardRoutes, LOCAL_ADMIN } from './route-permissions.js';
 import { registerErrorHandler, registerPreflightRoutes, type RouteDeps } from './routes.js';
 import { registerStepRepeatRoutes, type StepRepeatRouteOptions } from './step-repeat-routes.js';
 import { registerWebhookRoutes, type WebhookOptions } from './webhook-routes.js';
@@ -50,19 +51,38 @@ export interface ServerDeps {
   /** `info.version` of the OpenAPI document. */
   readonly version?: string;
   /**
-   * Resolves the caller. Single-PC mode binds to loopback without auth (ARCHITECTURE §6),
-   * so the default treats the local caller as admin. Server mode must supply a real authenticator.
+   * Resolves the caller. Every route but `GET /openapi.json` checks a permission of the caller's
+   * role (Spec 024b, `route-permissions.ts`). Single-PC mode binds to loopback without auth
+   * (ARCHITECTURE §6), so without a resolver every caller is the local admin (`LOCAL_ADMIN`) and
+   * holds every permission. Server mode, reachable beyond loopback, must supply a real resolver.
    */
   readonly authenticate?: (request: FastifyRequest) => Actor;
   readonly importBodyLimit?: number;
   readonly logger?: boolean;
 }
 
-const LOCAL_ADMIN: Actor = { id: 'local', role: 'admin' };
+const LOOPBACK_IPV4 = /^127(\.\d{1,3}){3}$/;
+
+/** True for `localhost`, `127.0.0.0/8` and `::1`, with or without IPv6 brackets or the IPv4-mapped prefix. */
+export function isLoopbackHost(host: string): boolean {
+  const bare = host.trim().toLowerCase().replace(/^\[(.*)\]$/, '$1');
+  if (bare === 'localhost' || bare === '::1') return true;
+  return LOOPBACK_IPV4.test(bare.replace(/^::ffff:/, ''));
+}
+
+/**
+ * Spec 024b: the startup warning for a server that treats every caller as the local admin
+ * while it listens beyond loopback, or `undefined` when there is nothing to warn about.
+ */
+export function localAdminWarning(deps: Pick<ServerDeps, 'authenticate'>, host: string): string | undefined {
+  if (deps.authenticate || isLoopbackHost(host)) return undefined;
+  return `BPS_HOST ${host} is not a loopback address and no actor resolver is configured: every caller is treated as the local admin`;
+}
 
 /**
  * One Fastify instance for the archive, preflight and media routes. Every route answers errors
- * with `{ error: { code, message, details? } }` from the one handler in `registerErrorHandler`.
+ * with `{ error: { code, message, details? } }` from the one handler in `registerErrorHandler`,
+ * and every route but the OpenAPI document checks its permission first (Spec 024b).
  */
 export function buildServer(deps: ServerDeps): FastifyInstance {
   const app = Fastify({ logger: deps.logger ?? false });
@@ -75,6 +95,8 @@ export function buildServer(deps: ServerDeps): FastifyInstance {
   });
 
   registerErrorHandler(app);
+  // Before any route, so every route is guarded.
+  guardRoutes(app, actorOf);
 
   // Registered first so its `onRoute` hook documents the media routes.
   if (deps.media) {

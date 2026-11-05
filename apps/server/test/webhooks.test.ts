@@ -211,7 +211,7 @@ describe('webhook routes (Spec 019b)', () => {
     for (const request of requests) {
       const response = await h.app.inject({ ...request, headers });
       expect(response.statusCode).toBe(403);
-      expect(response.json()).toMatchObject({ error: { code: 'FORBIDDEN' } });
+      expect(response.json()).toMatchObject({ error: { code: 'forbidden' } });
     }
   });
 

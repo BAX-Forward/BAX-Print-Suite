@@ -9,7 +9,7 @@ import {
   SqliteFinishingPlanRepository,
   SqliteLayoutTemplateRepository,
 } from '@bax-print/store';
-import { buildServer } from './app.js';
+import { buildServer, localAdminWarning, type ServerDeps } from './app.js';
 import { JobService } from './jobs.js';
 import { MediaService } from './media-service.js';
 import { memoryMediaStores } from './media-stores.js';
@@ -70,7 +70,8 @@ const preflight = new PreflightService({
 const rollCut = configureRollCut(process.env, createPdfCutExtractor({ blobPath, cut: { spotNames: ['CutContour'] } }));
 const media = new MediaService({ stores: memoryMediaStores(), bus, jobs: jobRepository });
 
-const app = buildServer({
+// No `authenticate`: every caller is the local admin, which is safe on loopback only (Spec 024b).
+const serverDeps: ServerDeps = {
   archive,
   preflight: { preflight, profiles, registry },
   media,
@@ -88,7 +89,8 @@ const app = buildServer({
   // Spec 023b: the production report is mounted with BPS_DATABASE too; it reads the job rows above.
   ...(database ? { productionReport: { jobs: jobRepository } } : {}),
   logger: true,
-});
+};
+const app = buildServer(serverDeps);
 const scheduler = startArchiveScheduler(archive, { onError: (error) => app.log.error(error) });
 
 const shutdown = (): void => {
@@ -101,6 +103,8 @@ process.once('SIGTERM', shutdown);
 for (const warning of persistenceWarnings) {
   app.log.warn(warning);
 }
+const localAdmin = localAdminWarning(serverDeps, host);
+if (localAdmin !== undefined) app.log.warn(localAdmin);
 app.log.warn(
   database
     ? 'job rows, archive index, history, findings, profiles and media are kept in memory in this build'
