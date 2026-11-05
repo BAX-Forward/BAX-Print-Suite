@@ -1,4 +1,5 @@
 import type { HotFolder, Job } from "@bax-print/core";
+import type { WebhookSubscription } from "@bax-print/events";
 import type { PreflightProfile } from "@bax-print/inspect";
 import type { PreflightReport } from "@bax-print/plugin-sdk";
 
@@ -28,6 +29,17 @@ export interface ProfileStore {
 
 export interface HotFolderStore {
   get(id: string): Promise<HotFolder | undefined>;
+}
+
+/**
+ * Spec 019b webhook subscriptions. Synchronous because the dispatcher reads the list on every
+ * event; a persistent store keeps a cached copy.
+ */
+export interface WebhookSubscriptionStore {
+  list(): WebhookSubscription[];
+  get(id: string): WebhookSubscription | undefined;
+  put(subscription: WebhookSubscription): void;
+  delete(id: string): boolean;
 }
 
 /** Values are cloned in and out, so callers can't change stored state by mutating a result. */
@@ -78,6 +90,24 @@ export class MemoryProfileStore extends MemoryMap<PreflightProfile> implements P
   }
 
   async delete(id: string): Promise<boolean> {
+    return this.items.delete(id);
+  }
+}
+
+export class MemoryWebhookSubscriptionStore extends MemoryMap<WebhookSubscription> implements WebhookSubscriptionStore {
+  list(): WebhookSubscription[] {
+    return [...this.items.keys()].sort().flatMap((id) => this.read(id) ?? []);
+  }
+
+  get(id: string): WebhookSubscription | undefined {
+    return this.read(id);
+  }
+
+  put(subscription: WebhookSubscription): void {
+    this.write(subscription.id, subscription);
+  }
+
+  delete(id: string): boolean {
     return this.items.delete(id);
   }
 }

@@ -19,6 +19,8 @@ export interface RouteDoc {
   produces?: string;
   /** Status code → description. Defaults to `200: OK`. */
   responses?: Record<string, string>;
+  /** Name of the `components.schemas` entry that describes the JSON success body. */
+  responseSchema?: string;
 }
 
 /** Passes a RouteDoc to Fastify as a route schema; Fastify ignores the documentation keys. */
@@ -48,6 +50,46 @@ const ERROR_SCHEMA: JsonSchema = {
       },
     },
   },
+};
+
+/** A webhook subscription as the API returns it: the signing secret is write-only. */
+const WEBHOOK_SUBSCRIPTION_SCHEMA: JsonSchema = {
+  type: 'object',
+  required: ['id', 'url', 'eventTypes', 'active'],
+  properties: {
+    id: { type: 'string' },
+    url: { type: 'string', format: 'uri' },
+    eventTypes: { type: 'array', items: { type: 'string' } },
+    active: { type: 'boolean' },
+  },
+};
+
+const WEBHOOK_DELIVERY_SCHEMA: JsonSchema = {
+  type: 'object',
+  required: ['subscriptionId', 'eventId', 'attempt', 'ok', 'at'],
+  properties: {
+    subscriptionId: { type: 'string' },
+    eventId: { type: 'string' },
+    attempt: { type: 'integer', minimum: 1 },
+    ok: { type: 'boolean' },
+    status: { type: 'integer' },
+    error: { type: 'string' },
+    at: { type: 'string', format: 'date-time' },
+  },
+};
+
+const itemsOf = (name: string): JsonSchema => ({
+  type: 'object',
+  required: ['items'],
+  properties: { items: { type: 'array', items: { $ref: `#/components/schemas/${name}` } } },
+});
+
+const COMPONENT_SCHEMAS: Readonly<Record<string, JsonSchema>> = {
+  Error: ERROR_SCHEMA,
+  WebhookSubscription: WEBHOOK_SUBSCRIPTION_SCHEMA,
+  WebhookSubscriptionList: itemsOf('WebhookSubscription'),
+  WebhookDelivery: WEBHOOK_DELIVERY_SCHEMA,
+  WebhookDeliveryList: itemsOf('WebhookDelivery'),
 };
 
 function parameters(schema: JsonSchema | undefined, location: 'path' | 'query'): unknown[] {
@@ -86,7 +128,8 @@ function operation(route: RouteDoc): Record<string, unknown> {
     } else if (route.produces) {
       responses[status] = { description, content: { [route.produces]: { schema: { type: 'string', format: 'binary' } } } };
     } else {
-      responses[status] = { description, content: { 'application/json': { schema: {} } } };
+      const schema = route.responseSchema ? { $ref: `#/components/schemas/${route.responseSchema}` } : {};
+      responses[status] = { description, content: { 'application/json': { schema } } };
     }
   }
   responses.default = {
@@ -110,7 +153,7 @@ export class OpenApiCollector {
         license: { name: 'Apache-2.0', identifier: 'Apache-2.0' },
       },
       paths: {},
-      components: { schemas: { Error: ERROR_SCHEMA } },
+      components: { schemas: { ...COMPONENT_SCHEMAS } },
     };
   }
 

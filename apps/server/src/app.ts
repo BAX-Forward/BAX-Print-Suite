@@ -8,6 +8,7 @@ import type { MediaService } from './media-service.js';
 import { OpenApiCollector } from './openapi.js';
 import { parseImportQuery, parseLegalHoldBody, parseReprintBody } from './parse.js';
 import { registerErrorHandler, registerPreflightRoutes, type RouteDeps } from './routes.js';
+import { registerWebhookRoutes, type WebhookOptions } from './webhook-routes.js';
 
 export const DEFAULT_IMPORT_BODY_LIMIT = 1024 ** 3;
 export const DEFAULT_API_VERSION = '0.1.0';
@@ -21,6 +22,11 @@ export interface ServerDeps {
   readonly preflight?: PreflightDeps;
   /** Mounts the Spec 005 media routes and `GET /openapi.json`. */
   readonly media?: MediaService;
+  /**
+   * Mounts the Spec 019b webhook routes and delivers every event published on `webhooks.bus` to
+   * the matching subscriptions. Tests replace `send`, `now` and `schedule`.
+   */
+  readonly webhooks?: WebhookOptions;
   /** `info.version` of the OpenAPI document. */
   readonly version?: string;
   /**
@@ -57,6 +63,10 @@ export function buildServer(deps: ServerDeps): FastifyInstance {
 
   if (deps.preflight) {
     registerPreflightRoutes(app, { ...deps.preflight, authenticate: actorOf });
+  }
+
+  if (deps.webhooks) {
+    registerWebhookRoutes(app, { ...deps.webhooks, authenticate: actorOf });
   }
 
   app.get('/archive', async (request) => archive.search(parseSearchQuery(request.query as Record<string, unknown>)));
