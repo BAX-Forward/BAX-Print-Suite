@@ -2,8 +2,9 @@ import Fastify, { type FastifyInstance, type FastifyRequest } from 'fastify';
 import { parseSearchQuery, type ArchiveService } from '@bax-print/archive';
 import { InvalidArgumentError, type Actor } from '@bax-print/core';
 import { toJsonl } from '@bax-print/events';
-import { sanitizeKeySegment } from '@bax-print/store';
+import { sanitizeKeySegment, type LayoutTemplateRepository } from '@bax-print/store';
 import { registerCutRoutes, type CutExtractor, type CutJobLookup } from './cut-routes.js';
+import { registerLayoutTemplateRoutes } from './layout-template-routes.js';
 import { registerMediaRoutes } from './media-routes.js';
 import type { MediaService } from './media-service.js';
 import { OpenApiCollector } from './openapi.js';
@@ -35,6 +36,8 @@ export interface ServerDeps {
   readonly cutExtractor?: CutExtractor;
   /** With `jobs`, mounts the Spec 003u `POST /jobs/:id/step-repeat` route. Tests replace `run`. */
   readonly stepRepeat?: StepRepeatRouteOptions;
+  /** Mounts the Spec 003x `/layout-templates` routes; the store package's `SqliteLayoutTemplateRepository` satisfies it. */
+  readonly layoutTemplates?: LayoutTemplateRepository;
   /** `info.version` of the OpenAPI document. */
   readonly version?: string;
   /**
@@ -83,6 +86,10 @@ export function buildServer(deps: ServerDeps): FastifyInstance {
 
   if (deps.jobs && deps.stepRepeat) {
     registerStepRepeatRoutes(app, { jobs: deps.jobs, ...deps.stepRepeat });
+  }
+
+  if (deps.layoutTemplates) {
+    registerLayoutTemplateRoutes(app, { templates: deps.layoutTemplates });
   }
 
   app.get('/archive', async (request) => archive.search(parseSearchQuery(request.query as Record<string, unknown>)));

@@ -7,7 +7,7 @@ import {
   RemapRequiredError,
 } from "@bax-print/archive";
 import { BpsError, ForbiddenError, IllegalTransitionError, InvalidArgumentError, InvalidLifecycleError, LegalHoldError } from "@bax-print/core";
-import { InvalidCursorError } from "@bax-print/store";
+import { InvalidCursorError, InvalidLayoutTemplateError, LayoutTemplateNameConflictError } from "@bax-print/store";
 
 /** Service errors with the HTTP status the API maps them to. */
 export class HttpError extends Error {
@@ -93,6 +93,13 @@ export function errorResponse(error: unknown): ErrorResponse {
   }
   if (error instanceof BpsError) {
     return { statusCode: bpsStatus(error), body: errorBody(error.code, error.message, bpsDetails(error)) };
+  }
+  // Spec 003x: the store's layout template errors keep their uppercase codes; the API's are lowercase.
+  if (error instanceof InvalidLayoutTemplateError) {
+    return { statusCode: 422, body: errorBody("layout_template_invalid", error.message, { field: error.field }) };
+  }
+  if (error instanceof LayoutTemplateNameConflictError) {
+    return { statusCode: 409, body: errorBody("layout_template_name_exists", error.message, { name: error.templateName }) };
   }
   const status = isRecord(error) && typeof error.statusCode === "number" ? error.statusCode : 500;
   if (status >= 400 && status < 500) {
