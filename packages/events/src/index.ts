@@ -5,4 +5,5 @@ export * from './history.js';
 export * from './outbox.js';
 export * from './types.js';
 export * from './webhook-dispatcher.js';
+export * from './webhook-ssrf.js';
 export * from './webhooks.js';
