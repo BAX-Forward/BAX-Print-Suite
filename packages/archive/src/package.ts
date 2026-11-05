@@ -99,6 +99,9 @@ export function pack(input: PackInput): PackResult {
   const files: PendingMember[] = [];
   const sourceFiles: SourceFile[] = job.sourceFiles.map((file, index) => {
     const data = input.sources[index];
+    if (data === undefined) {
+      throw new PackageIntegrityError('source and artifact bytes must match the job record one to one');
+    }
     checkHash(data, file.sha256, `source ${file.name}`);
     const path = sourceMemberPath(index, file.name);
     files.push({ path, role: 'source', data });
@@ -106,6 +109,9 @@ export function pack(input: PackInput): PackResult {
   });
   const artifacts: JobArtifact[] = job.artifacts.map((artifact, index) => {
     const data = input.artifacts[index];
+    if (data === undefined) {
+      throw new PackageIntegrityError('source and artifact bytes must match the job record one to one');
+    }
     checkHash(data, artifact.sha256, `${artifact.role} artifact ${artifact.name}`);
     const path = artifactMemberPath(artifact, index);
     files.push({ path, role: artifact.role, data });

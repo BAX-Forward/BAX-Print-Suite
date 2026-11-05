@@ -113,7 +113,7 @@ describe('import of a .bpsjob from another installation', () => {
     expect(await h.index.get(job.id)).toMatchObject({ jobId: job.id, deviceId: LOCAL_DEVICE, customerRef: 'C-500' });
     const imported = h.outbox.list({ types: ['job.imported'] });
     expect(imported).toHaveLength(1);
-    expect(imported[0].event.data).toMatchObject({ jobId: job.id, importedFrom: 'remote-001', deviceId: LOCAL_DEVICE });
+    expect(imported[0]!.event.data).toMatchObject({ jobId: job.id, importedFrom: 'remote-001', deviceId: LOCAL_DEVICE });
 
     // The imported job can be restored with hash-identical blobs.
     const restored = await h.service.restore(job.id);

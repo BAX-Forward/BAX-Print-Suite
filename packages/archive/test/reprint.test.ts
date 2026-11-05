@@ -70,7 +70,7 @@ describe('reprint on the same device and medium', () => {
 
     const created = h.outbox.list({ jobId: job.id, types: ['job.created'] });
     expect(created).toHaveLength(1);
-    expect(created[0].event.data).toMatchObject({ jobId: job.id, reprintOf: ORIGINAL, copies: 2 });
+    expect(created[0]!.event.data).toMatchObject({ jobId: job.id, reprintOf: ORIGINAL, copies: 2 });
 
     // The original stays archived and untouched.
     expect((await h.service.getJob(ORIGINAL)).lifecycle).toBe('archived');
@@ -134,8 +134,8 @@ describe('reprint on a different medium or device', () => {
 
     const changed = h.outbox.list({ jobId: job.id, types: ['reprint.setup.changed'] });
     expect(changed).toHaveLength(1);
-    expect(changed[0].event.subject).toBe(job.id);
-    expect(changed[0].event.data).toEqual({
+    expect(changed[0]!.event.subject).toBe(job.id);
+    expect(changed[0]!.event.data).toEqual({
       jobId: job.id,
       reprintOf: ORIGINAL,
       severity: 'warning',

@@ -134,12 +134,14 @@ describe('scheduled policy run', () => {
     const h = createHarness({ start: DONE });
     const broken = await seedJob(h, { id: 'broken', doneAt: '2026-02-01T08:00:00.000Z' });
     await seedJob(h, { id: 'fine', doneAt: '2026-02-01T08:00:00.000Z' });
-    await h.blobs.delete(broken.sourceFiles[0].storageKey);
+    const [source] = broken.sourceFiles;
+    if (!source) throw new Error('seeded job has no source file');
+    await h.blobs.delete(source.storageKey);
 
     const run = await h.service.runArchivePolicy();
     expect(run.archived).toEqual(['fine']);
     expect(run.failed).toHaveLength(1);
-    expect(run.failed[0].jobId).toBe('broken');
+    expect(run.failed[0]!.jobId).toBe('broken');
     expect((await h.service.getJob('broken')).lifecycle).toBe('active');
   });
 });
