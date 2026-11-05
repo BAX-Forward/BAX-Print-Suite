@@ -247,6 +247,20 @@ interface Pending {
   timer: NodeJS.Timeout;
 }
 
+
+/** When a plugin is launched via node+tsx on TypeScript sources, enable the
+ *  workspace `@bax-print/source` export condition so unbuilt workspace packages
+ *  resolve. Plain `node dist/...` launches are left unchanged so they keep the
+ *  compiled `default` export. */
+function withSourceCondition(command: string, args: string[]): string[] {
+  if (command !== "node" && command !== process.execPath) return args;
+  if (args.includes("--conditions") || args.some((a) => a.startsWith("--conditions="))) return args;
+  const usesTsx = args.includes("tsx") || args.includes("--import=tsx") || args.some((a, i) => a === "--import" && args[i + 1] === "tsx");
+  const runsTs = args.some((a) => a.endsWith(".ts"));
+  if (!usesTsx && !runsTs) return args;
+  return ["--conditions=@bax-print/source", ...args];
+}
+
 export class BppClient {
   private nextId = 1;
   private readonly pending = new Map<number, Pending>();
@@ -279,7 +293,7 @@ export class BppClient {
 
   static spawn(command: string, args: string[], options: { cwd: string; env?: NodeJS.ProcessEnv; onStderrLine?: (line: string) => void }): BppClient {
     const resolvedCommand = command === "node" ? process.execPath : command;
-    const child = spawn(resolvedCommand, args, {
+    const child = spawn(resolvedCommand, withSourceCondition(resolvedCommand, args), {
       cwd: options.cwd,
       env: options.env ?? scrubEnv(),
       stdio: ["pipe", "pipe", "pipe"],

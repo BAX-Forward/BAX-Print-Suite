@@ -12,7 +12,7 @@
     "node": ">=22"
   },
   "scripts": {
-    "start": "node --import tsx src/main.ts",
+    "start": "node --conditions=@bax-print/source --import tsx src/main.ts",
     "typecheck": "tsc -p tsconfig.json --noEmit",
     "test": "vitest run"
   },
