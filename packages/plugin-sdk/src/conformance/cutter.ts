@@ -98,7 +98,7 @@ export function checkCutterProfile(profile: CutterProfile): string[] {
   return problems;
 }
 
-function squarePt(xMm: number, yMm: number, sideMm: number): Point[] {
+function squarePt(xMm: number, yMm: number, sideMm: number): [Point, Point, Point, Point] {
   const [x, y, s] = [xMm * PT_PER_MM, yMm * PT_PER_MM, sideMm * PT_PER_MM];
   return [
     [x, y],
@@ -111,8 +111,10 @@ function squarePt(xMm: number, yMm: number, sideMm: number): Point[] {
 /** A 20 mm kiss-cut square in a 40 mm frame, mapped to the profile's first cutting tool. */
 export function sampleCutJob(profile: CutterProfile): CutJob {
   const tool = profile.tools.find((t) => CUTTING_KINDS.includes(t.kind)) ?? profile.tools[0];
+  if (!tool) throw new Error("sampleCutJob needs a profile with at least one tool");
   const frameMm = 40;
   const points = squarePt(10, 10, 20);
+  const [bottomLeft, , topRight] = points;
   const s = 20 * PT_PER_MM;
   const registration = profile.registration.methods.includes("none")
     ? undefined
@@ -141,7 +143,7 @@ export function sampleCutJob(profile: CutterProfile): CutJob {
         source: { kind: "spot", name: "CutContour" },
         closed: true,
         points,
-        bbox: { minX: points[0][0], minY: points[0][1], maxX: points[2][0], maxY: points[2][1] },
+        bbox: { minX: bottomLeft[0], minY: bottomLeft[1], maxX: topRight[0], maxY: topRight[1] },
         areaSigned: s * s,
       },
     ],
