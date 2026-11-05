@@ -19,3 +19,4 @@ export * from './ticket.js';
 export * from './time.js';
 export * from './types.js';
 export * from './ulid.js';
+export * from './spot-name.js';
