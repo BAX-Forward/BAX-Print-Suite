@@ -213,14 +213,14 @@ describe('POST /jobs/:id/cut-job (Spec 007g)', () => {
     expect(response.json()).toEqual({ error: { code: 'conflict', message: `Job ${jobId} has no source document with page boxes to cut` } });
   });
 
-  it('answers 501 cut-extractor-not-configured without a cut extractor', async () => {
+  it('answers 501 cut_extractor_not_configured without a cut extractor', async () => {
     h = createCutHarness();
     const jobId = await createJob(h);
 
     const response = await postCutJob(h, jobId);
 
     expect(response.statusCode).toBe(501);
-    expect(response.json()).toEqual({ error: { code: 'cut-extractor-not-configured', message: expect.any(String) } });
+    expect(response.json()).toEqual({ error: { code: 'cut_extractor_not_configured', message: expect.any(String) } });
   });
 
   it('answers 422 when an inward trim-box offset leaves no cut area', async () => {
