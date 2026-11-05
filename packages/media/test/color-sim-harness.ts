@@ -85,7 +85,7 @@ export class ColorSimHarness {
   }
 
   static async start(): Promise<ColorSimHarness> {
-    const child = spawn(process.execPath, ['--import', 'tsx', PLUGIN_ENTRY], {
+    const child = spawn(process.execPath, ['--conditions=@bax-print/source', '--import', 'tsx', PLUGIN_ENTRY], {
       cwd: PACKAGE_DIR,
       stdio: ['pipe', 'pipe', 'pipe'],
     });
