@@ -17,7 +17,7 @@ import {
   type PDFOperator,
   type PDFPage,
 } from "pdf-lib";
-import { computeGeometry, type EditedGeometry, type PageSource } from "./geometry.js";
+import { computeGeometry, selectedPages, type EditedGeometry, type PageSource } from "./geometry.js";
 import { multiply, normalizeRect, snapMatrix, type Matrix, type Rect } from "./transform.js";
 
 /**
@@ -118,22 +118,55 @@ export interface ImposeResult {
   geometry: EditedGeometry;
 }
 
-export async function imposeEdited(source: Uint8Array, pageIndex: number, edits: readonly JobEdit[]): Promise<ImposeResult> {
-  const sourceDoc = await PDFDocument.load(source, { ignoreEncryption: true, updateMetadata: false });
-  const sourcePage = sourceDoc.getPage(pageIndex);
-  const geometry = computeGeometry(pageSourceOf(sourcePage), edits);
-  const media = mediaBoxOf(sourcePage);
+export interface ImposePagesResult {
+  pdf: Uint8Array;
+  /** 0-based source page index of each output page, in output order. */
+  pageIndices: number[];
+  /** Edited geometry of each output page, in output order. */
+  geometries: EditedGeometry[];
+}
 
-  const out = await PDFDocument.create();
+/** Appends one edited source page to `out` and returns its geometry. */
+async function addEditedPage(out: PDFDocument, sourcePage: PDFPage, edits: readonly JobEdit[]): Promise<EditedGeometry> {
+  const geometry = computeGeometry(pageSourceOf(sourcePage), edits);
+  const page = out.addPage([geometry.footprintWidthPt, geometry.footprintHeightPt]);
+  // Contents is optional (ISO 32000-1, 7.7.3.3): a page without it is blank, and pdf-lib can't embed it.
+  if (!sourcePage.node.Contents()) return geometry;
+  const media = mediaBoxOf(sourcePage);
   // An identity form matrix keeps the embedded page in source user-space coordinates.
   const embedded = await out.embedPage(
     sourcePage,
     { left: media.x0, bottom: media.y0, right: media.x1, top: media.y1 },
     [1, 0, 0, 1, 0, 0],
   );
-  const page = out.addPage([geometry.footprintWidthPt, geometry.footprintHeightPt]);
   page.node.normalize();
   const name = page.node.newXObject("BpsArt", embedded.ref);
   page.pushOperators(...bleedRegions(geometry).flatMap(({ region, matrix }) => drawRegion(region, matrix, name)));
+  return geometry;
+}
+
+function loadSource(source: Uint8Array): Promise<PDFDocument> {
+  return PDFDocument.load(source, { ignoreEncryption: true, updateMetadata: false });
+}
+
+export async function imposeEdited(source: Uint8Array, pageIndex: number, edits: readonly JobEdit[]): Promise<ImposeResult> {
+  const sourceDoc = await loadSource(source);
+  const out = await PDFDocument.create();
+  const geometry = await addEditedPage(out, sourceDoc.getPage(pageIndex), edits);
   return { pdf: await out.save(), geometry };
+}
+
+/**
+ * Draws every page the job prints (the `pages` edit, else all pages) in ascending order, each
+ * with the rest of the edit stack applied. Throws `EditError` for a selection or edit that can't apply.
+ */
+export async function imposeEditedPages(source: Uint8Array, edits: readonly JobEdit[]): Promise<ImposePagesResult> {
+  const sourceDoc = await loadSource(source);
+  const pageIndices = selectedPages(edits, sourceDoc.getPageCount());
+  const out = await PDFDocument.create();
+  const geometries: EditedGeometry[] = [];
+  for (const pageIndex of pageIndices) {
+    geometries.push(await addEditedPage(out, sourceDoc.getPage(pageIndex), edits));
+  }
+  return { pdf: await out.save(), pageIndices, geometries };
 }

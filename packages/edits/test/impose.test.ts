@@ -1,8 +1,8 @@
 import type { JobEdit } from "@bax-print/core";
 import { PDFDocument } from "pdf-lib";
 import { describe, expect, it } from "vitest";
-import { computeGeometry } from "../src/geometry.js";
-import { EDGE_SAMPLE_PT, bleedRegions, imposeEdited, mediaBoxOf, pageSourceOf } from "../src/impose.js";
+import { EditError, computeGeometry, selectedPages } from "../src/geometry.js";
+import { EDGE_SAMPLE_PT, bleedRegions, imposeEdited, imposeEditedPages, mediaBoxOf, pageSourceOf } from "../src/impose.js";
 
 const PT_PER_MM = 72 / 25.4;
 const WIDTH_PT = 200;
@@ -63,6 +63,71 @@ describe("imposeEdited", () => {
   it("reads the source page as the same page source preflight uses", async () => {
     const { page } = await outputPage(await sourcePdf());
     expect(pageSourceOf(page)).toEqual({ box: { x0: 0, y0: 0, x1: WIDTH_PT, y1: HEIGHT_PT }, rotate: 0, userUnit: 1 });
+  });
+});
+
+describe("imposeEditedPages", () => {
+  /** Each page has a distinct width so output pages can be traced to their source page. */
+  async function numberedPdf(pageCount: number): Promise<Uint8Array> {
+    const doc = await PDFDocument.create();
+    for (let i = 0; i < pageCount; i++) doc.addPage([WIDTH_PT + 10 * i, HEIGHT_PT]);
+    return doc.save();
+  }
+
+  async function outputSizes(pdf: Uint8Array) {
+    const doc = await PDFDocument.load(pdf);
+    return doc.getPages().map((page) => page.getSize());
+  }
+
+  it("prints only the selected pages, with the other edits applied to each", async () => {
+    const edits: JobEdit[] = [
+      { kind: "pages", selection: "2,4" },
+      { kind: "scale", percent: 50 },
+    ];
+    const result = await imposeEditedPages(await numberedPdf(4), edits);
+    expect(result.pageIndices).toEqual([1, 3]);
+    const sizes = await outputSizes(result.pdf);
+    expect(sizes).toHaveLength(2);
+    expect(sizes[0]?.width).toBeCloseTo((WIDTH_PT + 10) / 2, 3);
+    expect(sizes[1]?.width).toBeCloseTo((WIDTH_PT + 30) / 2, 3);
+    for (const size of sizes) expect(size.height).toBeCloseTo(HEIGHT_PT / 2, 3);
+    expect(result.geometries.map((g) => g.scaleFactor)).toEqual([0.5, 0.5]);
+  });
+
+  it("prints every page without a pages edit", async () => {
+    const result = await imposeEditedPages(await numberedPdf(4), [{ kind: "rotate", degrees: 90 }]);
+    expect(result.pageIndices).toEqual([0, 1, 2, 3]);
+    const sizes = await outputSizes(result.pdf);
+    expect(sizes.map((size) => size.height)).toEqual([0, 1, 2, 3].map((i) => WIDTH_PT + 10 * i));
+  });
+
+  it("uses the last pages edit", async () => {
+    const edits: JobEdit[] = [
+      { kind: "pages", selection: "1-2" },
+      { kind: "pages", selection: "3-" },
+    ];
+    const result = await imposeEditedPages(await numberedPdf(4), edits);
+    expect(result.pageIndices).toEqual([2, 3]);
+    expect((await outputSizes(result.pdf)).map((size) => size.width)).toEqual([WIDTH_PT + 20, WIDTH_PT + 30]);
+  });
+
+  it("rejects a selection beyond the document with the index of the pages edit", async () => {
+    const edits: JobEdit[] = [
+      { kind: "scale", percent: 50 },
+      { id: "sel", kind: "pages", selection: "2,5" },
+    ];
+    const error: unknown = await imposeEditedPages(await numberedPdf(4), edits).catch((e: unknown) => e);
+    expect(error).toBeInstanceOf(EditError);
+    expect(error).toMatchObject({ editIndex: 1, editId: "sel" });
+    expect(error instanceof Error ? error.message : "").toContain("beyond the last page (4)");
+  });
+});
+
+describe("selectedPages", () => {
+  it("selects every page without a pages edit and ignores pages in geometry", () => {
+    expect(selectedPages([{ kind: "copies", count: 2 }], 3)).toEqual([0, 1, 2]);
+    const source = { box: { x0: 0, y0: 0, x1: WIDTH_PT, y1: HEIGHT_PT } };
+    expect(computeGeometry(source, [{ kind: "pages", selection: "1" }]).trimWidthPt).toBe(WIDTH_PT);
   });
 });
 

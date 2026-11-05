@@ -1,4 +1,4 @@
-import type { CropEdit, JobEdit, ScaleEdit, SpotTarget } from "@bax-print/core";
+import { parsePageRanges, type CropEdit, type JobEdit, type PagesEdit, type ScaleEdit, type SpotTarget } from "@bax-print/core";
 import {
   determinant,
   invert,
@@ -199,6 +199,9 @@ export function computeGeometry(source: PageSource, edits: readonly JobEdit[] = 
       case "cutContour":
         // No effect on geometry; see `resolveCutContour`.
         break;
+      case "pages":
+        // Chooses which pages print, not their geometry; see `selectedPages`.
+        break;
       case "metadata":
         Object.assign(metadata, edit.values);
         break;
@@ -232,6 +235,21 @@ export function computeGeometry(source: PageSource, edits: readonly JobEdit[] = 
     spotMappings,
     metadata,
   };
+}
+
+/**
+ * 0-based indices of the pages a job prints, ascending: the last `pages` edit wins, and
+ * without one every page prints. Throws `EditError` when the selection doesn't fit the document.
+ */
+export function selectedPages(edits: readonly JobEdit[], pageCount: number): number[] {
+  let selection: { edit: PagesEdit; index: number } | undefined;
+  for (const [index, edit] of edits.entries()) {
+    if (edit.kind === "pages") selection = { edit, index };
+  }
+  if (!selection) return Array.from({ length: pageCount }, (_, page) => page);
+  const parsed = parsePageRanges(selection.edit.selection, pageCount);
+  if (!parsed.ok) throw new EditError(parsed.errors.join("; "), selection.index, selection.edit.id);
+  return parsed.value;
 }
 
 /** Spot mappings of an edit list, in order. Page-independent. */
