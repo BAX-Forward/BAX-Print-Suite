@@ -19,11 +19,16 @@ export function parseDuration(text: string): number {
 
   const short = SHORT_FORM.exec(trimmed);
   if (short) {
-    ms = Number(short[1]) * UNIT_MS[short[2].toLowerCase() as keyof typeof UNIT_MS];
+    const [, amount, unit] = short;
+    if (amount !== undefined && unit !== undefined) {
+      ms = Number(amount) * UNIT_MS[unit.toLowerCase() as keyof typeof UNIT_MS];
+    }
   } else {
     const iso = ISO_FORM.exec(trimmed);
     if (iso && iso.slice(1).some((part) => part !== undefined)) {
-      const [weeks, days, hours, minutes, seconds] = iso.slice(1).map((part) => Number(part ?? 0));
+      const [weeks = 0, days = 0, hours = 0, minutes = 0, seconds = 0] = iso
+        .slice(1)
+        .map((part) => Number(part ?? 0));
       ms = weeks * UNIT_MS.w + days * UNIT_MS.d + hours * UNIT_MS.h + minutes * UNIT_MS.m + seconds * UNIT_MS.s;
     }
   }

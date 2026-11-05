@@ -41,7 +41,11 @@ async function archivedFixture(h: Harness): Promise<void> {
 
 async function originalOutputs(h: Harness): Promise<Outputs> {
   const pkg = unpack(await h.archive.get(packageKey(ORIGINAL)));
-  const at = (role: string): Uint8Array => pkg.artifacts[pkg.job.artifacts.findIndex((a) => a.role === role)];
+  const at = (role: string): Uint8Array => {
+    const bytes = pkg.artifacts[pkg.job.artifacts.findIndex((a) => a.role === role)];
+    if (!bytes) throw new Error(`package has no ${role} artifact`);
+    return bytes;
+  };
   return { pdf: at('layout'), cut: at('cut') };
 }
 

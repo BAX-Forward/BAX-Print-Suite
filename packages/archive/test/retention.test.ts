@@ -15,14 +15,15 @@ describe('retention evaluator', () => {
 
   it('selects trashed jobs strictly past the window and never jobs under legal hold', () => {
     const now = new Date(Date.parse(START) + 30 * DAY_MS);
+    const boundary = makeJob({ id: 'boundary', lifecycle: 'trashed', trashedAt: START });
     const jobs = [
       makeJob({ id: 'old', lifecycle: 'trashed', trashedAt: '2026-03-01T08:00:00.000Z' }),
-      makeJob({ id: 'boundary', lifecycle: 'trashed', trashedAt: START }),
+      boundary,
       makeJob({ id: 'held', lifecycle: 'trashed', trashedAt: '2026-01-01T08:00:00.000Z', legalHold: true }),
       makeJob({ id: 'active', trashedAt: '2026-01-01T08:00:00.000Z' }),
     ];
     expect(selectJobsToPurge(jobs, now, DEFAULT_RETENTION_MS).map((job) => job.id)).toEqual(['old']);
-    expect(isDueForPurge(jobs[1], new Date(now.getTime() + 1), DEFAULT_RETENTION_MS)).toBe(true);
+    expect(isDueForPurge(boundary, new Date(now.getTime() + 1), DEFAULT_RETENTION_MS)).toBe(true);
   });
 });
 
@@ -114,7 +115,7 @@ describe('legal hold and trash', () => {
     expect(restored.trashedAt).toBeUndefined();
     expect(await h.index.get('oops')).toMatchObject({ jobId: 'oops', customerRef: 'C-9' });
     expect(await h.service.listTrash()).toEqual([]);
-    expect(h.outbox.list({ types: ['job.restored'] })[0].event.data).toMatchObject({ from: 'trash', lifecycle: 'archived' });
+    expect(h.outbox.list({ types: ['job.restored'] })[0]?.event.data).toMatchObject({ from: 'trash', lifecycle: 'archived' });
   });
 
   it('restores an active job from the trash to the active list', async () => {

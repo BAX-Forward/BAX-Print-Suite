@@ -147,7 +147,9 @@ describe('job package pack → unpack', () => {
     expect(manifest.members.find((m) => m.role === 'normalized')?.path).toBe('normalized/3-artwork-pdfx4.pdf');
     const unpacked = unpack(bytes);
     expect(unpacked.job.artifacts.map((a) => a.role)).toEqual(['layout', 'cut', 'preview', 'normalized']);
-    expect(sha256Hex(unpacked.artifacts[3] as Uint8Array)).toBe(sha256Hex(NORMALIZED));
+    const normalized = unpacked.artifacts[3];
+    if (!normalized) throw new Error('package has no normalized artifact');
+    expect(sha256Hex(normalized)).toBe(sha256Hex(NORMALIZED));
   });
 
   it('leaves out profiles that are not redistributable and says so', () => {
@@ -178,7 +180,9 @@ describe('tampered packages', () => {
     const entries = readZip(bytes);
     const sourcePath = manifest.members.find((m) => m.role === 'source')?.path as string;
     const altered = new Uint8Array(entries.get(sourcePath) as Uint8Array);
-    altered[0] ^= 0xff;
+    const [head] = altered;
+    if (head === undefined) throw new Error('source member is empty');
+    altered[0] = head ^ 0xff;
     entries.set(sourcePath, altered);
 
     expect(() => unpack(rezip(entries))).toThrow(PackageIntegrityError);
@@ -213,7 +217,9 @@ describe('tampered packages', () => {
     const raw = Buffer.from(bytes);
     const at = raw.indexOf(Buffer.from(SOURCE));
     expect(at).toBeGreaterThan(0);
-    raw[at + 100] ^= 0x01;
+    const target = raw[at + 100];
+    if (target === undefined) throw new Error('archive is shorter than expected');
+    raw[at + 100] = target ^ 0x01;
     expect(() => unpack(raw)).toThrow(PackageIntegrityError);
   });
 

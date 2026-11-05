@@ -87,8 +87,9 @@ export function pageBoxes(pdf: Uint8Array): PageBoxes {
   const text = Buffer.from(pdf).toString('latin1');
   const read = (name: BoxName): number[] => {
     const match = new RegExp(`/${name}\\s*\\[([^\\]]+)\\]`).exec(text);
-    if (!match) throw new Error(`PDF has no ${name}`);
-    return match[1].trim().split(/\s+/).map(Number);
+    const body = match?.[1];
+    if (body === undefined) throw new Error(`PDF has no ${name}`);
+    return body.trim().split(/\s+/).map(Number);
   };
   return { MediaBox: read('MediaBox'), CropBox: read('CropBox'), BleedBox: read('BleedBox'), TrimBox: read('TrimBox') };
 }
@@ -96,10 +97,11 @@ export function pageBoxes(pdf: Uint8Array): PageBoxes {
 /** Closed contours of every `<path>` in the cut file (only M, L and Z are used by the mock). */
 export function cutContours(svg: Uint8Array): Point[][] {
   const text = Buffer.from(svg).toString('utf8');
-  return [...text.matchAll(/<path\b[^>]*\bd="([^"]*)"/g)].map((match) => {
-    const numbers = match[1].replace(/[MLZ]/g, ' ').trim().split(/\s+/).map(Number);
+  return [...text.matchAll(/<path\b[^>]*\bd="([^"]*)"/g)].map(([, d]) => {
+    if (d === undefined) throw new Error('cut path has no d attribute');
+    const numbers = d.replace(/[MLZ]/g, ' ').trim().split(/\s+/).map(Number);
     const points: Point[] = [];
-    for (let i = 0; i + 1 < numbers.length; i += 2) points.push([numbers[i], numbers[i + 1]]);
+    for (let i = 0; i + 1 < numbers.length; i += 2) points.push([numbers[i]!, numbers[i + 1]!]);
     return points;
   });
 }
@@ -109,9 +111,12 @@ export function maxDeviationMm(a: readonly (readonly Point[])[], b: readonly (re
   if (a.length !== b.length) return Number.POSITIVE_INFINITY;
   let max = 0;
   for (const [i, contour] of a.entries()) {
-    if (contour.length !== b[i].length) return Number.POSITIVE_INFINITY;
+    const other = b[i];
+    if (!other || contour.length !== other.length) return Number.POSITIVE_INFINITY;
     for (const [j, [x, y]] of contour.entries()) {
-      max = Math.max(max, Math.hypot(x - b[i][j][0], y - b[i][j][1]));
+      const target = other[j];
+      if (!target) return Number.POSITIVE_INFINITY;
+      max = Math.max(max, Math.hypot(x - target[0], y - target[1]));
     }
   }
   return max;
@@ -127,12 +132,16 @@ export interface Raster {
 export function renderPdf(pdf: Uint8Array, dpi = 18): Raster {
   const text = Buffer.from(pdf).toString('latin1');
   const [, , mediaW, mediaH] = pageBoxes(pdf).MediaBox;
+  if (mediaW === undefined || mediaH === undefined) throw new Error('PDF MediaBox needs four numbers');
   const scale = dpi / 72;
   const width = Math.ceil(mediaW * scale);
   const height = Math.ceil(mediaH * scale);
   const pixels = new Uint8Array(width * height).fill(255);
   for (const match of text.matchAll(/([\d.]+) ([\d.]+) ([\d.]+) ([\d.]+) re f/g)) {
     const [x, y, w, h] = match.slice(1, 5).map(Number);
+    if (x === undefined || y === undefined || w === undefined || h === undefined) {
+      throw new Error('re operator needs four numbers');
+    }
     for (let row = 0; row < height; row++) {
       const cy = (row + 0.5) / scale;
       if (cy < y || cy >= y + h) continue;

@@ -488,10 +488,14 @@ export class ArchiveService {
       throw new PackageIntegrityError('package contents do not match the job record');
     }
     for (const [i, file] of files.entries()) {
-      if (sha256Hex(data[i]) !== file.sha256) {
+      const bytes = data[i];
+      if (bytes === undefined) {
+        throw new PackageIntegrityError('package contents do not match the job record');
+      }
+      if (sha256Hex(bytes) !== file.sha256) {
         throw new PackageIntegrityError(`${file.name} does not match its recorded SHA-256`);
       }
-      await this.deps.blobs.put(file.storageKey, data[i]);
+      await this.deps.blobs.put(file.storageKey, bytes);
     }
   }
 
