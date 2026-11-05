@@ -3,6 +3,7 @@ import {
   buildCostReport,
   costFromAccountingReport,
   costReportToCsv,
+  csvSafeText,
   InvalidArgumentError,
   validateCostTable,
   type AccountingCost,
@@ -236,5 +237,35 @@ describe("costReportToCsv", () => {
     expect(costReportToCsv(report)).toBe(
       "group,jobs,currency,estimated,actual,variance,unpriced_jobs\r\ntotal,0,,0.00,0.00,0.00,0\r\n",
     );
+  });
+
+  it("prefixes a single quote on group labels that could start a formula", () => {
+    const names = ["=SUM(A1:A2)", "+1", "-2", "@cmd", "\tTab", "\rCR"];
+    const report = buildCostReport(
+      names.map((customer, i) => ({
+        jobId: `j${i}`,
+        completedAt: "2026-03-01T01:00:00Z",
+        customer,
+        actual: actual(100),
+      })),
+      { ...period, groupBy: "customer" },
+    );
+    const lines = costReportToCsv(report).split("\r\n");
+    for (const name of names) {
+      expect(lines.some((line) => line.startsWith(`'${name}`) || line.startsWith(`"'${name}`))).toBe(true);
+    }
+    expect(lines.some((line) => /^[=+\-@]/.test(line))).toBe(false);
+  });
+
+  it("keeps negative amounts numeric and leaves safe text untouched", () => {
+    expect(csvSafeText("Plain")).toBe("Plain");
+    expect(csvSafeText("a=b")).toBe("a=b");
+    expect(csvSafeText("")).toBe("");
+    expect(csvSafeText("=1+1")).toBe("'=1+1");
+    const report = buildCostReport(
+      [{ jobId: "a", completedAt: "2026-03-01T01:00:00Z", customer: "Shop", estimate: estimate(1005), actual: actual(1000) }],
+      { ...period, groupBy: "customer" },
+    );
+    expect(costReportToCsv(report)).toContain("Shop,1,EUR,10.05,10.00,-0.05,0");
   });
 });
