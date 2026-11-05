@@ -10,6 +10,7 @@ import { registerMediaRoutes } from './media-routes.js';
 import type { MediaService } from './media-service.js';
 import { OpenApiCollector } from './openapi.js';
 import { parseImportQuery, parseLegalHoldBody, parseReprintBody } from './parse.js';
+import { registerProductionReportRoutes, type ProductionReportRouteOptions } from './production-report-routes.js';
 import { registerProofRoutes, type ProofRouteOptions } from './proof-routes.js';
 import { registerErrorHandler, registerPreflightRoutes, type RouteDeps } from './routes.js';
 import { registerStepRepeatRoutes, type StepRepeatRouteOptions } from './step-repeat-routes.js';
@@ -44,6 +45,8 @@ export interface ServerDeps {
   readonly layoutTemplates?: LayoutTemplateRepository;
   /** Mounts the Spec 004d finishing plan routes; the store package's `SqliteFinishingPlanRepository` satisfies `plans`. */
   readonly finishing?: FinishingRouteOptions;
+  /** Mounts the Spec 023b `GET /reports/production` route over these jobs; any job repository satisfies `jobs`. */
+  readonly productionReport?: ProductionReportRouteOptions;
   /** `info.version` of the OpenAPI document. */
   readonly version?: string;
   /**
@@ -104,6 +107,10 @@ export function buildServer(deps: ServerDeps): FastifyInstance {
 
   if (deps.finishing) {
     registerFinishingRoutes(app, { ...deps.finishing, authenticate: actorOf });
+  }
+
+  if (deps.productionReport) {
+    registerProductionReportRoutes(app, deps.productionReport);
   }
 
   app.get('/archive', async (request) => archive.search(parseSearchQuery(request.query as Record<string, unknown>)));

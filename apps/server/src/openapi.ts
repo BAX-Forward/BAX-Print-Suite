@@ -13,6 +13,8 @@ export interface RouteDoc {
   tags: string[];
   params?: JsonSchema;
   querystring?: JsonSchema;
+  /** Query parameters the handler checks itself, so Fastify does not validate them; documented like `querystring`. */
+  queryDoc?: JsonSchema;
   body?: JsonSchema;
   /** Media types of a raw (non-JSON) request body. */
   consumes?: string[];
@@ -22,6 +24,8 @@ export interface RouteDoc {
   responses?: Record<string, string>;
   /** Name of the `components.schemas` entry that describes the JSON success body. */
   responseSchema?: string;
+  /** Text media types the success body may take instead of JSON, chosen by the request. */
+  alsoProduces?: string[];
 }
 
 /** Passes a RouteDoc to Fastify as a route schema; Fastify ignores the documentation keys. */
@@ -236,6 +240,42 @@ const FINISHING_PLAN_STATE_SCHEMA: JsonSchema = {
   properties: { plan: refTo('FinishingPlan'), progress: refTo('FinishingProgress') },
 };
 
+const COUNT: JsonSchema = { type: 'integer', minimum: 0 };
+const TURNAROUND_MS: JsonSchema = { type: ['integer', 'null'], minimum: 0 };
+
+/** Turnarounds are received to done over jobs completed in the window; null when there are none. */
+const PRODUCTION_REPORT_TOTALS_PROPERTIES: Readonly<Record<string, JsonSchema>> = {
+  jobsReceived: COUNT,
+  jobsCompleted: COUNT,
+  jobsFailedOrCancelled: COUNT,
+  medianTurnaroundMs: TURNAROUND_MS,
+  p90TurnaroundMs: TURNAROUND_MS,
+};
+
+const PRODUCTION_REPORT_TOTALS_SCHEMA: JsonSchema = {
+  type: 'object',
+  required: Object.keys(PRODUCTION_REPORT_TOTALS_PROPERTIES),
+  properties: PRODUCTION_REPORT_TOTALS_PROPERTIES,
+};
+
+const PRODUCTION_REPORT_GROUP_SCHEMA: JsonSchema = {
+  type: 'object',
+  required: ['key', ...Object.keys(PRODUCTION_REPORT_TOTALS_PROPERTIES)],
+  properties: { key: { type: 'string' }, ...PRODUCTION_REPORT_TOTALS_PROPERTIES },
+};
+
+/** `GET /reports/production` (Spec 023b) with `format=json`: groups are sorted by key. */
+const PRODUCTION_REPORT_SCHEMA: JsonSchema = {
+  type: 'object',
+  required: ['from', 'to', 'groups', 'totals'],
+  properties: {
+    from: DATE_TIME,
+    to: DATE_TIME,
+    groups: { type: 'array', items: refTo('ProductionReportGroup') },
+    totals: refTo('ProductionReportTotals'),
+  },
+};
+
 const itemsOf = (name: string): JsonSchema => ({
   type: 'object',
   required: ['items'],
@@ -258,6 +298,9 @@ const COMPONENT_SCHEMAS: Readonly<Record<string, JsonSchema>> = {
   FinishingProgress: FINISHING_PROGRESS_SCHEMA,
   FinishingPlanState: FINISHING_PLAN_STATE_SCHEMA,
   FinishingPlanStateList: itemsOf('FinishingPlanState'),
+  ProductionReportTotals: PRODUCTION_REPORT_TOTALS_SCHEMA,
+  ProductionReportGroup: PRODUCTION_REPORT_GROUP_SCHEMA,
+  ProductionReport: PRODUCTION_REPORT_SCHEMA,
 };
 
 function parameters(schema: JsonSchema | undefined, location: 'path' | 'query'): unknown[] {
@@ -278,7 +321,11 @@ function operation(route: RouteDoc): Record<string, unknown> {
     summary: route.summary,
     tags: route.tags,
   };
-  const params = [...parameters(route.params, 'path'), ...parameters(route.querystring, 'query')];
+  const params = [
+    ...parameters(route.params, 'path'),
+    ...parameters(route.querystring, 'query'),
+    ...parameters(route.queryDoc, 'query'),
+  ];
   if (params.length > 0) op.parameters = params;
   if (route.body) {
     op.requestBody = { required: true, content: { 'application/json': { schema: route.body } } };
@@ -297,7 +344,8 @@ function operation(route: RouteDoc): Record<string, unknown> {
       responses[status] = { description, content: { [route.produces]: { schema: { type: 'string', format: 'binary' } } } };
     } else {
       const schema = route.responseSchema ? { $ref: `#/components/schemas/${route.responseSchema}` } : {};
-      responses[status] = { description, content: { 'application/json': { schema } } };
+      const text = (route.alsoProduces ?? []).map((type): [string, JsonSchema] => [type, { schema: { type: 'string' } }]);
+      responses[status] = { description, content: { 'application/json': { schema }, ...Object.fromEntries(text) } };
     }
   }
   responses.default = {
