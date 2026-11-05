@@ -1,4 +1,4 @@
-import { ValidationError, type Lab } from '@bax-print/core';
+import { ValidationError, type Lab, normalizeSpotName } from '@bax-print/core';
 import { deltaE2000 } from './color/deltae.js';
 import { cxfNumber, findAll, findFirst, parseXml, type XmlElement } from './cxf.js';
 
@@ -28,10 +28,8 @@ const AB_RANGE = [-128, 127] as const;
 const PERCENT_RANGE = [0, 100] as const;
 const CMYK_CHANNELS = ['Cyan', 'Magenta', 'Yellow', 'Black'] as const;
 
-/** Lookup key for a colour name: Unicode NFC, whitespace runs collapsed, trimmed, lower case. */
-export function normalizeSpotName(name: string): string {
-  return name.normalize('NFC').replace(/\s+/g, ' ').trim().toLowerCase();
-}
+/** Lookup key for a colour name; the shared rule lives in core. */
+export { normalizeSpotName };
 
 function inRange(value: number, [min, max]: readonly [number, number], label: string, name: string): number {
   if (value < min || value > max) {
