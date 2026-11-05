@@ -150,6 +150,7 @@ describe('production history of a scripted job lifecycle', () => {
     const deviceHistory = historyForDevice(h.outbox, DEVICE_A);
     expect(deviceHistory).toHaveLength(1);
     const [report] = deviceHistory;
+    if (!report) throw new Error('device history is empty');
     expect(report.type).toBe('device.accounting');
     expect(report.data).toEqual(ACCOUNTING);
     expect((report.data as typeof ACCOUNTING).quantities.map((q) => `${q.value} ${q.unit}`)).toEqual([
@@ -169,6 +170,7 @@ describe('append-only history', () => {
 
   it('rejects attempts to update or delete a history row', () => {
     const [first] = h.outbox.list({ jobId: JOB_ID });
+    if (!first) throw new Error('job has no history');
     const forged: CloudEvent = { ...first.event, data: { jobId: JOB_ID, name: 'Forged' } };
 
     expect(() => h.outbox.update(first.seq, forged)).toThrow(AppendOnlyViolationError);
@@ -178,6 +180,7 @@ describe('append-only history', () => {
 
   it('rejects re-appending an event id and in-place mutation of a stored row', () => {
     const [first] = h.outbox.list({ jobId: JOB_ID });
+    if (!first) throw new Error('job has no history');
     expect(() => h.outbox.append({ ...first.event, data: { jobId: JOB_ID } })).toThrow(AppendOnlyViolationError);
 
     // Stored rows are deep-frozen; strict-mode assignment throws.
@@ -187,7 +190,7 @@ describe('append-only history', () => {
     expect(() => {
       (first.event.data as { name: string }).name = 'Forged';
     }).toThrow(TypeError);
-    expect(h.outbox.list({ jobId: JOB_ID })[0].event.type).toBe('job.created');
+    expect(h.outbox.list({ jobId: JOB_ID })[0]?.event.type).toBe('job.created');
   });
 
   it('records a correction as a new event that points at the corrected one', async () => {

@@ -219,7 +219,10 @@ describe('import route', () => {
 
   it('rejects a tampered package with 422 and a non-binary body with 400', async () => {
     const tampered = Buffer.from(bytes);
-    tampered[Math.floor(tampered.length / 2)] ^= 0xff;
+    const middle = Math.floor(tampered.length / 2);
+    const byte = tampered[middle];
+    if (byte === undefined) throw new Error('package is empty');
+    tampered[middle] = byte ^ 0xff;
     const bad = await post(target, tampered);
     expect(bad.statusCode).toBe(422);
     expect(bad.json()).toMatchObject({ error: { code: 'PACKAGE_INTEGRITY' } });
