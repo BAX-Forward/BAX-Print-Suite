@@ -1,0 +1,59 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- Synthetic CxF3 (ISO 17972) spot colour fixture written for BAX Print Suite tests. All names and values are invented. -->
+<cc:CxF xmlns:cc="http://colorexchangeformat.com/CxF3-core">
+  <cc:FileInformation>
+    <cc:Description>Four invented named colours</cc:Description>
+  </cc:FileInformation>
+  <cc:Resources>
+    <cc:ObjectCollection>
+      <cc:Object ObjectType="Standard" Name="Brand Red" Id="s1">
+        <cc:ColorValues>
+          <cc:ColorCIELab ColorSpecification="cs1">
+            <cc:L>48</cc:L>
+            <cc:A>68</cc:A>
+            <cc:B>48</cc:B>
+          </cc:ColorCIELab>
+          <cc:ColorCMYK ColorSpecification="cs2">
+            <cc:Cyan>0</cc:Cyan>
+            <cc:Magenta>90</cc:Magenta>
+            <cc:Yellow>85</cc:Yellow>
+            <cc:Black>5</cc:Black>
+          </cc:ColorCMYK>
+        </cc:ColorValues>
+      </cc:Object>
+      <cc:Object ObjectType="Standard" Name="Harbor Blue" Id="s2">
+        <cc:ColorValues>
+          <cc:ColorCIELab ColorSpecification="cs1">
+            <cc:L>38</cc:L>
+            <cc:A>5</cc:A>
+            <cc:B>-48</cc:B>
+          </cc:ColorCIELab>
+        </cc:ColorValues>
+      </cc:Object>
+      <cc:Object ObjectType="Standard" Name="Leaf &amp; Stem Green" Id="s3">
+        <cc:ColorValues>
+          <cc:ColorCIELab ColorSpecification="cs1">
+            <cc:L>55</cc:L>
+            <cc:A>-50</cc:A>
+            <cc:B>38</cc:B>
+          </cc:ColorCIELab>
+          <cc:ColorCMYK ColorSpecification="cs2">
+            <cc:Cyan>75</cc:Cyan>
+            <cc:Magenta>10</cc:Magenta>
+            <cc:Yellow>95</cc:Yellow>
+            <cc:Black>0</cc:Black>
+          </cc:ColorCMYK>
+        </cc:ColorValues>
+      </cc:Object>
+      <cc:Object ObjectType="Standard" Name="Warm Sand" Id="s4">
+        <cc:ColorValues>
+          <cc:ColorCIELab ColorSpecification="cs1">
+            <cc:L>80</cc:L>
+            <cc:A>4</cc:A>
+            <cc:B>22</cc:B>
+          </cc:ColorCIELab>
+        </cc:ColorValues>
+      </cc:Object>
+    </cc:ObjectCollection>
+  </cc:Resources>
+</cc:CxF>
