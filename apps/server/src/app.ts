@@ -4,6 +4,7 @@ import { InvalidArgumentError, type Actor } from '@bax-print/core';
 import { toJsonl } from '@bax-print/events';
 import { sanitizeKeySegment, type LayoutTemplateRepository } from '@bax-print/store';
 import { registerCutRoutes, type CutExtractor, type CutJobLookup } from './cut-routes.js';
+import { registerFinishingRoutes, type FinishingRouteOptions } from './finishing-routes.js';
 import { registerLayoutTemplateRoutes } from './layout-template-routes.js';
 import { registerMediaRoutes } from './media-routes.js';
 import type { MediaService } from './media-service.js';
@@ -41,6 +42,8 @@ export interface ServerDeps {
   readonly proof?: ProofRouteOptions;
   /** Mounts the Spec 003x `/layout-templates` routes; the store package's `SqliteLayoutTemplateRepository` satisfies it. */
   readonly layoutTemplates?: LayoutTemplateRepository;
+  /** Mounts the Spec 004d finishing plan routes; the store package's `SqliteFinishingPlanRepository` satisfies `plans`. */
+  readonly finishing?: FinishingRouteOptions;
   /** `info.version` of the OpenAPI document. */
   readonly version?: string;
   /**
@@ -97,6 +100,10 @@ export function buildServer(deps: ServerDeps): FastifyInstance {
 
   if (deps.layoutTemplates) {
     registerLayoutTemplateRoutes(app, { templates: deps.layoutTemplates });
+  }
+
+  if (deps.finishing) {
+    registerFinishingRoutes(app, { ...deps.finishing, authenticate: actorOf });
   }
 
   app.get('/archive', async (request) => archive.search(parseSearchQuery(request.query as Record<string, unknown>)));

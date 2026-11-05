@@ -2,7 +2,13 @@ import { join, resolve } from 'node:path';
 import { ArchiveService, parseDuration, StaticColorSetupResolver } from '@bax-print/archive';
 import { EventBus, MemoryOutbox } from '@bax-print/events';
 import { BuiltinInspector, builtinRegistry } from '@bax-print/inspect';
-import { LocalDirStorage, MemoryArchiveIndex, MemoryJobRepository, SqliteLayoutTemplateRepository } from '@bax-print/store';
+import {
+  LocalDirStorage,
+  MemoryArchiveIndex,
+  MemoryJobRepository,
+  SqliteFinishingPlanRepository,
+  SqliteLayoutTemplateRepository,
+} from '@bax-print/store';
 import { buildServer } from './app.js';
 import { JobService } from './jobs.js';
 import { MediaService } from './media-service.js';
@@ -77,6 +83,8 @@ const app = buildServer({
   proof: { blobPath },
   // Spec 003x: saved layout templates live in the job database, so the routes need BPS_DATABASE.
   ...(database ? { layoutTemplates: new SqliteLayoutTemplateRepository(database) } : {}),
+  // Spec 004d: finishing plans live in the job database too.
+  ...(database ? { finishing: { plans: new SqliteFinishingPlanRepository(database) } } : {}),
   logger: true,
 });
 const scheduler = startArchiveScheduler(archive, { onError: (error) => app.log.error(error) });
