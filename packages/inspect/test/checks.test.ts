@@ -311,6 +311,23 @@ describe("color-spaces", () => {
     expect(merged[1]?.data.mappedTo).toBe("process");
   });
 
+  it("takes the cut-contour names from the last cutContour edit over the configured names", async () => {
+    const spot: JobEdit[] = [{ kind: "cutContour", source: { kind: "spot", names: ["CutContourTest"] } }];
+    const fromEdit = of(await inspect(await separationFixture(), { cutSpotNames: ["Other"], edits: spot }), "color-spaces");
+    expect(rules(fromEdit)).toEqual([
+      ["color-spaces-used", "info"],
+      ["cut-contour-colorant", "info"],
+    ]);
+    const renamed: JobEdit[] = [...spot, { kind: "spotMap", from: "CutContourTest", to: { kind: "colorant", name: "Kiss" } }];
+    const afterMap = of(await inspect(await separationFixture(), { edits: renamed }), "color-spaces");
+    expect(afterMap[1]?.data).toMatchObject({ rule: "cut-contour-colorant", colorant: "CutContourTest", mappedTo: "Kiss" });
+    for (const source of [{ kind: "none" as const }, { kind: "trimBox" as const, offsetMm: 0 }]) {
+      const edits: JobEdit[] = [...spot, { kind: "cutContour", source }];
+      const notCut = of(await inspect(await separationFixture(), { cutSpotNames: ["CutContourTest"], edits }), "color-spaces");
+      expect(notCut.map((f) => f.data.rule)).toEqual(["color-spaces-used", "spot-colorant"]);
+    }
+  });
+
   it("fails a disallowed colour space family", async () => {
     const checks = { "color-spaces": { params: { disallowedFamilies: ["DeviceCMYK"] } } };
     const findings = of(await inspect(await separationFixture(), {}, checks), "color-spaces");
