@@ -42,6 +42,15 @@ export const conflict = (message: string): HttpError => new HttpError(409, "conf
 export const proofWatermarkInvalid = (message: string, details: readonly string[]): HttpError =>
   new HttpError(422, "proof_watermark_invalid", message, details);
 
+/** Spec 023b: `from` or `to` is missing or not an ISO 8601 UTC date-time, or `from` is not earlier than `to`. */
+export const reportRangeInvalid = (message: string): HttpError => new HttpError(422, "report_range_invalid", message);
+
+/** Spec 023b: `groupBy` is not one of the report groupings. */
+export const reportGroupByInvalid = (message: string): HttpError => new HttpError(422, "report_group_by_invalid", message);
+
+/** Spec 023b: `format` is not one of the report formats. */
+export const reportFormatInvalid = (message: string): HttpError => new HttpError(422, "report_format_invalid", message);
+
 /** A list of problems (validation) or structured context (e.g. the ids an import must remap). */
 export type ErrorDetails = readonly string[] | Readonly<Record<string, unknown>>;
 

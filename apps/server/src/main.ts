@@ -85,6 +85,8 @@ const app = buildServer({
   ...(database ? { layoutTemplates: new SqliteLayoutTemplateRepository(database) } : {}),
   // Spec 004d: finishing plans live in the job database too.
   ...(database ? { finishing: { plans: new SqliteFinishingPlanRepository(database) } } : {}),
+  // Spec 023b: the production report is mounted with BPS_DATABASE too; it reads the job rows above.
+  ...(database ? { productionReport: { jobs: jobRepository } } : {}),
   logger: true,
 });
 const scheduler = startArchiveScheduler(archive, { onError: (error) => app.log.error(error) });
