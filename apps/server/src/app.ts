@@ -9,6 +9,7 @@ import { registerMediaRoutes } from './media-routes.js';
 import type { MediaService } from './media-service.js';
 import { OpenApiCollector } from './openapi.js';
 import { parseImportQuery, parseLegalHoldBody, parseReprintBody } from './parse.js';
+import { registerProofRoutes, type ProofRouteOptions } from './proof-routes.js';
 import { registerErrorHandler, registerPreflightRoutes, type RouteDeps } from './routes.js';
 import { registerStepRepeatRoutes, type StepRepeatRouteOptions } from './step-repeat-routes.js';
 import { registerWebhookRoutes, type WebhookOptions } from './webhook-routes.js';
@@ -36,6 +37,8 @@ export interface ServerDeps {
   readonly cutExtractor?: CutExtractor;
   /** With `jobs`, mounts the Spec 003u `POST /jobs/:id/step-repeat` route. Tests replace `run`. */
   readonly stepRepeat?: StepRepeatRouteOptions;
+  /** With `jobs`, mounts the Spec 004a `POST /jobs/:id/proof` route. */
+  readonly proof?: ProofRouteOptions;
   /** Mounts the Spec 003x `/layout-templates` routes; the store package's `SqliteLayoutTemplateRepository` satisfies it. */
   readonly layoutTemplates?: LayoutTemplateRepository;
   /** `info.version` of the OpenAPI document. */
@@ -86,6 +89,10 @@ export function buildServer(deps: ServerDeps): FastifyInstance {
 
   if (deps.jobs && deps.stepRepeat) {
     registerStepRepeatRoutes(app, { jobs: deps.jobs, ...deps.stepRepeat });
+  }
+
+  if (deps.jobs && deps.proof) {
+    registerProofRoutes(app, { jobs: deps.jobs, ...deps.proof });
   }
 
   if (deps.layoutTemplates) {

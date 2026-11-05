@@ -23,6 +23,7 @@
     "@bax-print/edits": "workspace:*",
     "@bax-print/events": "workspace:*",
     "@bax-print/inspect": "workspace:*",
+    "@bax-print/marks": "workspace:*",
     "@bax-print/nest": "workspace:*",
     "@bax-print/plugin-sdk": "workspace:*",
     "@bax-print/store": "workspace:*",
@@ -31,6 +32,7 @@
   },
   "devDependencies": {
     "@types/node": "22.10.2",
+    "pdf-lib": "1.17.1",
     "typescript": "5.8.3",
     "vitest": "3.2.4"
   }
