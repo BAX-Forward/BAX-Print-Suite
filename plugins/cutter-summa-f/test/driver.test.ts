@@ -20,12 +20,14 @@ const DEVICE = { bedWidthMm: 1600, bedLengthMm: 3200, tools: TOOLS };
 
 const pt = (points: [number, number][]): Point[] => points.map(([x, y]) => [mmToPt(x), mmToPt(y)]);
 
+const MARK_CENTERS_MM: [number, number][] = [[5, 5], [195, 5], [5, 95], [195, 95]];
+
 /** 5 mm camera circles near the corners of a 200 x 100 mm sheet. */
 const cameraMarks = (dMm = 5, shape: "circle" | "square" = "circle"): RegistrationMarks => ({
   method: "camera-marks",
   shape,
   originMarkId: "m0",
-  marks: [[5, 5], [195, 5], [5, 95], [195, 95]].map(([x, y], i) => ({ id: `m${i}`, xPt: mmToPt(x), yPt: mmToPt(y), dPt: mmToPt(dMm) })),
+  marks: MARK_CENTERS_MM.map(([x, y], i) => ({ id: `m${i}`, xPt: mmToPt(x), yPt: mmToPt(y), dPt: mmToPt(dMm) })),
 });
 
 function goldenJob(patch: Partial<CutJob> = {}): CutJob {
@@ -122,6 +124,7 @@ async function inspectPdf(bytes: Uint8Array): Promise<PdfInspection> {
   const properties = resources?.lookup(PDFName.of("Properties"), PDFDict);
   const layers: Record<string, string> = {};
   for (const [, id] of content.matchAll(/\/OC \/(\w+) BDC/g)) {
+    if (id === undefined) throw new Error("OC marker without a property name");
     const name = properties?.lookup(PDFName.of(id), PDFDict).lookup(PDFName.of("Name"));
     if (!(name instanceof PDFString || name instanceof PDFHexString)) throw new Error(`OCG ${id} has no name`);
     layers[id] = name.decodeText();

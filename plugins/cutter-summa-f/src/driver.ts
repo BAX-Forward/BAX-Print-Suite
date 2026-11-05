@@ -149,7 +149,7 @@ function closeNearlyClosed(contours: readonly Contour[], toleranceMm: number): {
   const closedIds: string[] = [];
   const out = contours.map((c) => {
     if (c.closed || c.points.length < 3) return c;
-    const [first, last] = [c.points[0], c.points[c.points.length - 1]];
+    const [first, last] = [c.points[0]!, c.points[c.points.length - 1]!];
     if (distance(first, last) > tolerancePt) return c;
     closedIds.push(c.id);
     // Drop a duplicated end point so the closing segment is not zero-length.
