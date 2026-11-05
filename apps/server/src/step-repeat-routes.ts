@@ -1,4 +1,5 @@
 import type { FastifyInstance } from 'fastify';
+import type { Job } from '@bax-print/core';
 import {
   MAX_STEP_REPEAT_COPIES,
   stepAndRepeatJob,
@@ -23,6 +24,8 @@ export interface StepRepeatRouteOptions {
   readonly blobPath: (storageKey: string) => string;
   /** Default `stepAndRepeatJob` from `@bax-print/nest`. */
   readonly run?: StepRepeatRunner;
+  /** Called with every built job and the job it was built for, e.g. to record its cut contours for the cut-job route (Spec 003v). */
+  readonly onJob?: (result: StepRepeatJob, job: Job) => void;
 }
 
 export interface StepRepeatRouteDeps extends StepRepeatRouteOptions {
@@ -133,6 +136,7 @@ export function registerStepRepeatRoutes(app: FastifyInstance, deps: StepRepeatR
         rotate: body.rotate,
         ...(body.pageIndex === undefined ? {} : { pageIndex: body.pageIndex }),
       });
+      deps.onJob?.(result, job);
       return {
         layout: result.layout,
         cutContours: result.cutContours,
