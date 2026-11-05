@@ -6,3 +6,4 @@ export * from "./pdf-cut.js";
 export * from "./validate.js";
 export * from "./segment.js";
 export * from "./deliver.js";
+export * from "./contour-source.js";
