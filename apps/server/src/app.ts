@@ -3,6 +3,7 @@ import { parseSearchQuery, type ArchiveService } from '@bax-print/archive';
 import { InvalidArgumentError, type Actor } from '@bax-print/core';
 import { toJsonl } from '@bax-print/events';
 import { sanitizeKeySegment } from '@bax-print/store';
+import { registerCutRoutes, type CutExtractor, type CutJobLookup } from './cut-routes.js';
 import { registerMediaRoutes } from './media-routes.js';
 import type { MediaService } from './media-service.js';
 import { OpenApiCollector } from './openapi.js';
@@ -27,6 +28,10 @@ export interface ServerDeps {
    * the matching subscriptions. Tests replace `send`, `now` and `schedule`.
    */
   readonly webhooks?: WebhookOptions;
+  /** Mounts the Spec 007g `POST /jobs/:id/cut-job` route over these jobs. */
+  readonly jobs?: CutJobLookup;
+  /** Reads a job's page for `POST /jobs/:id/cut-job`; without one that route answers 501. Tests inject a fake. */
+  readonly cutExtractor?: CutExtractor;
   /** `info.version` of the OpenAPI document. */
   readonly version?: string;
   /**
@@ -67,6 +72,10 @@ export function buildServer(deps: ServerDeps): FastifyInstance {
 
   if (deps.webhooks) {
     registerWebhookRoutes(app, { ...deps.webhooks, authenticate: actorOf });
+  }
+
+  if (deps.jobs) {
+    registerCutRoutes(app, { jobs: deps.jobs, ...(deps.cutExtractor ? { extractor: deps.cutExtractor } : {}) });
   }
 
   app.get('/archive', async (request) => archive.search(parseSearchQuery(request.query as Record<string, unknown>)));
