@@ -1,4 +1,4 @@
-import { mkdirSync } from 'node:fs';
+import { chmodSync, closeSync, mkdirSync, openSync, statSync } from 'node:fs';
 import { createRequire } from 'node:module';
 import { dirname, resolve } from 'node:path';
 import type { DatabaseSync } from 'node:sqlite';
@@ -89,6 +89,50 @@ export function appliedMigrations(db: DatabaseSync): number[] {
       version: number | bigint;
     }>
   ).map((row) => Number(row.version));
+}
+
+const PRIVATE_FILE_MODE = 0o600;
+const PERMISSION_BITS = 0o777;
+/** SQLite gives these the main file's mode when it creates them. */
+const SIDE_FILE_SUFFIXES = ['-wal', '-shm', '-journal'] as const;
+
+function isErrorCode(error: unknown, code: string): boolean {
+  return error instanceof Error && 'code' in error && error.code === code;
+}
+
+/** Narrows an existing file to 0600 if this process owns it; leaves files of other users alone. */
+function restrictOwnedFile(path: string): void {
+  let stats;
+  try {
+    stats = statSync(path);
+  } catch (error) {
+    if (isErrorCode(error, 'ENOENT')) return;
+    throw error;
+  }
+  if (stats.uid === process.getuid?.() && (stats.mode & PERMISSION_BITS) !== PRIVATE_FILE_MODE) {
+    chmodSync(path, PRIVATE_FILE_MODE);
+  }
+}
+
+/**
+ * Spec 019d: makes the database file readable by its owner only, before `openDatabase` opens it.
+ * Creates a missing file with mode 0600 and narrows an existing file this process owns (and its
+ * WAL, shared-memory and journal files) to 0600. No-op for `:memory:` and on Windows.
+ */
+export function preparePrivateDatabaseFile(location: string): void {
+  if (location === IN_MEMORY || process.platform === 'win32') {
+    return;
+  }
+  const path = resolve(location);
+  mkdirSync(dirname(path), { recursive: true });
+  try {
+    closeSync(openSync(path, 'wx', PRIVATE_FILE_MODE));
+  } catch (error) {
+    if (!isErrorCode(error, 'EEXIST')) throw error;
+  }
+  for (const file of [path, ...SIDE_FILE_SUFFIXES.map((suffix) => path + suffix)]) {
+    restrictOwnedFile(file);
+  }
 }
 
 /** Opens (creating if needed) a SQLite database and brings its schema up to date. */

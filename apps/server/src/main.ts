@@ -2,13 +2,7 @@ import { join, resolve } from 'node:path';
 import { ArchiveService, parseDuration, StaticColorSetupResolver } from '@bax-print/archive';
 import { EventBus, MemoryOutbox } from '@bax-print/events';
 import { BuiltinInspector, builtinRegistry } from '@bax-print/inspect';
-import {
-  LocalDirStorage,
-  MemoryArchiveIndex,
-  MemoryJobRepository,
-  openDatabase,
-  SqliteWebhookSubscriptionRepository,
-} from '@bax-print/store';
+import { LocalDirStorage, MemoryArchiveIndex, MemoryJobRepository } from '@bax-print/store';
 import { buildServer } from './app.js';
 import { JobService } from './jobs.js';
 import { MediaService } from './media-service.js';
@@ -16,7 +10,8 @@ import { memoryMediaStores } from './media-stores.js';
 import { PreflightService } from './preflight-service.js';
 import { ProfileService } from './profiles.js';
 import { startArchiveScheduler } from './scheduler.js';
-import { MemoryFindingsStore, MemoryProfileStore, MemoryWebhookSubscriptionStore } from './stores.js';
+import { MemoryFindingsStore, MemoryProfileStore } from './stores.js';
+import { openWebhookPersistence } from './webhook-persistence.js';
 import { ALLOW_LAN_TARGETS_ENV, parseAllowLanTargets } from './webhook-routes.js';
 
 const dataDir = resolve(process.env.BPS_DATA_DIR ?? 'data');
@@ -25,11 +20,10 @@ const port = Number(process.env.BPS_PORT ?? 8080);
 const archiveAfter = process.env.BPS_ARCHIVE_AFTER;
 const retention = process.env.BPS_TRASH_RETENTION;
 const blobsDir = join(dataDir, 'blobs');
-// Spec 019c: a SQLite job database (path) keeps webhook subscriptions across restarts.
-const databasePath = process.env.BPS_DATABASE;
 const allowLanTargets = parseAllowLanTargets(process.env[ALLOW_LAN_TARGETS_ENV]);
-const database = databasePath ? openDatabase(databasePath) : undefined;
-const webhookStore = database ? new SqliteWebhookSubscriptionRepository(database) : new MemoryWebhookSubscriptionStore();
+// Spec 019c: a SQLite job database (BPS_DATABASE) keeps webhook subscriptions across restarts.
+// Spec 019d: the file is mode 0600 and secrets are sealed when a secrets key is configured.
+const { store: webhookStore, database, warnings: persistenceWarnings } = openWebhookPersistence(process.env);
 
 // Job rows, the archive index, the outbox, findings, profiles and media are in memory until the SQLite store (Spec 001) lands.
 const outbox = new MemoryOutbox();
@@ -78,6 +72,9 @@ const shutdown = (): void => {
 process.once('SIGINT', shutdown);
 process.once('SIGTERM', shutdown);
 
+for (const warning of persistenceWarnings) {
+  app.log.warn(warning);
+}
 app.log.warn(
   database
     ? 'job rows, archive index, history, findings, profiles and media are kept in memory in this build'
