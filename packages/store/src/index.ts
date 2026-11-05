@@ -7,6 +7,7 @@ export * from './local-storage.js';
 export * from './memory-storage.js';
 export * from './secret-box.js';
 export * from './secret-key.js';
+export * from './sqlite-finishing.js';
 export * from './sqlite-hotfolders.js';
 export * from './sqlite-jobs.js';
 export * from './sqlite-layouts.js';
