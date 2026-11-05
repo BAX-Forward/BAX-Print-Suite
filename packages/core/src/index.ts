@@ -17,6 +17,7 @@ export * from './media.js';
 export * from './permissions.js';
 export * from './production-report.js';
 export * from './profiling-session.js';
+export * from './proxy-config.js';
 export * from './state-machine.js';
 export * from './status.js';
 export * from './ticket.js';
