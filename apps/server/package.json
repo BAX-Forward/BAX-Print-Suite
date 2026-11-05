@@ -19,6 +19,7 @@
   "dependencies": {
     "@bax-print/archive": "workspace:*",
     "@bax-print/core": "workspace:*",
+    "@bax-print/cut-export": "workspace:*",
     "@bax-print/edits": "workspace:*",
     "@bax-print/events": "workspace:*",
     "@bax-print/inspect": "workspace:*",
