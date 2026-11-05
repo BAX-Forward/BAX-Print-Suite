@@ -95,7 +95,7 @@ function devicePoints(points: readonly Point[], closed: boolean, toFrame: (p: Po
   }
   if (closed && out.length > 1) {
     const [first, last] = [out[0], out[out.length - 1]];
-    if (first[0] !== last[0] || first[1] !== last[1]) out.push(first);
+    if (first && last && (first[0] !== last[0] || first[1] !== last[1])) out.push(first);
   }
   return out;
 }
@@ -117,7 +117,8 @@ export function writeHpgl(job: CutJob, options: HpglOptions = {}): HpglResult {
 
   for (const contour of job.contours) {
     const pts = devicePoints(contour.points, contour.closed, toFrame);
-    if (pts.length < 2) {
+    const [start] = pts;
+    if (!start || pts.length < 2) {
       warnings.add(`contour ${contour.id}: fewer than 2 distinct points after rounding, skipped`);
       continue;
     }
@@ -143,7 +144,7 @@ export function writeHpgl(job: CutJob, options: HpglOptions = {}): HpglResult {
         currentForce = force;
       }
     }
-    commands.push(`PU${pts[0][0]},${pts[0][1]}`);
+    commands.push(`PU${start[0]},${start[1]}`);
     for (let i = 1; i < pts.length; i += maxPairs) {
       commands.push(`PD${pts.slice(i, i + maxPairs).map(([x, y]) => `${x},${y}`).join(",")}`);
     }

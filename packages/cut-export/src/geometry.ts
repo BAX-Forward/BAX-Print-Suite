@@ -48,8 +48,8 @@ export function bboxOf(points: readonly Point[]): BBox {
 export function signedArea(points: readonly Point[]): number {
   let twice = 0;
   for (let i = 0; i < points.length; i++) {
-    const [x0, y0] = points[i];
-    const [x1, y1] = points[(i + 1) % points.length];
+    const [x0, y0] = points[i]!;
+    const [x1, y1] = points[(i + 1) % points.length]!;
     twice += x0 * y1 - x1 * y0;
   }
   return twice / 2;

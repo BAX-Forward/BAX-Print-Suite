@@ -117,7 +117,9 @@ describe("validateCutJob", () => {
 
   it("flags non-finite geometry instead of throwing", () => {
     const job = rollJob();
-    job.contours[0] = { ...job.contours[0], points: [[0, 0], [Number.NaN, 1]] };
+    const [first] = job.contours;
+    if (!first) throw new Error("rollJob has no contour");
+    job.contours[0] = { ...first, points: [[0, 0], [Number.NaN, 1]] };
     expect(validateCutJob(job, ROLL).errors.map((e) => e.code)).toEqual(["invalid-geometry"]);
   });
 

@@ -47,8 +47,8 @@ describe("segmentCutJob", () => {
     for (const p of panels) expect(p.y1Mm - p.y0Mm).toBeLessThanOrEqual(1500 + 1e-6);
     // c7 (1450..1550) and c22 (4450..4550) cross a boundary and go whole to the panel holding their bbox max.
     expect(warnings.filter((w) => w.includes("crosses a panel boundary"))).toHaveLength(2);
-    expect(panelJobs[1].contours.map((c) => c.id)).toContain("c7");
-    expect(panelJobs[3].contours.map((c) => c.id)).toContain("c22");
+    expect(panelJobs[1]?.contours.map((c) => c.id)).toContain("c7");
+    expect(panelJobs[3]?.contours.map((c) => c.id)).toContain("c22");
   });
 
   it("puts every contour in exactly one panel", () => {
@@ -63,7 +63,7 @@ describe("segmentCutJob", () => {
     const { job, panelJobs } = segmentCutJob(fiveMetreJob(), ROLL);
     const panels = job.segmentation?.panels ?? [];
     panels.forEach((panel, i) => {
-      const marks = panelJobs[i].marks;
+      const marks = panelJobs[i]?.marks;
       expect(marks, `panel ${i + 1}`).toBeDefined();
       expect(marks?.marks.length).toBeGreaterThanOrEqual(3);
       expect(panel.marks).toEqual(marks?.marks.map((m) => m.id));

@@ -56,7 +56,7 @@ export function panelBoundariesMm(lengthMm: number, maxMm: number, rowsMm: reado
 }
 
 function panelIndexOf(yMm: number, boundaries: readonly number[]): number {
-  for (let i = 0; i < boundaries.length - 2; i++) if (yMm <= boundaries[i + 1] + EPS_MM) return i;
+  for (let i = 0; i < boundaries.length - 2; i++) if (yMm <= boundaries[i + 1]! + EPS_MM) return i;
   return boundaries.length - 2;
 }
 
@@ -67,11 +67,13 @@ interface Piece {
 
 /** Cuts a polyline (pt) at the interior boundaries (mm) and groups the edges by panel. */
 function splitAtBoundaries(points: readonly Point[], closed: boolean, boundaries: readonly number[]): Piece[] {
-  const seq = closed ? [...points, points[0]] : [...points];
+  const [start] = points;
+  if (!start) return [];
+  const seq = closed ? [...points, start] : [...points];
   const interior = boundaries.slice(1, -1).map(mmToPt);
-  const refined: Point[] = [seq[0]];
+  const refined: Point[] = [start];
   for (let i = 1; i < seq.length; i++) {
-    const [a, b] = [seq[i - 1], seq[i]];
+    const [a, b] = [seq[i - 1]!, seq[i]!];
     const crossings = interior
       .filter((y) => (a[1] < y && y < b[1]) || (b[1] < y && y < a[1]))
       .map((y) => (y - a[1]) / (b[1] - a[1]))
@@ -81,14 +83,17 @@ function splitAtBoundaries(points: readonly Point[], closed: boolean, boundaries
   }
   const pieces: Piece[] = [];
   for (let i = 1; i < refined.length; i++) {
-    const panel = panelIndexOf(ptToMm((refined[i - 1][1] + refined[i][1]) / 2), boundaries);
+    const [p, q] = [refined[i - 1]!, refined[i]!];
+    const panel = panelIndexOf(ptToMm((p[1] + q[1]) / 2), boundaries);
     const last = pieces[pieces.length - 1];
-    if (last && last.panel === panel) last.points.push(refined[i]);
-    else pieces.push({ panel, points: [refined[i - 1], refined[i]] });
+    if (last && last.panel === panel) last.points.push(q);
+    else pieces.push({ panel, points: [p, q] });
   }
-  if (closed && pieces.length > 1 && pieces[0].panel === pieces[pieces.length - 1].panel) {
-    const tail = pieces.pop() as Piece;
-    pieces[0] = { panel: tail.panel, points: [...tail.points, ...pieces[0].points.slice(1)] };
+  const head = pieces[0];
+  const tail = pieces[pieces.length - 1];
+  if (closed && head && tail && pieces.length > 1 && head.panel === tail.panel) {
+    pieces.pop();
+    pieces[0] = { panel: tail.panel, points: [...tail.points, ...head.points.slice(1)] };
   }
   return pieces;
 }
@@ -102,7 +107,7 @@ function panelMarks(marks: RegistrationMarks | undefined, y0Mm: number, y1Mm: nu
   if (inPanel.length === 0) return undefined;
   const originMarkId = inPanel.some((m) => m.id === marks.originMarkId)
     ? marks.originMarkId
-    : [...inPanel].sort((a, b) => a.yPt - b.yPt || a.xPt - b.xPt)[0].id;
+    : [...inPanel].sort((a, b) => a.yPt - b.yPt || a.xPt - b.xPt)[0]!.id;
   return { ...marks, marks: inPanel, originMarkId };
 }
 
@@ -119,37 +124,45 @@ export function segmentCutJob(job: CutJob, profile: CutterProfile, options: Segm
   const boundaries = panelBoundariesMm(lengthMm, limit, markRowsMm(job.marks));
   const panelCount = boundaries.length - 1;
   const contoursByPanel: Contour[][] = Array.from({ length: panelCount }, () => []);
+  const panelContours = (panel: number): Contour[] => {
+    const contours = contoursByPanel[panel];
+    if (!contours) throw new Error(`panel index ${panel} out of range`);
+    return contours;
+  };
   const warnings: string[] = [];
 
   for (const contour of job.contours) {
     const box = bboxOf(contour.points);
     const panel = panelIndexOf(ptToMm(box.maxY), boundaries);
-    const crosses = ptToMm(box.minY) < boundaries[panel] - EPS_MM;
+    const panelStartMm = boundaries[panel];
+    if (panelStartMm === undefined) throw new Error(`panel index ${panel} out of range`);
+    const crosses = ptToMm(box.minY) < panelStartMm - EPS_MM;
     if (!crosses) {
-      contoursByPanel[panel].push(contour);
+      panelContours(panel).push(contour);
     } else if (options.allowSplit) {
       const pieces = splitAtBoundaries(contour.points, contour.closed, boundaries);
       pieces.forEach((piece, k) =>
-        contoursByPanel[piece.panel].push(
+        panelContours(piece.panel).push(
           makeContour({ id: `${contour.id}.${k + 1}`, tool: contour.tool, source: contour.source, points: piece.points, closed: false }),
         ),
       );
       warnings.push(`contour ${contour.id}: split into ${pieces.length} open pieces at panel boundaries`);
     } else {
-      contoursByPanel[panel].push(contour);
+      panelContours(panel).push(contour);
       warnings.push(`contour ${contour.id}: crosses a panel boundary, assigned whole to panel ${panel + 1}`);
     }
   }
 
   const panels: CutPanel[] = [];
   const panelJobs: CutJob[] = [];
-  for (let i = 0; i < panelCount; i++) {
+  for (const [i, contours] of contoursByPanel.entries()) {
     const [y0Mm, y1Mm] = [boundaries[i], boundaries[i + 1]];
+    if (y0Mm === undefined || y1Mm === undefined) throw new Error(`panel index ${i} out of range`);
     const marks = panelMarks(job.marks, y0Mm, y1Mm);
     if (job.marks && (marks?.marks.length ?? 0) < 3) warnings.push(`panel ${i + 1}: fewer than 3 registration marks`);
     panels.push({ y0Mm, y1Mm, marks: marks?.marks.map((m) => m.id) ?? [] });
     const { segmentation: _ignored, marks: _marks, ...rest } = job;
-    panelJobs.push({ ...rest, jobId: `${job.jobId}-p${i + 1}`, contours: contoursByPanel[i], ...(marks ? { marks } : {}) });
+    panelJobs.push({ ...rest, jobId: `${job.jobId}-p${i + 1}`, contours, ...(marks ? { marks } : {}) });
   }
   return { job: { ...job, segmentation: { panels } }, panelJobs, warnings };
 }

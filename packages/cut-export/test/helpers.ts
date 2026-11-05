@@ -65,17 +65,20 @@ export function parseHpgl(text: string): { commands: string[]; paths: ParsedHpgl
       case "SP":
         pen = args[0] ?? 0;
         break;
-      case "PU":
+      case "PU": {
         current = undefined;
-        if (args.length >= 2) {
-          current = { pen, points: [[args[args.length - 2], args[args.length - 1]]] };
+        const [x, y] = args.slice(-2);
+        if (x !== undefined && y !== undefined) {
+          current = { pen, points: [[x, y]] };
           paths.push(current);
         }
         break;
+      }
       case "PD":
         if (!current) throw new Error("PD without a preceding PU x,y");
         if (args.length % 2 !== 0) throw new Error(`odd coordinate count in "${command}"`);
-        for (let i = 0; i < args.length; i += 2) current.points.push([args[i], args[i + 1]]);
+        // args.length is even, so i + 1 < args.length whenever i < args.length.
+        for (let i = 0; i < args.length; i += 2) current.points.push([args[i]!, args[i + 1]!]);
         break;
       default:
         break;
