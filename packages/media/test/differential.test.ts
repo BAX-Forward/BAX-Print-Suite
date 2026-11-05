@@ -3,7 +3,9 @@
  * The color-sim plugin prints and measures charts over BPP; ProfilingService drives every step;
  * the verification report must meet the tolerances recorded in thresholds.json.
  */
-import { readFileSync } from 'node:fs';
+import { readFileSync, writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 import { pathToFileURL } from 'node:url';
 import type { Lab } from '@bax-print/core';
 import type { ColorEngineProfilingApi, MeasurementApi } from '@bax-print/plugin-sdk';
@@ -11,7 +13,7 @@ import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { deltaE2000 } from '../src/color/deltae.js';
 import type { VerificationReport } from '../src/profiling/analysis.js';
 import { type ChartFiles, ProfilingService } from '../src/profiling/service.js';
-import { syncFromDevice } from '../src/index.js';
+import { DEFAULT_MAX_VERIFICATION_PATCHES, accuracyReport, splitHoldOut, syncFromDevice } from '../src/index.js';
 import { ColorSimHarness, type Cmyk, type PrintedPatch } from './color-sim-harness.js';
 import { fixtureDriver, modeReport, testLibrary } from './helpers.js';
 
@@ -35,6 +37,8 @@ const SESSION_TIMEOUT_MS = 60_000;
 const REPORT_DIGITS = 4;
 /** An ES module exporting `colorEngine: ColorEngineProfilingApi`; set only where one is installed. */
 const EXTERNAL_PROFILER = process.env.BPS_EXTERNAL_PROFILER;
+/** Every Nth measured profile patch is withheld from the profile build and verified instead. */
+const HOLD_OUT_EVERY_NTH = 4;
 
 /** Ink-set colorant → simulator channel; the fixture mode prints cyan, magenta, yellow, black. */
 const CHANNELS: Readonly<Record<string, keyof Cmyk>> = { cyan: 'c', magenta: 'm', yellow: 'y', black: 'k' };
@@ -96,8 +100,46 @@ function nearest(table: readonly ProfilePatch[], lab: Lab): ProfilePatch {
   return best;
 }
 
+interface HoldOut {
+  engine: ColorEngineProfilingApi;
+  /** Held-out profile patches captured at build time (at most DEFAULT_MAX_VERIFICATION_PATCHES). */
+  patches: () => ProfilePatch[];
+}
+
+/**
+ * Wraps an engine so its profile is built without every Nth measured profile patch; the first
+ * held-out patches (up to the verification chart limit) become the verification references.
+ */
+function holdingOut(engine: ColorEngineProfilingApi): HoldOut {
+  let heldOut: ProfilePatch[] = [];
+  return {
+    engine: {
+      buildProfile: async (request) => {
+        if (engine.buildProfile === undefined) throw new Error('the color engine cannot build profiles');
+        const split = splitHoldOut(
+          request.patches.map((p) => p.id),
+          HOLD_OUT_EVERY_NTH,
+        );
+        const build = new Set(split.build);
+        const verified = new Set(split.heldOut.slice(0, DEFAULT_MAX_VERIFICATION_PATCHES));
+        heldOut = request.patches.filter((p) => verified.has(p.id));
+        return engine.buildProfile({ ...request, patches: request.patches.filter((p) => build.has(p.id)) });
+      },
+      evaluate: async (profile, labs, options) => {
+        if (engine.evaluate === undefined) throw new Error('the color engine cannot evaluate profiles');
+        return engine.evaluate(profile, labs, options);
+      },
+    },
+    patches: () => heldOut,
+  };
+}
+
 /** Print chart, measure strip, build profile, print and measure the verification chart. */
-async function runSession(harness: ColorSimHarness, colorEngine: ColorEngineProfilingApi): Promise<VerificationReport> {
+async function runSession(
+  harness: ColorSimHarness,
+  colorEngine: ColorEngineProfilingApi,
+  references?: () => Lab[],
+): Promise<VerificationReport> {
   await harness.configure({ seed: SEED });
   const { library } = testLibrary();
   await syncFromDevice(library, DEVICE, fixtureDriver(() => [modeReport('a')]));
@@ -111,7 +153,10 @@ async function runSession(harness: ColorSimHarness, colorEngine: ColorEngineProf
   service.markTargetPrinted(session.id, AUTHOR);
   await service.recordMeasurements(session.id, { kind: 'instrument' }, AUTHOR);
   await service.compute(session.id, { author: AUTHOR });
-  const verification = await service.createVerificationTarget(session.id, { author: AUTHOR });
+  const verification = await service.createVerificationTarget(
+    session.id,
+    references === undefined ? { author: AUTHOR } : { author: AUTHOR, references: references() },
+  );
   await harness.printChart(verification.layout.chartId, printedPatches(verification.layout));
   const report = await service.verify(session.id, { kind: 'instrument' }, AUTHOR);
   expect(service.getVerificationReport(session.id)).toEqual(report);
@@ -121,6 +166,51 @@ async function runSession(harness: ColorSimHarness, colorEngine: ColorEngineProf
 function summarize(report: VerificationReport): { mean: number; max: number } {
   const des = report.patches.map((p) => deltaE2000(p.reference, p.measured));
   return { mean: des.reduce((s, v) => s + v, 0) / des.length, max: Math.max(...des) };
+}
+
+interface HeldOutRun {
+  /** Held-out profile patches with their characterization measurement. */
+  heldOut: ProfilePatch[];
+  /** Held-out patch id → Lab measured on the verification chart that reproduced it. */
+  reproduced: Map<string, Lab>;
+}
+
+/** A session whose verification chart reproduces the patches held out of the profile build. */
+async function runHeldOutSession(harness: ColorSimHarness, colorEngine: ColorEngineProfilingApi): Promise<HeldOutRun> {
+  const holdOut = holdingOut(colorEngine);
+  const report = await runSession(harness, holdOut.engine, () => holdOut.patches().map((p) => ({ ...p.lab })));
+  const heldOut = holdOut.patches();
+  if (report.patches.length !== heldOut.length) throw new Error('the verification chart does not match the held-out patches');
+  // The verification chart keeps the reference order, so patch i reproduces held-out patch i.
+  const reproduced = new Map<string, Lab>();
+  heldOut.forEach((patch, i) => {
+    const result = report.patches[i];
+    if (result === undefined) throw new Error(`no verification patch for held-out patch ${patch.id}`);
+    reproduced.set(patch.id, result.measured);
+  });
+  return { heldOut, reproduced };
+}
+
+/**
+ * Accuracy report of the lookup engine and an external engine on the same held-out patches:
+ * the characterization measurement of each held-out patch against the Lab measured where the
+ * engine reproduced it on the verification chart.
+ */
+async function heldOutAccuracy(harness: ColorSimHarness, external: ColorEngineProfilingApi) {
+  const lookup = await runHeldOutSession(harness, lookupEngine());
+  const other = await runHeldOutSession(harness, external);
+  const ids = lookup.heldOut.map((p) => p.id);
+  if (ids.join('\n') !== other.heldOut.map((p) => p.id).join('\n')) {
+    throw new Error('the two sessions held out different patches');
+  }
+  return accuracyReport({
+    engines: [
+      { name: 'lookup', predicted: lookup.reproduced },
+      { name: 'external', predicted: other.reproduced },
+    ],
+    measured: new Map(lookup.heldOut.map((p) => [p.id, p.lab])),
+    heldOut: ids,
+  });
 }
 
 describe('differential: profiling session against the simulated device', () => {
@@ -161,7 +251,13 @@ describe('differential: profiling session against the simulated device', () => {
         `external profiler: mean ΔE2000 ${mean.toFixed(2)} (threshold ${THRESHOLDS.meanDe2000}), ` +
           `max ${max.toFixed(2)} (threshold ${THRESHOLDS.maxDe2000})`,
       );
+      // Report only: the accuracy numbers are written out, never asserted.
+      const accuracy = await heldOutAccuracy(harness, module.colorEngine);
+      const path = join(tmpdir(), `bps-profiler-accuracy-${process.pid}.json`);
+      writeFileSync(path, `${JSON.stringify(accuracy, null, 2)}\n`);
+      console.info(`profiler accuracy report (${accuracy.schema}): ${path}`);
     },
-    SESSION_TIMEOUT_MS,
+    // The plain session plus one held-out session per engine.
+    3 * SESSION_TIMEOUT_MS,
   );
 });

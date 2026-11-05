@@ -19,4 +19,5 @@ export * from './exchange.js';
 export * from './targets/chart.js';
 export * from './targets/pdf.js';
 export * from './profiling/analysis.js';
+export * from './profiling/accuracy.js';
 export * from './profiling/service.js';
