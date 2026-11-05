@@ -103,12 +103,13 @@ describe("applyEdits properties (Spec 007 acceptance 3)", () => {
       fc.property(sourceArb, prefixArb, (source, edits) => {
         const g = computeGeometry(source, edits);
         const unit = source.userUnit ?? 1;
-        const corners = [
+        const boxCorners: [number, number][] = [
           [source.box.x0, source.box.y0],
           [source.box.x1, source.box.y0],
           [source.box.x0, source.box.y1],
           [source.box.x1, source.box.y1],
-        ].map(([x, y]) => applyToPoint(g.toTrim, x, y));
+        ];
+        const corners = boxCorners.map(([x, y]) => applyToPoint(g.toTrim, x, y));
         const tolerance = 1e-6 * Math.max(g.trimWidthPt, g.trimHeightPt);
         expect(Math.min(...corners.map((c) => c[0]))).toBeCloseTo(0, 6);
         expect(Math.min(...corners.map((c) => c[1]))).toBeCloseTo(0, 6);
@@ -139,14 +140,22 @@ describe("applyEdits properties (Spec 007 acceptance 3)", () => {
     };
     const rotate: JobEdit = { kind: "rotate", degrees: 90 };
     const mirror: JobEdit = { kind: "mirror" };
+    const expectedRing = item.shape?.[0];
+    if (!expectedRing) throw new Error("nest item has no shape");
     for (const edits of [[rotate, rotate, rotate, rotate], [mirror, mirror]]) {
       const result = applyEdits(item, edits);
       expect(result.widthPt).toBeCloseTo(item.widthPt, 9);
       expect(result.heightPt).toBeCloseTo(item.heightPt, 9);
-      result.shape?.[0].forEach(({ x, y }, i) => {
-        expect(x).toBeCloseTo(item.shape![0][i].x, 9);
-        expect(y).toBeCloseTo(item.shape![0][i].y, 9);
-      });
+      if (result.shape) {
+        const [ring] = result.shape;
+        if (!ring) throw new Error("edited shape has no ring");
+        ring.forEach(({ x, y }, i) => {
+          const target = expectedRing[i];
+          if (!target) throw new Error(`edited ring has extra point ${i}`);
+          expect(x).toBeCloseTo(target.x, 9);
+          expect(y).toBeCloseTo(target.y, 9);
+        });
+      }
     }
   });
 });
