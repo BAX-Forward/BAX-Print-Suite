@@ -9,6 +9,7 @@ export * from './secret-box.js';
 export * from './secret-key.js';
 export * from './sqlite-hotfolders.js';
 export * from './sqlite-jobs.js';
+export * from './sqlite-layouts.js';
 export * from './sqlite-webhooks.js';
 export * from './storage.js';
 // Spec 005: media library and profiling persistence

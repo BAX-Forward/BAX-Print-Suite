@@ -58,6 +58,20 @@ export const MIGRATIONS: readonly Migration[] = Object.freeze([
       );
     `,
   },
+  {
+    version: 3,
+    name: 'layout templates',
+    sql: `
+      CREATE TABLE layout_templates (
+        id TEXT PRIMARY KEY,
+        name TEXT NOT NULL UNIQUE,
+        created_at TEXT NOT NULL,
+        updated_at TEXT NOT NULL,
+        roll_width_mm REAL NOT NULL,
+        layout_json TEXT NOT NULL
+      );
+    `,
+  },
 ]);
 
 function applyMigrations(db: DatabaseSync): void {
