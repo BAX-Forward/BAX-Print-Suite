@@ -7,6 +7,7 @@ import { buildServer } from './app.js';
 import { JobService } from './jobs.js';
 import { MediaService } from './media-service.js';
 import { memoryMediaStores } from './media-stores.js';
+import { createPdfCutExtractor } from './pdf-cut-extractor.js';
 import { PreflightService } from './preflight-service.js';
 import { ProfileService } from './profiles.js';
 import { startArchiveScheduler } from './scheduler.js';
@@ -42,6 +43,9 @@ const archive = new ArchiveService({
   retentionMs: retention ? parseDuration(retention) : undefined,
 });
 
+// Storage keys are validated `/`-separated paths below the blob root (Storage/1).
+const blobPath = (storageKey: string): string => resolve(blobsDir, ...storageKey.split('/'));
+
 const registry = builtinRegistry();
 const profiles = new ProfileService(new MemoryProfileStore(), registry);
 const preflight = new PreflightService({
@@ -50,10 +54,12 @@ const preflight = new PreflightService({
   profiles,
   events: new JobService({ jobs: jobRepository, blobs, bus }),
   inspector: new BuiltinInspector({ registry }),
-  // Storage keys are validated `/`-separated paths below the blob root (Storage/1).
-  blobPath: (storageKey) => resolve(blobsDir, ...storageKey.split('/')),
+  blobPath,
   spoolDir: join(dataDir, 'spool'),
 });
+// Spec 007h: cut jobs are planned from the page boxes of the job's source PDF. Without a
+// `cutContour` edit the `CutContour` spot colorant is cut (Spec 004 default).
+const cutExtractor = createPdfCutExtractor({ blobPath, cut: { spotNames: ['CutContour'] } });
 const media = new MediaService({ stores: memoryMediaStores(), bus, jobs: jobRepository });
 
 const app = buildServer({
@@ -61,6 +67,8 @@ const app = buildServer({
   preflight: { preflight, profiles, registry },
   media,
   webhooks: { bus, store: webhookStore, allowLanTargets },
+  jobs: jobRepository,
+  cutExtractor,
   logger: true,
 });
 const scheduler = startArchiveScheduler(archive, { onError: (error) => app.log.error(error) });

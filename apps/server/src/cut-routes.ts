@@ -21,7 +21,7 @@ export interface CutJobLookup {
 
 export interface CutRouteDeps {
   readonly jobs: CutJobLookup;
-  /** Without one the route answers 501 `cut-extractor-not-configured`. */
+  /** Without one the route answers 501 `cut_extractor_not_configured`. */
   readonly extractor?: CutExtractor;
 }
 
@@ -60,8 +60,8 @@ export function registerCutRoutes(app: FastifyInstance, deps: CutRouteDeps): voi
           200: 'The cut job, or `{ kind: "none" }` when the job is not cut',
           404: 'Unknown job',
           409: 'The job has no source document or page boxes',
-          422: 'The cut contour edit can not be resolved on the page',
-          501: 'No cut extractor is configured (`cut-extractor-not-configured`)',
+          422: 'The cut contour edit can not be resolved on the page, or the source is not a readable PDF (`unreadable_pdf`)',
+          501: 'No cut extractor is configured (`cut_extractor_not_configured`)',
         },
         responseSchema: 'CutJobResult',
       }),
@@ -71,7 +71,7 @@ export function registerCutRoutes(app: FastifyInstance, deps: CutRouteDeps): voi
       const job = await deps.jobs.get(id);
       if (!job) throw notFound('Job', id);
       if (!deps.extractor) {
-        throw new HttpError(501, 'cut-extractor-not-configured', 'This server has no cut contour extractor configured');
+        throw new HttpError(501, 'cut_extractor_not_configured', 'This server has no cut contour extractor configured');
       }
       const page = await deps.extractor(job);
       if (!page) throw conflict(`Job ${id} has no source document with page boxes to cut`);
