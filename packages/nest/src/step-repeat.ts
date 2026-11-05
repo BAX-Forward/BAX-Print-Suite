@@ -13,6 +13,8 @@ export interface StepRepeatItem {
 export interface StepRepeatOptions {
   item: StepRepeatItem;
   copies: number;
+  /** Cap on grid cells (rows x columns); defaults to MAX_STEP_REPEAT_PLACEMENTS. */
+  maxPlacements?: number;
   rollWidthMm: number;
   /** Millimetres, not points. */
   marginsMm: Margins;
@@ -52,9 +54,21 @@ function requireNonNegative(name: string, value: number): void {
   if (value < 0) throw new RangeError(`stepAndRepeat: ${name} must not be negative, got ${value}`);
 }
 
+/** Most copies one step-and-repeat request may ask for (memory guard for route inputs). */
+export const MAX_STEP_REPEAT_COPIES = 10_000;
+/**
+ * Default cap on grid cells (rows x columns) one layout may span. A full grid never exceeds
+ * twice the copies, so the default leaves headroom over MAX_STEP_REPEAT_COPIES; callers can
+ * lower it with `maxPlacements`.
+ */
+export const MAX_STEP_REPEAT_PLACEMENTS = 20_000;
+
 function validate(opts: StepRepeatOptions): void {
   if (!Number.isInteger(opts.copies) || opts.copies < 1) {
     throw new RangeError(`stepAndRepeat: copies must be a positive integer, got ${opts.copies}`);
+  }
+  if (opts.copies > MAX_STEP_REPEAT_COPIES) {
+    throw new RangeError(`stepAndRepeat: copies must be at most ${MAX_STEP_REPEAT_COPIES}, got ${opts.copies}`);
   }
   requirePositive("item width", opts.item.widthMm);
   requirePositive("item height", opts.item.heightMm);
@@ -79,6 +93,10 @@ function gridFor(
   if (fit < 1) return undefined;
   const columns = Math.min(fit, opts.copies);
   const rows = Math.ceil(opts.copies / columns);
+  const maxPlacements = opts.maxPlacements ?? MAX_STEP_REPEAT_PLACEMENTS;
+  if (rows * columns > maxPlacements) {
+    throw new RangeError(`stepAndRepeat: ${rows} x ${columns} placements exceed the limit of ${maxPlacements}`);
+  }
   return { rotation, w, h, columns, rows, lengthMm: rows * h + (rows - 1) * opts.gapYMm };
 }
 

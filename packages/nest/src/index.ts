@@ -36,6 +36,18 @@ export {
   type StepRepeatItem,
   type StepRepeatOptions,
   type StepRepeatRotation,
+  MAX_STEP_REPEAT_COPIES,
+  MAX_STEP_REPEAT_PLACEMENTS,
 } from "./step-repeat.js";
+export {
+  STEP_REPEAT_CUT_SOURCE_NAME,
+  STEP_REPEAT_ITEM_ID,
+  stepAndRepeatJob,
+  type Contour,
+  type CutBBox,
+  type CutPoint,
+  type StepRepeatJob,
+  type StepRepeatJobOptions,
+} from "./step-repeat-job.js";
 export { toSvg, type SvgOptions } from "./svg.js";
 export { parseLength, parseMargins, pointsTo, POINTS_PER, type LengthUnit } from "./units.js";
