@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { parseTicketEdits, ticketEdits, type JobTicket } from "../src/index.js";
+import { parseTicketAccountingId, parseTicketEdits, ticketEdits, type JobTicket } from "../src/index.js";
 
 const BASE: JobTicket = { intent: { quantity: 1 }, process: {} };
 
@@ -39,5 +39,32 @@ describe("ticket edits", () => {
     const ticket: JobTicket = { ...BASE, edits: [{ kind: "mirror", axis: "vertical" }, { kind: "copies", count: 4 }] };
     const restored = JSON.parse(JSON.stringify(ticket)) as JobTicket;
     expect(parseTicketEdits(restored.edits)).toEqual({ ok: true, value: ticket.edits });
+  });
+});
+
+describe("ticket accounting ID", () => {
+  it("accepts a valid accounting ID and trims it", () => {
+    expect(parseTicketAccountingId("  CC-100/A  ")).toEqual({ ok: true, value: "CC-100/A" });
+  });
+
+  it("treats an absent accounting ID as no ID", () => {
+    expect(parseTicketAccountingId(undefined)).toEqual({ ok: true, value: undefined });
+  });
+
+  it.each<[unknown, string]>([["", "empty"], ["a".repeat(65), "too long"], ["a;b", "bad character"], [7, "not a string"]])(
+    "rejects %j (%s) with an error on the accountingId field",
+    (input) => {
+      const result = parseTicketAccountingId(input);
+      expect(result.ok).toBe(false);
+      if (result.ok) return;
+      expect(result.error.field).toBe("accountingId");
+      expect(result.error.errors).toHaveLength(1);
+    },
+  );
+
+  it("round-trips an accounting ID through JSON, as a store does", () => {
+    const ticket: JobTicket = { ...BASE, accountingId: "ACME" };
+    const restored = JSON.parse(JSON.stringify(ticket)) as JobTicket;
+    expect(parseTicketAccountingId(restored.accountingId)).toEqual({ ok: true, value: "ACME" });
   });
 });
