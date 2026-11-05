@@ -69,6 +69,8 @@ const app = buildServer({
   webhooks: { bus, store: webhookStore, allowLanTargets },
   jobs: jobRepository,
   cutExtractor,
+  // Spec 003u: step and repeat reads the same stored source PDF as the cut extractor.
+  stepRepeat: { blobPath },
   logger: true,
 });
 const scheduler = startArchiveScheduler(archive, { onError: (error) => app.log.error(error) });

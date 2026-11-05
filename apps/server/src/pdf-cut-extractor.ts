@@ -34,7 +34,7 @@ function isMissingFile(error: unknown): boolean {
 }
 
 /** The stored bytes of the job's first source file, or `undefined` when it has none or the blob is gone. */
-async function readSource(job: Job, blobPath: PdfCutExtractorOptions['blobPath']): Promise<Uint8Array | undefined> {
+export async function readSource(job: Job, blobPath: PdfCutExtractorOptions['blobPath']): Promise<Uint8Array | undefined> {
   const [source] = job.sourceFiles;
   if (!source) return undefined;
   try {
