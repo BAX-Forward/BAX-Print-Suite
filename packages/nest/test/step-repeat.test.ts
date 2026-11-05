@@ -2,6 +2,7 @@ import { XMLValidator } from "fast-xml-parser";
 import { PDFDocument } from "pdf-lib";
 import { describe, expect, it } from "vitest";
 import {
+  MAX_STEP_REPEAT_COPIES,
   impose,
   readLayoutMetadata,
   stepAndRepeat,
@@ -294,3 +295,28 @@ describe("stepAndRepeat: preview and imposition", () => {
     expect(metadata?.layout.algorithm).toBe("step-repeat");
   });
 });
+
+describe("stepAndRepeat limits", () => {
+  const small = (copies: number, maxPlacements?: number): StepRepeatOptions => ({
+    item: { id: "dot", widthMm: 1, heightMm: 1 },
+    copies,
+    rollWidthMm: 30,
+    marginsMm: margins(0),
+    gapXMm: 0,
+    gapYMm: 0,
+    rotate: "none",
+    ...(maxPlacements === undefined ? {} : { maxPlacements }),
+  });
+
+  it("accepts exactly MAX_STEP_REPEAT_COPIES copies and rejects one more", () => {
+    expect(MAX_STEP_REPEAT_COPIES).toBe(10_000);
+    expect(stepAndRepeat(small(MAX_STEP_REPEAT_COPIES)).placements).toHaveLength(MAX_STEP_REPEAT_COPIES);
+    expect(() => stepAndRepeat(small(MAX_STEP_REPEAT_COPIES + 1))).toThrow(/at most 10000/);
+  });
+
+  it("caps grid cells: 30 x 2 = 60 fits a cap of 60, 30 x 3 = 90 does not", () => {
+    expect(stepAndRepeat(small(60, 60)).placements).toHaveLength(60);
+    expect(() => stepAndRepeat(small(61, 60))).toThrow(/placements exceed the limit of 60/);
+  });
+});
+
