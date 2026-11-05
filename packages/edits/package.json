@@ -6,9 +6,20 @@
   "type": "module",
   "description": "Job edit stack geometry shared by layout, preview and preflight",
   "exports": {
-    ".": "./src/index.ts",
-    "./impose": "./src/impose.ts"
+    ".": {
+      "@bax-print/source": "./src/index.ts",
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    },
+    "./impose": {
+      "@bax-print/source": "./src/impose.ts",
+      "types": "./dist/impose.d.ts",
+      "default": "./dist/impose.js"
+    }
   },
+  "files": [
+    "dist"
+  ],
   "scripts": {
     "build": "tsc -p tsconfig.build.json",
     "typecheck": "tsc -p tsconfig.json --noEmit",
