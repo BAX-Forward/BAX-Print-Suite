@@ -10,6 +10,7 @@ import { memoryMediaStores } from './media-stores.js';
 import { createPdfCutExtractor } from './pdf-cut-extractor.js';
 import { PreflightService } from './preflight-service.js';
 import { ProfileService } from './profiles.js';
+import { configureRollCut } from './roll-cut-config.js';
 import { startArchiveScheduler } from './scheduler.js';
 import { MemoryFindingsStore, MemoryProfileStore } from './stores.js';
 import { openWebhookPersistence } from './webhook-persistence.js';
@@ -59,7 +60,8 @@ const preflight = new PreflightService({
 });
 // Spec 007h: cut jobs are planned from the page boxes of the job's source PDF. Without a
 // `cutContour` edit the `CutContour` spot colorant is cut (Spec 004 default).
-const cutExtractor = createPdfCutExtractor({ blobPath, cut: { spotNames: ['CutContour'] } });
+// Spec 003y: with BPS_ROLL_CUT on, a stepped-and-repeated job's cut job is planned on the roll.
+const rollCut = configureRollCut(process.env, createPdfCutExtractor({ blobPath, cut: { spotNames: ['CutContour'] } }));
 const media = new MediaService({ stores: memoryMediaStores(), bus, jobs: jobRepository });
 
 const app = buildServer({
@@ -68,9 +70,9 @@ const app = buildServer({
   media,
   webhooks: { bus, store: webhookStore, allowLanTargets },
   jobs: jobRepository,
-  cutExtractor,
+  cutExtractor: rollCut.cutExtractor,
   // Spec 003u: step and repeat reads the same stored source PDF as the cut extractor.
-  stepRepeat: { blobPath },
+  stepRepeat: { blobPath, ...rollCut.stepRepeat },
   // Spec 003x: saved layout templates live in the job database, so the routes need BPS_DATABASE.
   ...(database ? { layoutTemplates: new SqliteLayoutTemplateRepository(database) } : {}),
   logger: true,
