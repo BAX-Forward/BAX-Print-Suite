@@ -1,4 +1,5 @@
 import type { FastifySchema, RouteOptions } from 'fastify';
+import { FINISHING_STEP_KINDS } from '@bax-print/core';
 
 type JsonSchema = Record<string, unknown>;
 
@@ -179,6 +180,62 @@ const LAYOUT_TEMPLATE_SCHEMA: JsonSchema = {
   properties: { ...LAYOUT_TEMPLATE_SUMMARY_PROPERTIES, layoutJson: { type: 'string', contentMediaType: 'application/json' } },
 };
 
+const DATE_TIME: JsonSchema = { type: 'string', format: 'date-time' };
+const ACTOR: JsonSchema = { type: 'string', minLength: 1 };
+const refTo = (name: string): JsonSchema => ({ $ref: `#/components/schemas/${name}` });
+
+/** One step of a finishing plan (Spec 004b); who and when are recorded as the step moves. */
+const FINISHING_STEP_SCHEMA: JsonSchema = {
+  type: 'object',
+  required: ['index', 'kind', 'status'],
+  properties: {
+    index: { type: 'integer', minimum: 0 },
+    kind: { enum: [...FINISHING_STEP_KINDS] },
+    label: { type: 'string', minLength: 1 },
+    status: { enum: ['pending', 'in_progress', 'done', 'skipped'] },
+    startedBy: ACTOR,
+    startedAt: DATE_TIME,
+    completedBy: ACTOR,
+    completedAt: DATE_TIME,
+    skippedBy: ACTOR,
+    skippedAt: DATE_TIME,
+    skipReason: { type: 'string', minLength: 1 },
+  },
+};
+
+const FINISHING_PLAN_SCHEMA: JsonSchema = {
+  type: 'object',
+  required: ['jobId', 'createdAt', 'updatedAt', 'steps'],
+  properties: {
+    jobId: { type: 'string', minLength: 1 },
+    createdAt: DATE_TIME,
+    updatedAt: DATE_TIME,
+    steps: { type: 'array', minItems: 1, items: refTo('FinishingStep') },
+  },
+};
+
+/** `nextStep` is the first step that is neither done nor skipped; it is absent once the plan is complete. */
+const FINISHING_PROGRESS_SCHEMA: JsonSchema = {
+  type: 'object',
+  required: ['total', 'pending', 'inProgress', 'done', 'skipped', 'isComplete'],
+  properties: {
+    total: { type: 'integer', minimum: 1 },
+    pending: { type: 'integer', minimum: 0 },
+    inProgress: { type: 'integer', minimum: 0 },
+    done: { type: 'integer', minimum: 0 },
+    skipped: { type: 'integer', minimum: 0 },
+    nextStep: refTo('FinishingStep'),
+    isComplete: { type: 'boolean' },
+  },
+};
+
+/** A finishing plan with its progress, as the Spec 004d routes answer it. */
+const FINISHING_PLAN_STATE_SCHEMA: JsonSchema = {
+  type: 'object',
+  required: ['plan', 'progress'],
+  properties: { plan: refTo('FinishingPlan'), progress: refTo('FinishingProgress') },
+};
+
 const itemsOf = (name: string): JsonSchema => ({
   type: 'object',
   required: ['items'],
@@ -196,6 +253,11 @@ const COMPONENT_SCHEMAS: Readonly<Record<string, JsonSchema>> = {
   LayoutTemplate: LAYOUT_TEMPLATE_SCHEMA,
   LayoutTemplateSummary: LAYOUT_TEMPLATE_SUMMARY_SCHEMA,
   LayoutTemplateSummaryList: itemsOf('LayoutTemplateSummary'),
+  FinishingStep: FINISHING_STEP_SCHEMA,
+  FinishingPlan: FINISHING_PLAN_SCHEMA,
+  FinishingProgress: FINISHING_PROGRESS_SCHEMA,
+  FinishingPlanState: FINISHING_PLAN_STATE_SCHEMA,
+  FinishingPlanStateList: itemsOf('FinishingPlanState'),
 };
 
 function parameters(schema: JsonSchema | undefined, location: 'path' | 'query'): unknown[] {

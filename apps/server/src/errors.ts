@@ -6,8 +6,16 @@ import {
   PackageIntegrityError,
   RemapRequiredError,
 } from "@bax-print/archive";
-import { BpsError, ForbiddenError, IllegalTransitionError, InvalidArgumentError, InvalidLifecycleError, LegalHoldError } from "@bax-print/core";
-import { InvalidCursorError, InvalidLayoutTemplateError, LayoutTemplateNameConflictError } from "@bax-print/store";
+import {
+  BpsError,
+  ForbiddenError,
+  IllegalTransitionError,
+  InvalidArgumentError,
+  InvalidFinishingTransitionError,
+  InvalidLifecycleError,
+  LegalHoldError,
+} from "@bax-print/core";
+import { InvalidCursorError, InvalidFinishingPlanError, InvalidLayoutTemplateError, LayoutTemplateNameConflictError } from "@bax-print/store";
 
 /** Service errors with the HTTP status the API maps them to. */
 export class HttpError extends Error {
@@ -95,6 +103,10 @@ export function errorResponse(error: unknown): ErrorResponse {
   if (error instanceof HttpError) {
     return { statusCode: error.statusCode, body: errorBody(error.code, error.message, error.details) };
   }
+  // Spec 004d: checked before the other core errors so the API's code is lowercase.
+  if (error instanceof InvalidFinishingTransitionError) {
+    return { statusCode: 409, body: errorBody("finishing_transition_invalid", error.message, error.details) };
+  }
   if (error instanceof BpsError) {
     return { statusCode: bpsStatus(error), body: errorBody(error.code, error.message, bpsDetails(error)) };
   }
@@ -104,6 +116,10 @@ export function errorResponse(error: unknown): ErrorResponse {
   }
   if (error instanceof LayoutTemplateNameConflictError) {
     return { statusCode: 409, body: errorBody("layout_template_name_exists", error.message, { name: error.templateName }) };
+  }
+  // Spec 004d: the store's finishing plan error keeps its uppercase code too.
+  if (error instanceof InvalidFinishingPlanError) {
+    return { statusCode: 422, body: errorBody("finishing_plan_invalid", error.message) };
   }
   const status = isRecord(error) && typeof error.statusCode === "number" ? error.statusCode : 500;
   if (status >= 400 && status < 500) {
