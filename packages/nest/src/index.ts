@@ -30,5 +30,12 @@ export {
   type Matrix,
   type SourceBox,
 } from "./impose.js";
+export {
+  STEP_REPEAT_ALGORITHM,
+  stepAndRepeat,
+  type StepRepeatItem,
+  type StepRepeatOptions,
+  type StepRepeatRotation,
+} from "./step-repeat.js";
 export { toSvg, type SvgOptions } from "./svg.js";
 export { parseLength, parseMargins, pointsTo, POINTS_PER, type LengthUnit } from "./units.js";
