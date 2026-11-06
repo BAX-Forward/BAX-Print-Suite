@@ -321,6 +321,47 @@ describe('PgJobRepository', () => {
     expect(await repo.list()).toStrictEqual([expected]);
   });
 
+  it('round-trips a valid inkLimit, keeps other settings, and leaves an absent one absent (spec 040b)', async () => {
+    const repo = new PgJobRepository(new FakeDbPort());
+    const gcr = job({ id: 'gcr', inkLimit: { limitPercent: 320, method: 'gcr' } });
+    const proportional = job({
+      id: 'proportional',
+      whiteInk: { mode: 'choke', chokePx: 2 },
+      screening: { kind: 'blue-noise', size: 2, seed: 0 },
+      inkLimit: { limitPercent: 400, method: 'proportional' },
+    });
+    const existing = job({ id: 'existing', screening: { kind: 'bayer', size: 16 } });
+    await repo.save(gcr);
+    await repo.save(proportional);
+    await repo.save(existing);
+    await repo.save(job({ id: 'plain' }));
+
+    expect(await repo.get('gcr')).toStrictEqual(gcr);
+    expect(await repo.get('proportional')).toStrictEqual(proportional);
+    expect(await repo.get('existing')).toStrictEqual(existing);
+    const plain = await repo.get('plain');
+    expect(plain).toStrictEqual(job({ id: 'plain' }));
+    expect(plain !== undefined && 'inkLimit' in plain).toBe(false);
+  });
+
+  it.each<unknown>([
+    'yes',
+    null,
+    { limitPercent: 99, method: 'gcr' },
+    { limitPercent: 401, method: 'gcr' },
+    { limitPercent: 250.5, method: 'gcr' },
+    { limitPercent: 300, method: 'gcr2' },
+    { limitPercent: 300, method: 'proportional', extra: 1 },
+  ])('reads a stored invalid inkLimit %j back with no inkLimit (spec 040b)', async (inkLimit) => {
+    const port = new FakeDbPort();
+    const repo = new PgJobRepository(port);
+    const expected = job({ whiteInk: { mode: 'flood' }, screening: { kind: 'bayer', size: 8 } });
+    port.rows.set('job-1', storedRow({ id: 'job-1', doc: JSON.stringify({ ...expected, inkLimit }) }));
+
+    expect(await repo.get('job-1')).toStrictEqual(expected);
+    expect(await repo.list()).toStrictEqual([expected]);
+  });
+
   it('rolls back writes made inside a port transaction that throws', async () => {
     const port = new FakeDbPort();
     const repo = new PgJobRepository(port);

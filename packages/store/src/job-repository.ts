@@ -1,4 +1,10 @@
-import { normalizeJobScreening, normalizeJobWhiteInk, type Job, type JobLifecycle } from '@bax-print/core';
+import {
+  normalizeJobInkLimit,
+  normalizeJobScreening,
+  normalizeJobWhiteInk,
+  type Job,
+  type JobLifecycle,
+} from '@bax-print/core';
 
 export interface JobListFilter {
   readonly lifecycle?: JobLifecycle;
@@ -14,9 +20,10 @@ export interface JobRepository {
 /**
  * Spec 038c: a stored `whiteInk` that is not a valid setting reads back absent (white ink off).
  * Spec 039b: likewise a stored `screening` that is not a valid setting reads back absent.
+ * Spec 040b: likewise a stored `inkLimit` that is not a valid setting reads back absent.
  */
 function readBack(job: Job): Job {
-  return normalizeJobScreening<Job>(normalizeJobWhiteInk<Job>(structuredClone(job)));
+  return normalizeJobInkLimit<Job>(normalizeJobScreening<Job>(normalizeJobWhiteInk<Job>(structuredClone(job))));
 }
 
 /** In-memory repository; stores structured clones so callers cannot mutate stored rows. */

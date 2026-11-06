@@ -183,6 +183,52 @@ describe('SqliteJobRepository', () => {
       expect(await repo.findLiveBySha256('hf-1', 'a'.repeat(64))).toStrictEqual(expected);
     });
   });
+
+  describe('inkLimit (spec 040b)', () => {
+    it('round-trips valid settings, leaves an absent one absent, and keeps whiteInk and screening', async () => {
+      const repo = new SqliteJobRepository(openDatabase());
+      const gcr = job({ id: 'gcr', inkLimit: { limitPercent: 400, method: 'gcr' } });
+      const proportional = job({
+        id: 'proportional',
+        whiteInk: { mode: 'flood', density: 100 },
+        screening: { kind: 'bayer', size: 8 },
+        inkLimit: { limitPercent: 100, method: 'proportional' },
+      });
+      const existing = job({ id: 'existing', screening: { kind: 'blue-noise', size: 64, seed: 9 } });
+      await repo.save(gcr);
+      await repo.save(proportional);
+      await repo.save(existing);
+      await repo.save(job({ id: 'plain' }));
+
+      expect(await repo.get('gcr')).toStrictEqual(gcr);
+      expect(await repo.get('proportional')).toStrictEqual(proportional);
+      expect(await repo.get('existing')).toStrictEqual(existing);
+      const plain = await repo.get('plain');
+      expect(plain).toStrictEqual(job({ id: 'plain' }));
+      expect(plain !== undefined && 'inkLimit' in plain).toBe(false);
+    });
+
+    it.each<unknown>([
+      'yes',
+      null,
+      { limitPercent: 99, method: 'gcr' },
+      { limitPercent: 401, method: 'gcr' },
+      { limitPercent: 250.5, method: 'proportional' },
+      { limitPercent: 300, method: 'gcr2' },
+      { limitPercent: 300, method: 'gcr', extra: 1 },
+    ])('reads a stored invalid inkLimit %j back with no inkLimit', async (inkLimit) => {
+      const db = openDatabase();
+      const repo = new SqliteJobRepository(db);
+      const expected = job({ status: 'queued', whiteInk: { mode: 'spot' }, screening: { kind: 'bayer', size: 4 } });
+      await repo.save(expected);
+      db.prepare('UPDATE jobs SET doc = ? WHERE id = ?').run(JSON.stringify({ ...expected, inkLimit }), 'job-1');
+
+      expect(await repo.get('job-1')).toStrictEqual(expected);
+      expect(await repo.list()).toStrictEqual([expected]);
+      expect((await repo.queue()).items).toStrictEqual([expected]);
+      expect(await repo.findLiveBySha256('hf-1', 'a'.repeat(64))).toStrictEqual(expected);
+    });
+  });
 });
 
 describe('SqliteHotFolderRepository', () => {

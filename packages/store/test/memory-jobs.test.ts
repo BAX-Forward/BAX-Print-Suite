@@ -37,6 +37,13 @@ function storedWithScreening(screening: unknown): Job {
   throw new TypeError('not a job document');
 }
 
+/** A job document whose `inkLimit` is not a setting (spec 040b). */
+function storedWithInkLimit(inkLimit: unknown): Job {
+  const doc: unknown = JSON.parse(JSON.stringify({ ...job(), inkLimit }));
+  if (typeof doc === 'object' && doc !== null && 'id' in doc) return Object.assign(job(), doc);
+  throw new TypeError('not a job document');
+}
+
 describe('MemoryJobRepository whiteInk (spec 038c)', () => {
   it('round-trips a valid setting and leaves an absent one absent', async () => {
     const repo = new MemoryJobRepository();
@@ -91,6 +98,47 @@ describe('MemoryJobRepository screening (spec 039b)', () => {
   ])('reads a stored invalid screening %j back with no screening', async (screening) => {
     const repo = new MemoryJobRepository();
     await repo.save(storedWithScreening(screening));
+
+    expect(await repo.get('job-1')).toStrictEqual(job());
+    expect(await repo.list()).toStrictEqual([job()]);
+  });
+});
+
+describe('MemoryJobRepository inkLimit (spec 040b)', () => {
+  it('round-trips valid settings, keeps other settings, and leaves an absent one absent', async () => {
+    const repo = new MemoryJobRepository();
+    const gcr = job({ id: 'gcr', inkLimit: { limitPercent: 260, method: 'gcr' } });
+    const proportional = job({
+      id: 'proportional',
+      whiteInk: { mode: 'flood', density: 100 },
+      screening: { kind: 'bayer', size: 4 },
+      inkLimit: { limitPercent: 100, method: 'proportional' },
+    });
+    const existing = job({ id: 'existing', screening: { kind: 'blue-noise', size: 128, seed: 7 } });
+    await repo.save(gcr);
+    await repo.save(proportional);
+    await repo.save(existing);
+    await repo.save(job({ id: 'plain' }));
+
+    expect(await repo.get('gcr')).toStrictEqual(gcr);
+    expect(await repo.get('proportional')).toStrictEqual(proportional);
+    expect(await repo.get('existing')).toStrictEqual(existing);
+    const plain = await repo.get('plain');
+    expect(plain).toStrictEqual(job({ id: 'plain' }));
+    expect(plain !== undefined && 'inkLimit' in plain).toBe(false);
+  });
+
+  it.each<unknown>([
+    'yes',
+    null,
+    { limitPercent: 99, method: 'gcr' },
+    { limitPercent: 401, method: 'gcr' },
+    { limitPercent: 250.5, method: 'gcr' },
+    { limitPercent: 300, method: 'gcr2' },
+    { limitPercent: 300, method: 'gcr', extra: 1 },
+  ])('reads a stored invalid inkLimit %j back with no inkLimit', async (inkLimit) => {
+    const repo = new MemoryJobRepository();
+    await repo.save(storedWithInkLimit(inkLimit));
 
     expect(await repo.get('job-1')).toStrictEqual(job());
     expect(await repo.list()).toStrictEqual([job()]);
