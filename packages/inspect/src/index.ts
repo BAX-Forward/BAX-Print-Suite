@@ -14,6 +14,7 @@ export * from "./content-lexer.js";
 export * from "./content-scan.js";
 export * from "./document-model.js";
 export * from "./inspector.js";
+export * from "./jdf-ticket.js";
 export * from "./preflight.js";
 export * from "./profile.js";
 export * from "./raster-checks.js";
