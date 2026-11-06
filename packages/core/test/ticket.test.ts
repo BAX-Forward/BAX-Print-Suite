@@ -1,5 +1,11 @@
 import { describe, expect, it } from "vitest";
-import { parseTicketAccountingId, parseTicketEdits, ticketEdits, type JobTicket } from "../src/index.js";
+import {
+  parseTicketAccountingId,
+  parseTicketEdits,
+  parseTicketSiteId,
+  ticketEdits,
+  type JobTicket,
+} from "../src/index.js";
 
 const BASE: JobTicket = { intent: { quantity: 1 }, process: {} };
 
@@ -66,5 +72,38 @@ describe("ticket accounting ID", () => {
     const ticket: JobTicket = { ...BASE, accountingId: "ACME" };
     const restored = JSON.parse(JSON.stringify(ticket)) as JobTicket;
     expect(parseTicketAccountingId(restored.accountingId)).toEqual({ ok: true, value: "ACME" });
+  });
+});
+
+describe("ticket site ID", () => {
+  it("accepts a valid site ID and trims it", () => {
+    expect(parseTicketSiteId("  north-hall  ")).toEqual({ ok: true, value: "north-hall" });
+  });
+
+  it("treats an absent site ID as no site", () => {
+    expect(parseTicketSiteId(undefined)).toEqual({ ok: true, value: undefined });
+  });
+
+  it.each<[unknown, string]>([
+    ["", "empty"],
+    ["a", "too short"],
+    ["a".repeat(33), "too long"],
+    ["-north", "leading dash"],
+    ["north-", "trailing dash"],
+    ["North", "uppercase"],
+    ["north_hall", "bad character"],
+    [7, "not a string"],
+  ])("rejects %j (%s) with an error on the siteId field", (input) => {
+    const result = parseTicketSiteId(input);
+    expect(result.ok).toBe(false);
+    if (result.ok) return;
+    expect(result.error.field).toBe("siteId");
+    expect(result.error.errors).toHaveLength(1);
+  });
+
+  it("round-trips a site ID through JSON, as a store does", () => {
+    const ticket: JobTicket = { ...BASE, siteId: "default" };
+    const restored = JSON.parse(JSON.stringify(ticket)) as JobTicket;
+    expect(parseTicketSiteId(restored.siteId)).toEqual({ ok: true, value: "default" });
   });
 });
