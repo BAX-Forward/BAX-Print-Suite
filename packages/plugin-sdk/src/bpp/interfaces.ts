@@ -4,7 +4,7 @@
  * RenderEngine, ColorEngine, Screener and Storage are type definitions only until their
  * milestones. CutterDriver/2 lives in `../cutter.ts` (spec 004).
  */
-import type { BandDataParams } from './protocol.js';
+import type { BandDataParams, FileBandHandle } from './protocol.js';
 
 // ---------------------------------------------------------------------------------------------
 // PrinterDriver/1
@@ -18,6 +18,8 @@ export const PrinterDriverMethods = Object.freeze({
   complete: 'printer/complete',
   cancel: 'printer/cancel',
   accounting: 'printer/accounting',
+  /** Optional (spec 034a0): only drivers that advertise `documentFormats` answer it. */
+  submitDocument: 'printer/submitDocument',
 });
 
 /** Notifications a PrinterDriver sends to the host. */
@@ -33,8 +35,29 @@ export interface PrinterCapabilities {
   resolutionsDpi: Array<[number, number]>;
   maxPrintWidthMm?: number;
   mediaHandling?: Array<'roll' | 'sheet'>;
+  /**
+   * Optional (spec 034a0). A non-empty array means the device accepts finished documents through
+   * `printer/submitDocument`; absent or empty means band input only.
+   */
+  documentFormats?: PrinterDocumentFormat[];
+  /** Optional per-device document size limit in bytes; the SDK caps it at `MAX_DOCUMENT_BYTES`. */
+  maxDocumentBytes?: number;
   [key: string]: unknown;
 }
+
+/** Finished-document formats a driver may advertise in `documentFormats`. */
+export const PRINTER_DOCUMENT_FORMATS = ['pdf', 'tiff'] as const;
+export type PrinterDocumentFormat = (typeof PRINTER_DOCUMENT_FORMATS)[number];
+
+/** Upper bound on a document handed to `printer/submitDocument` (1 GiB). */
+export const MAX_DOCUMENT_BYTES = 1024 * 1024 * 1024;
+
+/** Values of `error.data.code` when `printer/submitDocument` is refused with InvalidParams. */
+export const DocumentErrorCodes = Object.freeze({
+  tooLarge: 'DOCUMENT_TOO_LARGE',
+  mismatch: 'DOCUMENT_MISMATCH',
+  formatNotAccepted: 'FORMAT_NOT_ACCEPTED',
+});
 
 export interface DiscoveredPrinter {
   deviceId: string;
@@ -86,6 +109,28 @@ export interface SubmitResult {
   reason?: string;
 }
 
+/**
+ * `printer/submitDocument` params (spec 034a0). The document travels like a band: a `file` handle
+ * into the host spool, never bytes in JSON. `byteLength` and `sha256` must match the file.
+ */
+export interface SubmitDocumentParams {
+  deviceId: string;
+  jobId: string;
+  submissionId: string;
+  format: PrinterDocumentFormat;
+  byteLength: number;
+  /** Lowercase or uppercase hex SHA-256 of the file. */
+  sha256: string;
+  document: FileBandHandle;
+  /** 1-999; the driver's default when absent. */
+  copies?: number;
+  mediaName?: string;
+}
+
+export interface SubmitDocumentResult {
+  submissionId: string;
+}
+
 export interface SubmissionParams {
   submissionId: string;
 }
@@ -133,6 +178,11 @@ export interface PrinterDriverV1 {
   complete(params: SubmissionParams): Promise<CompleteResult>;
   cancel(params: SubmissionParams): Promise<void>;
   accounting(params: DeviceParams): Promise<AccountingResult>;
+  /**
+   * Optional (spec 034a0). Receives a finished document already read from the spool and checked
+   * against `byteLength` and `sha256`. Status and cancel go through `getStatus` and `cancel`.
+   */
+  submitDocument?(params: SubmitDocumentParams, bytes: Uint8Array): Promise<SubmitDocumentResult>;
 }
 
 // ---------------------------------------------------------------------------------------------

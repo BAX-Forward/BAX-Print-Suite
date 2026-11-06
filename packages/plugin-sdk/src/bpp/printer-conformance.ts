@@ -2,9 +2,12 @@
  * PrinterDriver/1 conformance suite. Runs a driver in-process against the contract in
  * `interfaces.ts`: discovery, status, media, a full band submission, refusal of duplicates,
  * incomplete and cancelled submissions, and accounting. Band buffers are written to `spoolDir`.
+ * Devices that advertise `documentFormats` also get the optional document checks (spec 034a0).
  */
 import { writeFileBand } from './band-io.js';
 import type { DiscoveredPrinter, PrinterDriverV1, PrinterState, SubmitParams } from './interfaces.js';
+import { acceptsDocuments } from './printer.js';
+import { runDocumentConformance } from './printer-document-conformance.js';
 import type { BandMessage } from './protocol.js';
 
 export interface PrinterConformanceCheck {
@@ -48,6 +51,8 @@ function deviceProblems(device: DiscoveredPrinter): string | undefined {
   if (typeof device.deviceId !== 'string' || device.deviceId === '') problems.push('deviceId must be a non-empty string');
   if (typeof device.name !== 'string' || device.name === '') problems.push('name must be a non-empty string');
   if (!caps || (caps.input !== 'bands' && caps.input !== 'document')) problems.push('capabilities.input must be "bands" or "document"');
+  // Raster fields describe band input; a document-input device may leave them empty.
+  if (caps?.input === 'document') return problems.length === 0 ? undefined : problems.join('; ');
   if (!Array.isArray(caps?.colorants) || caps.colorants.length === 0) problems.push('capabilities.colorants must be non-empty');
   if (!Array.isArray(caps?.bitsPerSample) || caps.bitsPerSample.length === 0) problems.push('capabilities.bitsPerSample must be non-empty');
   if (!Array.isArray(caps?.resolutionsDpi) || caps.resolutionsDpi.length === 0) problems.push('capabilities.resolutionsDpi must be non-empty');
@@ -96,6 +101,14 @@ export async function runPrinterDriverConformance(
     const bad = media.find((item) => typeof item.id !== 'string' || typeof item.name !== 'string');
     return bad ? `media entry without id/name: ${JSON.stringify(bad)}` : undefined;
   });
+
+  // Optional (spec 034a0): only devices that advertise documentFormats get the document checks.
+  if (acceptsDocuments(caps)) {
+    await run('document checks set up a spool file and a BPP connection', async () => {
+      await runDocumentConformance(driver, { deviceId, capabilities: caps, spoolDir: options.spoolDir, runId }, run);
+      return undefined;
+    });
+  }
 
   if (caps.input !== 'bands') {
     checks.push({ name: 'band submission checks', ok: true, detail: 'skipped: device takes document input' });

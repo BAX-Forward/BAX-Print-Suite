@@ -1,6 +1,10 @@
 import type { SdkRenderingIntent } from './common.js';
 
-/** PrinterDriver/1.1 adds the optional `listModes`. Minor version: older drivers stay compatible. */
+/**
+ * PrinterDriver/1.1 adds the optional `listModes`. Minor version: older drivers stay compatible.
+ * Spec 034a0 adds the optional `printer/submitDocument`; hosts detect it from
+ * `capabilities.documentFormats`, not from this media version, so the constant is unchanged.
+ */
 export const PRINTER_DRIVER_INTERFACE = 'PrinterDriver';
 export const PRINTER_DRIVER_MEDIA_VERSION = '1.1';
 

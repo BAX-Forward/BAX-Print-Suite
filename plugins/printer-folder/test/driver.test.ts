@@ -1,3 +1,4 @@
+import { createHash } from "node:crypto";
 import { chmod, mkdir, mkdtemp, readdir, readFile, rm, symlink, unlink, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -6,12 +7,18 @@ import { afterEach, describe, expect, it } from "vitest";
 import {
   BPP_PROTOCOL,
   Connection,
+  DocumentErrorCodes,
+  ErrorCodes,
+  MAX_DOCUMENT_BYTES,
   PluginServer,
   PrinterDriverMethods,
   registerPrinterDriver,
+  runPrinterDriverConformance,
   silentLogger,
   validatePluginManifest,
+  writeFileBand,
   type PrinterStatus,
+  type SubmitDocumentResult,
   type SubmitResult,
 } from "@bax-print/plugin-sdk";
 import {
@@ -327,7 +334,14 @@ describe("printer-folder describe and PrinterDriver/1", () => {
       outputDir,
       acceptedFormats: ["pdf"],
       writesTicket: true,
-      capabilities: { input: "document", colorants: [], bitsPerSample: [], resolutionsDpi: [], documentFormats: ["pdf"] },
+      capabilities: {
+        input: "document",
+        colorants: [],
+        bitsPerSample: [],
+        resolutionsDpi: [],
+        documentFormats: ["pdf"],
+        maxDocumentBytes: MAX_DOCUMENT_BYTES,
+      },
     });
     // Apart from the configured path, every string the driver reports comes from this generic vocabulary.
     const generic = new Set(["folder-output", "Folder output", "file-drop", "document", "pdf", "tiff"]);
@@ -397,5 +411,138 @@ describe("printer-folder describe and PrinterDriver/1", () => {
     expect(await listing(outputDir)).toEqual([]);
     host.close();
     server.connection.close();
+  });
+});
+
+/** A folder driver served over an in-memory BPP connection, with the temp root as the host spool. */
+async function servedDriver(
+  settings: Record<string, unknown> = {},
+): Promise<{ host: Connection; spoolDir: string; outputDir: string; close: () => void }> {
+  const { root, outputDir } = await fakeDevice();
+  const spoolDir = join(root, "spool");
+  await mkdir(spoolDir);
+  const hostToPlugin = new PassThrough();
+  const pluginToHost = new PassThrough();
+  const server = new PluginServer({
+    plugin: { id: "org.bax-print.printer.folder", name: "Folder Output Driver", version: "0.1.0" },
+    offers: [{ interface: "PrinterDriver", version: "1.0.0" }],
+    input: hostToPlugin,
+    output: pluginToHost,
+    log: silentLogger,
+  });
+  const driver = new FolderPrinterDriver(server, { now: () => FIXED_NOW });
+  driver.configure({ outputDir, ...settings });
+  registerPrinterDriver(server, driver);
+  const host = new Connection(pluginToHost, hostToPlugin);
+  await host.request("initialize", {
+    protocol: BPP_PROTOCOL,
+    host: { name: "test-host", version: "0.0.0" },
+    interfaces: [{ interface: "PrinterDriver", versions: ">=1.0 <2" }],
+    spoolDir,
+    capabilities: { transports: ["file"] },
+  });
+  const close = (): void => {
+    host.close();
+    server.connection.close();
+  };
+  return { host, spoolDir, outputDir, close };
+}
+
+function sha256Hex(data: Uint8Array): string {
+  return createHash("sha256").update(data).digest("hex");
+}
+
+describe("printer-folder printer/submitDocument (spec 034a0)", () => {
+  it("advertises its accepted formats and the SDK document limit", async () => {
+    const { driver } = await configuredDriver({ acceptedFormats: ["tiff"] });
+    const { devices } = await driver.discover();
+    expect(devices[0]?.capabilities).toMatchObject({
+      input: "document",
+      documentFormats: ["tiff"],
+      maxDocumentBytes: MAX_DOCUMENT_BYTES,
+    });
+  });
+
+  it("writes the document and its ticket when submitted over BPP", async () => {
+    const { host, spoolDir, outputDir, close } = await servedDriver();
+    try {
+      const document = await writeFileBand(spoolDir, "jobs/job-bpp.pdf", PDF);
+      const result = await host.request<SubmitDocumentResult>(PrinterDriverMethods.submitDocument, {
+        deviceId: FOLDER_DEVICE_ID,
+        jobId: "job-bpp",
+        submissionId: "sub-bpp",
+        format: "pdf",
+        byteLength: PDF.byteLength,
+        sha256: sha256Hex(PDF),
+        document,
+        copies: 2,
+        mediaName: "Proof paper",
+      });
+      expect(result).toEqual({ submissionId: "sub-bpp" });
+      expect(await listing(outputDir)).toEqual(["job-bpp.bps-ticket.json", "job-bpp.pdf"]);
+      expect(new Uint8Array(await readFile(join(outputDir, "job-bpp.pdf")))).toEqual(PDF);
+      const ticket: unknown = JSON.parse(await readFile(join(outputDir, "job-bpp.bps-ticket.json"), "utf8"));
+      expect(ticket).toMatchObject({
+        bpsTicket: TICKET_VERSION,
+        jobId: "job-bpp",
+        file: "job-bpp.pdf",
+        format: "pdf",
+        copies: 2,
+        media: { name: "Proof paper" },
+        createdAt: FIXED_NOW.toISOString(),
+      });
+      // Cancel reuses printer/cancel unchanged and removes the waiting file and ticket.
+      await expect(host.request(PrinterDriverMethods.cancel, { submissionId: "sub-bpp" })).resolves.toBeNull();
+      expect(await listing(outputDir)).toEqual([]);
+    } finally {
+      close();
+    }
+  });
+
+  it("refuses formats it does not accept, duplicates and mismatched files without writing", async () => {
+    const { host, spoolDir, outputDir, close } = await servedDriver({ acceptedFormats: ["pdf"] });
+    try {
+      const pdf = await writeFileBand(spoolDir, "jobs/a.pdf", PDF);
+      const tiff = await writeFileBand(spoolDir, "jobs/a.tif", TIFF);
+      const base = {
+        deviceId: FOLDER_DEVICE_ID,
+        jobId: "job-r",
+        submissionId: "sub-r",
+        format: "pdf",
+        byteLength: PDF.byteLength,
+        sha256: sha256Hex(PDF),
+        document: pdf,
+      };
+      const submit = (params: Record<string, unknown>): Promise<SubmitDocumentResult> =>
+        host.request<SubmitDocumentResult>(PrinterDriverMethods.submitDocument, params);
+      await expect(
+        submit({ ...base, format: "tiff", byteLength: TIFF.byteLength, sha256: sha256Hex(TIFF), document: tiff }),
+      ).rejects.toMatchObject({ code: ErrorCodes.InvalidParams, data: { code: DocumentErrorCodes.formatNotAccepted } });
+      await expect(submit({ ...base, sha256: sha256Hex(TIFF) })).rejects.toMatchObject({
+        code: ErrorCodes.InvalidParams,
+        data: { code: DocumentErrorCodes.mismatch },
+      });
+      expect(await listing(outputDir)).toEqual([]);
+      await expect(submit(base)).resolves.toEqual({ submissionId: "sub-r" });
+      await expect(submit({ ...base, jobId: "job-r2" })).rejects.toMatchObject({ code: ErrorCodes.InvalidParams });
+      expect(await listing(outputDir)).toEqual(["job-r.bps-ticket.json", "job-r.pdf"]);
+    } finally {
+      close();
+    }
+  });
+
+  it("passes the PrinterDriver/1 conformance suite including the document checks", async () => {
+    const { driver, root } = await configuredDriver();
+    const report = await runPrinterDriverConformance(driver, { spoolDir: root, runId: "folder" });
+    expect(report.checks.filter((check) => check.ok === false)).toEqual([]);
+    expect(report.checks.map((check) => check.name)).toEqual(
+      expect.arrayContaining([
+        "submitDocument accepts a small document from the spool",
+        "submitDocument rejects a document whose size differs",
+        "submitDocument rejects a document whose sha256 differs",
+        "submitDocument rejects a document above the size limit",
+      ]),
+    );
+    expect(report.passed).toBe(true);
   });
 });
