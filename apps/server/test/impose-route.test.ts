@@ -7,7 +7,8 @@ import { afterEach, describe, expect, it } from 'vitest';
 import { ArchiveService, StaticColorSetupResolver } from '@bax-print/archive';
 import type { Actor, SiteMembership, SourceFormat } from '@bax-print/core';
 import { EventBus, MemoryOutbox } from '@bax-print/events';
-import { MAX_PROOF_SIDES } from '@bax-print/marks';
+import { MAX_PROOF_SIDES, renderImposedSheets } from '@bax-print/marks';
+import { planNUp } from '@bax-print/nest';
 import { LocalDirStorage, MemoryArchiveIndex, MemoryJobRepository, MemoryStorage } from '@bax-print/store';
 import { buildServer } from '../src/app.js';
 import { IMPOSE_BODY_LIMIT } from '../src/imposition-routes.js';
@@ -325,6 +326,25 @@ describe('POST /jobs/:id/impose (Spec 036e)', () => {
     const sheetsOf = async (payload: Buffer) => (await PDFDocument.load(payload)).getPages().map((page) => page.getMediaBox());
     expect(before.statusCode).toBe(200);
     expect(await sheetsOf(cleared.rawPayload)).toEqual(await sheetsOf(before.rawPayload));
+  });
+
+  it('answers an untiled n-up with the bytes renderImposedSheets builds, before and after a tiling is set and cleared (Spec 051b)', async () => {
+    const h = await createHarness();
+    const bytes = await sourcePdf(12);
+    const jobId = await createJob(h, bytes);
+    const job = await h.repository.get(jobId);
+    if (job === undefined) throw new Error('job was not stored');
+    // The imposed sheets are written without metadata, so no date can differ between two renders.
+    const direct = Buffer.from(await renderImposedSheets(planNUp(N_UP_2X3), bytes, { sheet: N_UP_2X3.sheet, proofMarks: false }));
+
+    const before = await impose(h, jobId, { kind: 'n-up', options: N_UP_2X3 });
+    await h.repository.save({ ...job, tiling: { grid: { columns: 3, rows: 2 } } });
+    await h.repository.save(job);
+    const after = await impose(h, jobId, { kind: 'n-up', options: N_UP_2X3 });
+
+    expect(before.statusCode).toBe(200);
+    expect(before.rawPayload.equals(direct)).toBe(true);
+    expect(after.rawPayload.equals(direct)).toBe(true);
   });
 
   it('allows a viewer, whose role holds jobs:read', async () => {
