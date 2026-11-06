@@ -179,10 +179,10 @@ const BookletPlanSchema = z
 
 type ParsedNUp = z.output<typeof NUpPlanSchema>;
 type ParsedBooklet = z.output<typeof BookletPlanSchema>;
-type ParsedPlan = { readonly kind: "n-up"; readonly plan: ParsedNUp } | { readonly kind: "booklet"; readonly plan: ParsedBooklet };
+export type ParsedPlan = { readonly kind: "n-up"; readonly plan: ParsedNUp } | { readonly kind: "booklet"; readonly plan: ParsedBooklet };
 
 /** An object with `placements` is read as an n-up plan, anything else as a booklet plan. */
-function parsePlan(input: unknown): ParsedPlan {
+export function parsePlan(input: unknown): ParsedPlan {
   if (input instanceof Object && "placements" in input) {
     const parsed = NUpPlanSchema.safeParse(input);
     if (parsed.success) return { kind: "n-up", plan: parsed.data };
@@ -551,7 +551,7 @@ function labelOps(s: ImpositionProofSide): string[] {
 }
 
 /** Grey gutter and blank fills, then outlines, marks and labels in DeviceGray black. */
-function sideContent(s: ImpositionProofSide): string {
+export function sideContent(s: ImpositionProofSide): string {
   const blanks = s.slots.filter((slot) => slot.page === "blank").map((slot) => slot.frame);
   const ops = [
     "q",
