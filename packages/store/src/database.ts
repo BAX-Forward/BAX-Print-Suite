@@ -99,6 +99,25 @@ export const MIGRATIONS: readonly Migration[] = Object.freeze([
       );
     `,
   },
+  {
+    version: 6,
+    name: 'api tokens',
+    sql: `
+      CREATE TABLE api_tokens (
+        id TEXT PRIMARY KEY,
+        name TEXT NOT NULL,
+        prefix TEXT NOT NULL,
+        secret_hash TEXT NOT NULL UNIQUE,
+        scopes_json TEXT NOT NULL,
+        created_at TEXT NOT NULL,
+        expires_at TEXT,
+        revoked_at TEXT,
+        user_id TEXT REFERENCES users (id) ON DELETE CASCADE
+      );
+      CREATE INDEX api_tokens_prefix ON api_tokens (prefix);
+      CREATE INDEX api_tokens_user ON api_tokens (user_id, created_at, id);
+    `,
+  },
 ]);
 
 function applyMigrations(db: DatabaseSync): void {
@@ -188,6 +207,8 @@ export function openDatabase(location: string = IN_MEMORY): DatabaseSync {
     db.exec('PRAGMA journal_mode = WAL');
   }
   db.exec('PRAGMA busy_timeout = 5000');
+  // API tokens cascade on user delete (migration 6); do not rely on the driver's default.
+  db.exec('PRAGMA foreign_keys = ON');
   applyMigrations(db);
   return db;
 }
