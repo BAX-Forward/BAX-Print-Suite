@@ -562,6 +562,9 @@ const API_DESCRIPTION = [
   'The server binds 127.0.0.1 by default; do not expose it beyond loopback without a resolver.',
   'With login on (`BPS_LOGIN=1`), `POST /login` starts a session and every guarded route needs its token, as the',
   '`bps_session` cookie or an `Authorization: Bearer` header; a caller without one gets 401 and there is no local admin.',
+  'Spec 031c: a job records `sourceFormat` (`pdf`, `png`, `jpeg` or `tiff`), detected from the magic bytes of its first source file,',
+  'and omits it when the bytes match none of them. Job creation takes any bytes; a hot folder takes in TIFF, JPEG and PNG files',
+  'only when its settings have `acceptRaster: true`, and otherwise matches its `filePatterns` alone.',
 ].join(' ');
 
 /** Collects documented routes through Fastify's `onRoute` hook. */

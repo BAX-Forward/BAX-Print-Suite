@@ -115,6 +115,23 @@ describe('one server for archive, preflight and media (Spec 007d)', () => {
     expect(Object.keys(document.paths)).not.toContain('/preflight-profiles');
   });
 
+  it('documents sourceFormat and acceptRaster in /openapi.json (Spec 031c)', async () => {
+    const document = (await h.app.inject({ method: 'GET', url: '/openapi.json' })).json<{ info: { description: string } }>();
+    expect(document.info.description).toContain('`sourceFormat`');
+    expect(document.info.description).toContain('`acceptRaster: true`');
+  });
+
+  it('takes a PNG job through the job routes like a PDF job and keeps its sourceFormat (Spec 031c)', async () => {
+    const png = Uint8Array.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 0, 0, 0, 13, 0x49, 0x48, 0x44, 0x52]);
+    const job = await h.jobs.create({ name: 'Photo', sources: [{ name: 'photo.png', bytes: png }], ticket: TICKET });
+
+    const inspected = await h.app.inject({ method: 'POST', url: `/jobs/${job.id}/inspect` });
+
+    expect(inspected.statusCode).toBe(200);
+    expect(inspected.json()).toMatchObject({ jobId: job.id, status: 'held' });
+    expect((await h.jobs.get(job.id)).sourceFormat).toBe('png');
+  });
+
   it('holds a job through preflight, clears it, then refuses to archive it while in production', async () => {
     const id = await receivedJob(h);
     const inspected = await h.app.inject({ method: 'POST', url: `/jobs/${id}/inspect` });

@@ -5,6 +5,7 @@ import {
   isTerminal,
   nextUlid,
   noopLogger,
+  sniffSourceFormat,
   systemClock,
   withStatus,
   type Clock,
@@ -203,12 +204,14 @@ export async function ingestFile(path: string, folder: HotFolder, deps: IntakeDe
     const id = nextUlid(Date.parse(createdAt));
     const storageKey = sourceKey(id, 0, name);
     const template = folder.settings.ticketTemplate;
+    const sourceFormat = sniffSourceFormat(bytes);
     job = await recorder.create({
       id,
       name,
       status: 'received',
       priority: folder.settings.defaultPriority,
       hotFolderId: folder.id,
+      ...(sourceFormat === undefined ? {} : { sourceFormat }),
       sourceFiles: [{ name, sha256, sizeBytes: bytes.byteLength, storageKey }],
       artifacts: [],
       ticket: template ? structuredClone(template) : { intent: { quantity: 1 }, process: {} },

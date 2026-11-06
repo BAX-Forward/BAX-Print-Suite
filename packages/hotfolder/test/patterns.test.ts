@@ -1,3 +1,4 @@
+import { effectiveFilePatterns } from '@bax-print/core';
 import { describe, expect, it } from 'vitest';
 import { globToRegExp, isCandidateFileName, isTemporaryFileName, matchesFilePatterns } from '../src/index.js';
 
@@ -30,5 +31,18 @@ describe('hot folder file patterns', () => {
     expect(isCandidateFileName('.order.pdf', ['*.pdf'])).toBe(false);
     expect(isCandidateFileName('order.pdf.part', ['*.pdf', '*.part'])).toBe(false);
     expect(isCandidateFileName('order.eps', ['*.pdf'])).toBe(false);
+  });
+
+  it('takes in raster names only through the effective patterns of an opted-in folder (Spec 031c)', () => {
+    const off = effectiveFilePatterns({ filePatterns: ['*.pdf'] });
+    const on = effectiveFilePatterns({ filePatterns: ['*.pdf'], acceptRaster: true });
+    for (const name of ['scan.tif', 'scan.TIFF', 'photo.jpg', 'photo.jpeg', 'logo.png']) {
+      expect(isCandidateFileName(name, off), name).toBe(false);
+      expect(isCandidateFileName(name, on), name).toBe(true);
+    }
+    expect(isCandidateFileName('order.pdf', off)).toBe(true);
+    expect(isCandidateFileName('order.pdf', on)).toBe(true);
+    expect(isCandidateFileName('logo.png.part', on)).toBe(false);
+    expect(isCandidateFileName('logo.gif', on)).toBe(false);
   });
 });

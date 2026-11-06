@@ -1,7 +1,7 @@
 import { lstat, readdir, stat } from 'node:fs/promises';
 import { basename, dirname, join, resolve } from 'node:path';
 import { watch, type FSWatcher } from 'chokidar';
-import { FAILED_SUBFOLDER, noopLogger, type HotFolder, type Logger } from '@bax-print/core';
+import { FAILED_SUBFOLDER, effectiveFilePatterns, noopLogger, type HotFolder, type Logger } from '@bax-print/core';
 import { hotFolderFileDetectedEvent } from '@bax-print/events';
 import type { HotFolderRepository } from '@bax-print/store';
 import { HOTFOLDER_EVENT_SOURCE, ingestFile, type IntakeDeps, type IntakeOutcome } from './intake.js';
@@ -178,7 +178,7 @@ export class HotFolderWatcher {
       return;
     }
     const name = basename(absolute);
-    if (!isCandidateFileName(name, this.folder.settings.filePatterns)) {
+    if (!isCandidateFileName(name, effectiveFilePatterns(this.folder.settings))) {
       return;
     }
     let stats;

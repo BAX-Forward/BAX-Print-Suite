@@ -84,6 +84,29 @@ export interface HotFolderSettings {
   readonly ticketTemplate?: JobTicket;
   /** Preflight profile for jobs from this folder (Spec 007 FR2). A per-job ticket profile overrides it. */
   readonly preflightProfileId?: string;
+  /**
+   * Spec 031c: also take in TIFF, JPEG and PNG files ({@link RASTER_FILE_PATTERNS}). Absent means
+   * `false`: only `filePatterns` decide, as before.
+   */
+  readonly acceptRaster?: boolean;
+}
+
+/** Spec 031c: the patterns a hot folder adds to `filePatterns` when `acceptRaster` is on. */
+export const RASTER_FILE_PATTERNS: readonly string[] = Object.freeze(['*.tif', '*.tiff', '*.jpg', '*.jpeg', '*.png']);
+
+/**
+ * The patterns a hot folder matches: `filePatterns`, plus {@link RASTER_FILE_PATTERNS} that are not
+ * already listed (compared case-insensitively, like the matching) when `acceptRaster` is on.
+ */
+export function effectiveFilePatterns(
+  settings: Pick<HotFolderSettings, 'filePatterns' | 'acceptRaster'>,
+): readonly string[] {
+  if (settings.acceptRaster === true) {
+    const listed = new Set(settings.filePatterns.map((pattern) => pattern.toLowerCase()));
+    const missing = RASTER_FILE_PATTERNS.filter((pattern) => listed.has(pattern) === false);
+    return [...settings.filePatterns, ...missing];
+  }
+  return settings.filePatterns;
 }
 
 export const DEFAULT_HOT_FOLDER_SETTINGS: Readonly<HotFolderSettings> = Object.freeze({
@@ -107,6 +130,8 @@ export function withHotFolderDefaults(settings: Partial<HotFolderSettings> = {})
     dedupe: settings.dedupe ?? DEFAULT_HOT_FOLDER_SETTINGS.dedupe,
     ...(settings.ticketTemplate ? { ticketTemplate: settings.ticketTemplate } : {}),
     ...(settings.preflightProfileId ? { preflightProfileId: settings.preflightProfileId } : {}),
+    // Only stored when on, so settings saved before Spec 031c keep their shape.
+    ...(settings.acceptRaster === true ? { acceptRaster: true } : {}),
   };
 }
 
