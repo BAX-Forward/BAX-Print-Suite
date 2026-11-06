@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import type { Job, JobTicket, TilingSetting } from '@bax-print/core';
-import { DEFAULT_OVERLAP_MM, mmToPt, panelItemId, tile, type PanelNestItem } from '@bax-print/tile/layout';
+import { DEFAULT_OVERLAP_MM, mmToPt, panelItemId, ptToMm, tile, toNestItems, type PanelNestItem } from '@bax-print/tile/layout';
 import { errorResponse, HttpError } from '../src/errors.js';
 import {
   jobTilingNestItems,
@@ -179,6 +179,134 @@ describe('requireJobTilingNestItems (Spec 050b)', () => {
     expect(errorResponse(thrown)).toEqual({
       statusCode: 422,
       body: { error: { code: 'tiling_unsupported', message: `Job ${JOB_ID} can not be tiled`, details: issuesOf(job, source) } },
+    });
+  });
+});
+
+/** A 600 × 400 pt poster whose TrimBox starts at (10, 20) pt. */
+const POSTER: JobTilingSource = { pageCount: 1, pageIndex: 0, trimBoxPt: { x: 10, y: 20, widthPt: 600, heightPt: 400 } };
+const BUTT = { kind: 'butt' } as const;
+/** Two rows of three columns, butt seams at 50 and 120 mm across and 40 mm up. */
+const UNEVEN: TilingSetting = { grid: GRID, seam: BUTT, seamsX: [50, 120], seamsY: [40] };
+/** The uneven seams in pt from the TrimBox's left and bottom edge. */
+const SEAM_X1_PT = mmToPt(50);
+const SEAM_X2_PT = mmToPt(120);
+const SEAM_Y1_PT = mmToPt(40);
+
+/** A clip box from its corners in pt on the poster's TrimBox, in the source page's user space. */
+function posterBox(x0Pt: number, y0Pt: number, x1Pt: number, y1Pt: number) {
+  return { x: 10 + x0Pt, y: 20 + y0Pt, width: x1Pt - x0Pt, height: y1Pt - y0Pt };
+}
+
+describe('explicit seams (Spec 050d)', () => {
+  it('passes seamsX and seamsY to the tile spec unchanged', () => {
+    const { spec } = tilingToTileSpec(UNEVEN, POSTER.trimBoxPt);
+
+    expect(spec).toStrictEqual({ grid: { mode: 'count', columns: 3, rows: 2 }, seamsX: [50, 120], seamsY: [40], seam: BUTT });
+  });
+
+  it('cuts 2 x 3 panels whose clip boxes follow uneven seams exactly', () => {
+    const items = itemsOf(UNEVEN, POSTER);
+
+    expect(SEAM_X1_PT).toBeCloseTo(141.732283, 6);
+    expect(SEAM_X2_PT).toBeCloseTo(340.15748, 5);
+    expect(SEAM_Y1_PT).toBeCloseTo(113.385827, 6);
+    expect(items.map((item) => item.panel.label)).toEqual(['A1', 'A2', 'A3', 'B1', 'B2', 'B3']);
+    // Row 1 (A) is the top row, above the 40 mm seam.
+    expectBox(items[0]?.clipBox, posterBox(0, SEAM_Y1_PT, SEAM_X1_PT, 400));
+    expectBox(items[1]?.clipBox, posterBox(SEAM_X1_PT, SEAM_Y1_PT, SEAM_X2_PT, 400));
+    expectBox(items[2]?.clipBox, posterBox(SEAM_X2_PT, SEAM_Y1_PT, 600, 400));
+    expectBox(items[3]?.clipBox, posterBox(0, 0, SEAM_X1_PT, SEAM_Y1_PT));
+    expectBox(items[4]?.clipBox, posterBox(SEAM_X1_PT, 0, SEAM_X2_PT, SEAM_Y1_PT));
+    expectBox(items[5]?.clipBox, posterBox(SEAM_X2_PT, 0, 600, SEAM_Y1_PT));
+  });
+
+  it('takes seams on the x axis only and splits y evenly', () => {
+    const tiling: TilingSetting = { grid: GRID, seam: BUTT, seamsX: [50, 120] };
+    const items = itemsOf(tiling, POSTER);
+
+    expect(tilingToTileSpec(tiling, POSTER.trimBoxPt).spec).toStrictEqual({
+      grid: { mode: 'count', columns: 3, rows: 2 },
+      seamsX: [50, 120],
+      seam: BUTT,
+    });
+    expect(items).toHaveLength(6);
+    expectBox(items[0]?.clipBox, posterBox(0, 200, SEAM_X1_PT, 400));
+    expectBox(items[1]?.clipBox, posterBox(SEAM_X1_PT, 200, SEAM_X2_PT, 400));
+    expectBox(items[5]?.clipBox, posterBox(SEAM_X2_PT, 0, 600, 200));
+  });
+
+  it('takes seams on the y axis only and splits x evenly', () => {
+    const tiling: TilingSetting = { grid: GRID, seam: BUTT, seamsY: [40] };
+    const items = itemsOf(tiling, POSTER);
+
+    expect(tilingToTileSpec(tiling, POSTER.trimBoxPt).spec).toStrictEqual({
+      grid: { mode: 'count', columns: 3, rows: 2 },
+      seamsY: [40],
+      seam: BUTT,
+    });
+    expect(items).toHaveLength(6);
+    expectBox(items[0]?.clipBox, posterBox(0, SEAM_Y1_PT, 200, 400));
+    expectBox(items[4]?.clipBox, posterBox(200, 0, 400, SEAM_Y1_PT));
+    expectBox(items[5]?.clipBox, posterBox(400, 0, 600, SEAM_Y1_PT));
+  });
+
+  it.each([
+    ['without a seam', { grid: GRID }, { grid: { mode: 'count', columns: 3, rows: 2 } }],
+    ['with an overlap seam', OVERLAP, { grid: { mode: 'count', columns: 3, rows: 2 }, seam: { kind: 'overlap', overlapMm: 20 } }],
+    ['with a butt seam', { grid: GRID, seam: BUTT }, { grid: { mode: 'count', columns: 3, rows: 2 }, seam: BUTT }],
+  ] as const)('keeps the spec and nest items of a tiling without seam positions %s', (_name, tiling, expectedSpec) => {
+    const { page, spec } = tilingToTileSpec(tiling, POSTER.trimBoxPt);
+    const panels = tile(page, expectedSpec).panels;
+    const expectedItems = toNestItems(panels, { jobId: JOB_ID, pageIndex: 0, trimOriginPt: { x: 10, y: 20 } });
+
+    expect(spec).toStrictEqual(expectedSpec);
+    expect(itemsOf(tiling, POSTER)).toStrictEqual(expectedItems);
+  });
+
+  it.each([
+    ['a seamsX entry at the right edge', { grid: GRID, seamsX: [50, ptToMm(600)] }, 'seamsX[1]'],
+    ['a seamsX entry beyond the right edge', { grid: GRID, seamsX: [50, 250] }, 'seamsX[1]'],
+    ['a seamsX entry at the left edge', { grid: GRID, seamsX: [0, 120] }, 'seamsX[0]'],
+    ['a seamsY entry at the top edge', { grid: GRID, seamsY: [ptToMm(400)] }, 'seamsY[0]'],
+    ['a seamsY entry beyond the top edge', { grid: GRID, seamsY: [150] }, 'seamsY[0]'],
+  ] as const)('rejects %s with an issue', (_name, tiling, text) => {
+    const issues = issuesOf(tiledJob(tiling), POSTER);
+
+    expect(issues).toEqual([expect.stringContaining(`${text} at `)]);
+    expect(issues[0]).toContain('is not inside the artwork');
+  });
+
+  it('names every seam outside the artwork on both axes', () => {
+    const issues = issuesOf(tiledJob({ grid: GRID, seamsX: [250, 300], seamsY: [400] }), POSTER);
+
+    expect(issues).toHaveLength(3);
+    expect(issues[0]).toContain('TrimBox width of 211.667 mm');
+    expect(issues[2]).toContain('TrimBox height of 141.111 mm');
+  });
+
+  it("answers tile's issue messages when tile rejects the uneven seams", () => {
+    // An overlap of 60 mm is wider than the 50 mm first column.
+    const tiling: TilingSetting = { ...UNEVEN, seam: { kind: 'overlap', overlapMm: 60 } };
+    const { page, spec } = tilingToTileSpec(tiling, POSTER.trimBoxPt);
+    const expected = tile(page, spec).issues.map((issue) => issue.message);
+
+    expect(expected.length).toBeGreaterThan(0);
+    expect(issuesOf(tiledJob(tiling), POSTER)).toEqual(expected);
+  });
+
+  it('throws 422 tiling_unsupported for a seam outside the artwork', () => {
+    const job = tiledJob({ ...UNEVEN, seamsY: [200] });
+    let thrown: unknown;
+    try {
+      requireJobTilingNestItems(job, POSTER);
+    } catch (error) {
+      thrown = error;
+    }
+
+    expect(errorResponse(thrown)).toEqual({
+      statusCode: 422,
+      body: { error: { code: 'tiling_unsupported', message: `Job ${JOB_ID} can not be tiled`, details: issuesOf(job, POSTER) } },
     });
   });
 });
