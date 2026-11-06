@@ -11,6 +11,7 @@ export * from './color/plane-curves.js';
 export * from './screening/threshold.js';
 export * from './screening/pipeline.js';
 export * from './screening/job-adapter.js';
+export * from './screening/error-diffusion.js';
 export * from './cgats.js';
 export * from './cxf.js';
 export * from './spot-library.js';
