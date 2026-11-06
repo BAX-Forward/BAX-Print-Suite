@@ -16,7 +16,10 @@ function sqliteSql(version: number): string {
 
 describe('PG_MIGRATIONS (027b)', () => {
   it('lists versions 1-4 in order, matching the sqlite versions', () => {
-    expect(PG_MIGRATIONS.map((migration) => migration.version)).toEqual(MIRRORED_VERSIONS);
+    // Later versions mirror other sqlite stores; pg-media.test.ts checks version 5.
+    expect(PG_MIGRATIONS.map((migration) => migration.version).slice(0, MIRRORED_VERSIONS.length)).toEqual(
+      MIRRORED_VERSIONS,
+    );
     const sqliteVersions = MIGRATIONS.map((migration) => migration.version);
     expect(sqliteVersions.slice(0, MIRRORED_VERSIONS.length)).toEqual(MIRRORED_VERSIONS);
   });

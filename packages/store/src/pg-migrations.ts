@@ -3,7 +3,8 @@
  *
  * Not executed in this build. These texts mirror sqlite `MIGRATIONS` versions 1-4 in
  * database.ts with the same table, column, index and constraint names, translated to
- * PostgreSQL types. No connection is opened and no driver is loaded here.
+ * PostgreSQL types. Version 5 (spec 027h) mirrors the media store's sqlite MEDIA_MIGRATIONS
+ * version 1. No connection is opened and no driver is loaded here.
  */
 
 export interface PgMigration {
@@ -72,6 +73,70 @@ export const PG_MIGRATIONS: readonly PgMigration[] = Object.freeze([
         updated_at TEXT NOT NULL
       );
       CREATE INDEX finishing_plans_updated ON finishing_plans (updated_at, job_id);
+    `,
+  }),
+  // Spec 027h: the media store tables, mirroring sqlite MEDIA_MIGRATIONS version 1 in migrations.ts.
+  // Its append-only triggers are not mirrored: PgMediaRepository never updates or deletes those rows.
+  Object.freeze({
+    version: 5,
+    sql: `
+      CREATE TABLE media (
+        id TEXT PRIMARY KEY,
+        archived SMALLINT NOT NULL,
+        device_profile TEXT,
+        device_medium_key TEXT,
+        data JSONB NOT NULL
+      );
+      CREATE INDEX media_device_ref ON media (device_profile, device_medium_key);
+      CREATE TABLE output_modes (
+        id TEXT PRIMARY KEY,
+        medium_id TEXT NOT NULL,
+        device_profile TEXT NOT NULL,
+        mode_key TEXT NOT NULL,
+        data JSONB NOT NULL,
+        UNIQUE (medium_id, device_profile, mode_key)
+      );
+      CREATE TABLE color_setups (
+        id TEXT PRIMARY KEY,
+        medium_id TEXT NOT NULL,
+        output_mode_id TEXT NOT NULL UNIQUE,
+        data JSONB NOT NULL
+      );
+      CREATE TABLE color_setup_revisions (
+        id TEXT PRIMARY KEY,
+        color_setup_id TEXT NOT NULL,
+        seq INTEGER NOT NULL,
+        data JSONB NOT NULL,
+        UNIQUE (color_setup_id, seq)
+      );
+      CREATE TABLE presets (
+        id TEXT PRIMARY KEY,
+        medium_id TEXT NOT NULL,
+        data JSONB NOT NULL
+      );
+      CREATE TABLE profiles (
+        sha256 TEXT PRIMARY KEY,
+        data JSONB NOT NULL,
+        bytes BYTEA NOT NULL
+      );
+      CREATE TABLE profiling_sessions (
+        id TEXT PRIMARY KEY,
+        data JSONB NOT NULL
+      );
+      CREATE TABLE profiling_artifacts (
+        id TEXT PRIMARY KEY,
+        session_id TEXT NOT NULL,
+        seq INTEGER NOT NULL,
+        data JSONB NOT NULL,
+        bytes BYTEA NOT NULL
+      );
+      CREATE INDEX profiling_artifacts_session ON profiling_artifacts (session_id, seq);
+      CREATE TABLE job_color_bindings (
+        job_id TEXT PRIMARY KEY,
+        medium_id TEXT NOT NULL,
+        data JSONB NOT NULL
+      );
+      CREATE INDEX job_color_bindings_medium ON job_color_bindings (medium_id);
     `,
   }),
 ]);
