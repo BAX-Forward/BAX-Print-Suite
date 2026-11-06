@@ -9,6 +9,7 @@ import {
   normalizeJobInkLimit,
   normalizeJobPlaneCurves,
   normalizeJobScreening,
+  normalizeJobTiling,
   normalizeJobWhiteInk,
   type Job,
 } from '@bax-print/core';
@@ -50,6 +51,7 @@ function isJobDoc(value: unknown): value is Job {
  * Spec 039b: likewise a stored `screening` that is not a valid setting reads back absent.
  * Spec 040b: likewise a stored `inkLimit` that is not a valid setting reads back absent.
  * Spec 044b: likewise a stored `planeCurves` that is not a valid setting reads back absent.
+ * Spec 050a: likewise a stored `tiling` that is not a valid setting reads back absent.
  */
 function parse(row: DbRow): Job {
   const { doc } = row;
@@ -60,8 +62,8 @@ function parse(row: DbRow): Job {
   if (!isJobDoc(value)) {
     throw new TypeError('jobs row doc is not a job document');
   }
-  return normalizeJobPlaneCurves<Job>(
-    normalizeJobInkLimit<Job>(normalizeJobScreening<Job>(normalizeJobWhiteInk<Job>(value))),
+  return normalizeJobTiling<Job>(
+    normalizeJobPlaneCurves<Job>(normalizeJobInkLimit<Job>(normalizeJobScreening<Job>(normalizeJobWhiteInk<Job>(value)))),
   );
 }
 

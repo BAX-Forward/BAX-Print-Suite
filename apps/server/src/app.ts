@@ -26,6 +26,7 @@ import { registerScreeningRoutes, type ScreeningRouteOptions } from './screening
 import { scopeJobRoutes, type SiteScopeOptions } from './site-scope.js';
 import { registerStepRepeatRoutes, type StepRepeatRouteOptions } from './step-repeat-routes.js';
 import { registerSwatchChartRoutes } from './swatch-chart-routes.js';
+import { registerTilingRoutes, type TilingRouteOptions } from './tiling-routes.js';
 import { httpsServerFactory, type HttpsOptions } from './tls.js';
 import { registerWebhookRoutes, type WebhookOptions } from './webhook-routes.js';
 import { registerWhiteInkRoutes, type WhiteInkRouteOptions } from './white-ink-routes.js';
@@ -108,6 +109,11 @@ export interface ServerDeps {
    * `jobs`. `main.ts` sets it only with `BPS_PLANE_CURVES=1`.
    */
   readonly planeCurves?: PlaneCurvesRouteOptions;
+  /**
+   * Spec 050a: mounts `PUT` and `DELETE /jobs/:id/tiling` over these jobs; any job repository satisfies
+   * `jobs`. `main.ts` sets it only with `BPS_TILING=1`.
+   */
+  readonly tiling?: TilingRouteOptions;
   /**
    * Spec 043a: mounts `POST /jobs/:id/screen-preview` over these jobs; any job repository satisfies
    * `jobs`. `main.ts` sets it only with `BPS_SCREEN_PREVIEW=1`.
@@ -266,6 +272,10 @@ export function buildServer(deps: ServerDeps): FastifyInstance {
 
   if (deps.planeCurves) {
     registerPlaneCurvesRoutes(app, deps.planeCurves);
+  }
+
+  if (deps.tiling) {
+    registerTilingRoutes(app, deps.tiling);
   }
 
   if (deps.screenPreview) {

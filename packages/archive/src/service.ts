@@ -10,6 +10,7 @@ import {
   normalizeJobInkLimit,
   normalizeJobPlaneCurves,
   normalizeJobScreening,
+  normalizeJobTiling,
   normalizeJobWhiteInk,
   requireRole,
   SYSTEM_ACTOR,
@@ -348,7 +349,8 @@ export class ArchiveService {
     // Spec 039b: an invalid screening is dropped the same way (no screening requested).
     // Spec 040b: an invalid inkLimit is dropped the same way (no ink limit requested).
     // Spec 044b: an invalid planeCurves is dropped the same way (no curves requested).
-    const job: Job = normalizeJobPlaneCurves<Job>(normalizeJobInkLimit<Job>(normalizeJobScreening<Job>(normalizeJobWhiteInk<Job>({
+    // Spec 050a: an invalid tiling is dropped the same way (not tiled).
+    const job: Job = normalizeJobTiling<Job>(normalizeJobPlaneCurves<Job>(normalizeJobInkLimit<Job>(normalizeJobScreening<Job>(normalizeJobWhiteInk<Job>({
       ...origin,
       id,
       deviceId,
@@ -363,7 +365,7 @@ export class ArchiveService {
       trashedAt: undefined,
       legalHold: false,
       reprintOf: undefined,
-    }))));
+    })))));
 
     const packed = pack({
       job,

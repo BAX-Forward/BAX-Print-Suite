@@ -35,3 +35,4 @@ export * from './white-ink-setting.js';
 export * from './screening-setting.js';
 export * from './ink-limit-setting.js';
 export * from './plane-curves-setting.js';
+export * from './tiling-setting.js';

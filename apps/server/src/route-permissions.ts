@@ -113,6 +113,9 @@ export const ROUTE_PERMISSIONS: Readonly<Record<RouteKey, Permission>> = Object.
   // Spec 044d plane-curves setting: a job change like the ink-limit setting.
   'PUT /jobs/:id/plane-curves': 'jobs:write',
   'DELETE /jobs/:id/plane-curves': 'jobs:write',
+  // Spec 050a tiling setting: a job change like the plane-curves setting.
+  'PUT /jobs/:id/tiling': 'jobs:write',
+  'DELETE /jobs/:id/tiling': 'jobs:write',
   // Spec 043a screen preview: a read like the proof route; the planes are answered, not stored.
   'POST /jobs/:id/screen-preview': 'jobs:read',
   // Archive, trash, legal hold and job history.

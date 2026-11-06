@@ -107,6 +107,9 @@ export const inkLimitInvalid = (message: string): HttpError => new HttpError(400
 /** Spec 044d: the body of `PUT /jobs/:id/plane-curves` is not a plane-curves setting core `parsePlaneCurvesSetting` accepts. */
 export const planeCurvesInvalid = (message: string): HttpError => new HttpError(400, "invalid_plane_curves", message);
 
+/** Spec 050a: the body of `PUT /jobs/:id/tiling` is not a tiling setting core `parseTilingSetting` accepts. */
+export const tilingInvalid = (message: string): HttpError => new HttpError(400, "invalid_tiling", message);
+
 /** Spec 043a: the body of `POST /jobs/:id/screen-preview` is not a valid set of CMYK planes. */
 export const screenPreviewInvalid = (message: string): HttpError => new HttpError(400, "invalid_screen_preview", message);
 
