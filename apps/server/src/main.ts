@@ -32,6 +32,7 @@ import { parseSwatchChartsFlag } from './swatch-chart-routes.js';
 import { loadHttpsOptions } from './tls.js';
 import { openWebhookPersistence } from './webhook-persistence.js';
 import { ALLOW_LAN_TARGETS_ENV, parseAllowLanTargets } from './webhook-routes.js';
+import { parseWhiteInkFlag, WHITE_INK_ENV } from './white-ink-routes.js';
 
 // Spec 028d: parsed first, so a bad BPS_LOGIN or BPS_COOKIE stops the server before it opens anything.
 const sessionConfig = parseSessionConfig(process.env);
@@ -50,6 +51,8 @@ const https = loadHttpsOptions(process.env);
 const swatchCharts = parseSwatchChartsFlag(process.env);
 // Spec 036b: POST /imposition/n-up and /imposition/booklet only with BPS_IMPOSITION=1; any other value stops startup.
 const imposition = parseImpositionFlag(process.env);
+// Spec 038c: PUT and DELETE /jobs/:id/white-ink only with BPS_WHITE_INK=1; any other value stops startup.
+const whiteInk = parseWhiteInkFlag(process.env);
 // Spec 034a: print output only with BPS_PRINT_OUTPUT=1 and BPS_PRINTER_PLUGIN; any other flag value, a missing,
 // relative or absent manifest or a bad BPS_PRINTER_SETTINGS stops startup. The plugin is started on first use, never here.
 const printOutput = configurePrintOutput(process.env, { spoolDir: join(dataDir, 'spool', 'print-output') });
@@ -145,6 +148,7 @@ const serverDeps: ServerDeps = {
   ...(siteScope ? { siteScope } : {}),
   ...(swatchCharts ? { swatchCharts } : {}),
   ...(imposition ? { imposition } : {}),
+  ...(whiteInk ? { whiteInk: { jobs: jobRepository } } : {}),
   logger: true,
   ...(https === undefined ? {} : { https }),
 };
@@ -190,6 +194,11 @@ app.log.info(
   imposition
     ? `imposition plans are on (${IMPOSITION_ENV}=1): POST /imposition/n-up and POST /imposition/booklet`
     : `imposition plans are off (set ${IMPOSITION_ENV}=1 to plan n-up and booklet impositions)`,
+);
+app.log.info(
+  whiteInk
+    ? `white ink settings are on (${WHITE_INK_ENV}=1): PUT and DELETE /jobs/:id/white-ink`
+    : `white ink settings are off (set ${WHITE_INK_ENV}=1 to set a job's white ink setting)`,
 );
 if (https === undefined) {
   app.log.info('TLS is off: serving plain HTTP (set BPS_TLS_CERT and BPS_TLS_KEY to serve HTTPS)');

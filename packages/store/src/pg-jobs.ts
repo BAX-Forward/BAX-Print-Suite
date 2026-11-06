@@ -5,7 +5,7 @@
  * port for it yet. The SQL uses `?` placeholders as DbPort documents; a driver adapter maps them
  * to its own form. The table layout matches the SQLite `jobs` table.
  */
-import type { Job } from '@bax-print/core';
+import { normalizeJobWhiteInk, type Job } from '@bax-print/core';
 import type { DbPort, DbRow } from './db-port.js';
 import type { JobListFilter, JobRepository } from './job-repository.js';
 
@@ -38,7 +38,10 @@ function isJobDoc(value: unknown): value is Job {
   );
 }
 
-/** The port returns unchecked rows, so the `doc` column is checked before it becomes a Job. */
+/**
+ * The port returns unchecked rows, so the `doc` column is checked before it becomes a Job.
+ * Spec 038c: a stored `whiteInk` that is not a valid setting reads back absent (white ink off).
+ */
 function parse(row: DbRow): Job {
   const { doc } = row;
   if (typeof doc !== 'string') {
@@ -48,7 +51,7 @@ function parse(row: DbRow): Job {
   if (!isJobDoc(value)) {
     throw new TypeError('jobs row doc is not a job document');
   }
-  return value;
+  return normalizeJobWhiteInk(value);
 }
 
 export class PgJobRepository implements JobRepository {

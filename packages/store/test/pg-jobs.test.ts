@@ -262,6 +262,30 @@ describe('PgJobRepository', () => {
     await expect(repo.get('bad')).rejects.toBeInstanceOf(SyntaxError);
   });
 
+  it('round-trips a valid whiteInk and leaves an absent one absent (spec 038c)', async () => {
+    const repo = new PgJobRepository(new FakeDbPort());
+    const withWhite = job({ id: 'white', whiteInk: { mode: 'spot', threshold: 128, invert: true, separationName: 'White' } });
+    await repo.save(withWhite);
+    await repo.save(job({ id: 'plain' }));
+
+    expect(await repo.get('white')).toStrictEqual(withWhite);
+    const plain = await repo.get('plain');
+    expect(plain).toStrictEqual(job({ id: 'plain' }));
+    expect(plain !== undefined && 'whiteInk' in plain).toBe(false);
+  });
+
+  it.each([['yes'], [{ mode: 'x' }], [{ mode: 'flood', unknown: 1 }], [null]])(
+    'reads a stored invalid whiteInk %j back with no whiteInk (spec 038c)',
+    async (whiteInk) => {
+      const port = new FakeDbPort();
+      const repo = new PgJobRepository(port);
+      port.rows.set('job-1', storedRow({ id: 'job-1', doc: JSON.stringify({ ...job(), whiteInk }) }));
+
+      expect(await repo.get('job-1')).toStrictEqual(job());
+      expect(await repo.list()).toStrictEqual([job()]);
+    },
+  );
+
   it('rolls back writes made inside a port transaction that throws', async () => {
     const port = new FakeDbPort();
     const repo = new PgJobRepository(port);

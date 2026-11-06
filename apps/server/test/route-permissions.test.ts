@@ -102,6 +102,7 @@ function createHarness(actor?: Actor): Harness {
     apiTokens: { tokens: new SqliteApiTokenRepository(db), now },
     swatchCharts: true,
     imposition: true,
+    whiteInk: { jobs, clock: time.clock },
     ...(actor ? { authenticate: () => actor } : {}),
   });
   return { app, db };

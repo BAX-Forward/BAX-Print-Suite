@@ -24,6 +24,7 @@ import { registerStepRepeatRoutes, type StepRepeatRouteOptions } from './step-re
 import { registerSwatchChartRoutes } from './swatch-chart-routes.js';
 import { httpsServerFactory, type HttpsOptions } from './tls.js';
 import { registerWebhookRoutes, type WebhookOptions } from './webhook-routes.js';
+import { registerWhiteInkRoutes, type WhiteInkRouteOptions } from './white-ink-routes.js';
 
 export const DEFAULT_IMPORT_BODY_LIMIT = 1024 ** 3;
 export const DEFAULT_API_VERSION = '0.1.0';
@@ -83,6 +84,11 @@ export interface ServerDeps {
    * Spec 036e: with `jobs` and `proof` too, it mounts `POST /jobs/:id/impose` over the proof route's blob path.
    */
   readonly imposition?: boolean;
+  /**
+   * Spec 038c: mounts `PUT` and `DELETE /jobs/:id/white-ink` over these jobs; any job repository satisfies
+   * `jobs`. `main.ts` sets it only with `BPS_WHITE_INK=1`.
+   */
+  readonly whiteInk?: WhiteInkRouteOptions;
   /**
    * Spec 030c: scopes the `/jobs/:id` routes and the `GET /archive` and `GET /trash` lists to the
    * caller's site membership (`site-scope.ts`). Without it every caller sees every site's jobs.
@@ -220,6 +226,10 @@ export function buildServer(deps: ServerDeps): FastifyInstance {
   if (deps.imposition === true) {
     // Spec 036e: `POST /jobs/:id/impose` reads the stored source PDF the proof route reads.
     registerImpositionRoutes(app, deps.jobs && deps.proof ? { jobs: deps.jobs, blobPath: deps.proof.blobPath } : undefined);
+  }
+
+  if (deps.whiteInk) {
+    registerWhiteInkRoutes(app, deps.whiteInk);
   }
 
   app.get('/archive', async (request) => {

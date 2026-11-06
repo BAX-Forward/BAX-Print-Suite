@@ -101,6 +101,9 @@ export const ROUTE_PERMISSIONS: Readonly<Record<RouteKey, Permission>> = Object.
   // Spec 017d accounting IDs.
   'PUT /jobs/:id/accounting-id': 'jobs:write',
   'GET /reports/accounting': 'reports:read',
+  // Spec 038c white ink setting: a job change like `PATCH /jobs/:id/edits`.
+  'PUT /jobs/:id/white-ink': 'jobs:write',
+  'DELETE /jobs/:id/white-ink': 'jobs:write',
   // Archive, trash, legal hold and job history.
   'GET /archive': 'archive:read',
   'GET /archive/:id': 'archive:read',
