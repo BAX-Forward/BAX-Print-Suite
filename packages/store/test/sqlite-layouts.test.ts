@@ -216,7 +216,7 @@ describe('SqliteLayoutTemplateRepository', () => {
     openDatabase(path).close();
     const db = openDatabase(path);
 
-    expect(appliedMigrations(db)).toEqual([1, 2, 3, 4]);
+    expect(appliedMigrations(db)).toEqual([1, 2, 3, 4, 5]);
     const rows = db.prepare('SELECT version FROM schema_migrations WHERE version = 3').all();
     expect(rows).toHaveLength(1);
     db.close();
