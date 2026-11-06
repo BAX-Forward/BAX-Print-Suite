@@ -1,5 +1,5 @@
 import { createHash, randomUUID } from 'node:crypto';
-import { statSync } from 'node:fs';
+import { readFileSync, statSync } from 'node:fs';
 import { mkdir, rm } from 'node:fs/promises';
 import { dirname, isAbsolute, resolve } from 'node:path';
 import type { Job } from '@bax-print/core';
@@ -93,19 +93,56 @@ function isFile(path: string): boolean {
   }
 }
 
+/** Spec 052a: the largest settings file `BPS_PRINTER_SETTINGS` may name, read once at startup. */
+export const PRINTER_SETTINGS_MAX_FILE_BYTES = 64 * 1024;
+
+/**
+ * Spec 052a: the inline JSON of `BPS_PRINTER_SETTINGS`, or the text of the file it names. A value that
+ * does not start with `{` is a path: it must be absolute and name a file of at most
+ * `PRINTER_SETTINGS_MAX_FILE_BYTES`. Errors name the path, never the contents.
+ */
+function settingsText(raw: string): string {
+  const value = raw.trim();
+  if (value.startsWith('{')) return value;
+  if (!isAbsolute(value)) throw new Error(`${PRINTER_SETTINGS_ENV} must be a JSON object or an absolute path to a JSON file`);
+  let size: number;
+  try {
+    const stat = statSync(value);
+    if (!stat.isFile()) throw new Error('not a file');
+    size = stat.size;
+  } catch {
+    throw new Error(`${PRINTER_SETTINGS_ENV} ${value} is not a readable file`);
+  }
+  if (size > PRINTER_SETTINGS_MAX_FILE_BYTES) {
+    throw new Error(`${PRINTER_SETTINGS_ENV} ${value} is larger than ${String(PRINTER_SETTINGS_MAX_FILE_BYTES)} bytes`);
+  }
+  try {
+    return readFileSync(value, 'utf8');
+  } catch {
+    throw new Error(`${PRINTER_SETTINGS_ENV} ${value} is not a readable file`);
+  }
+}
+
+/** Spec 052a: a Windows `outputDir` like `C:\out` is passed on as `C:/out`, which Node reads the same on Windows. */
+function normalizeOutputDir(settings: Record<string, unknown>): Record<string, unknown> {
+  const { outputDir } = settings;
+  return typeof outputDir === 'string' ? { ...settings, outputDir: outputDir.replace(/\\/g, '/') } : settings;
+}
+
 function parseSettings(raw: string | undefined): Readonly<Record<string, unknown>> {
   if (raw === undefined || raw.trim() === '') return {};
   let parsed: unknown;
   try {
-    parsed = JSON.parse(raw);
-  } catch {
+    parsed = JSON.parse(settingsText(raw));
+  } catch (error) {
+    if (error instanceof Error && error.message.startsWith(PRINTER_SETTINGS_ENV)) throw error;
     // The parser's message quotes the input, which may hold secrets.
     throw new Error(`${PRINTER_SETTINGS_ENV} is not valid JSON`);
   }
   if (typeof parsed !== 'object' || parsed === null || Array.isArray(parsed)) {
     throw new Error(`${PRINTER_SETTINGS_ENV} must be a JSON object`);
   }
-  return Object.freeze({ ...parsed });
+  return Object.freeze(normalizeOutputDir({ ...parsed }));
 }
 
 /** Spec 034a: `true` only for `BPS_PRINT_OUTPUT=1`; unset is off and any other value stops startup. */

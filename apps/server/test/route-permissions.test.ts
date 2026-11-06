@@ -108,6 +108,12 @@ function createHarness(actor?: Actor): Harness {
     planeCurves: { jobs, clock: time.clock },
     tiling: { jobs, clock: time.clock },
     screenPreview: { jobs },
+    jobIntake: {
+      jobs,
+      service: new JobService({ jobs, blobs, bus, clock: time.clock, newId: sequentialIds('intake') }),
+      intakeDir: '/intake',
+      maxBytes: 1024,
+    },
     ...(actor ? { authenticate: () => actor } : {}),
   });
   return { app, db };
@@ -291,9 +297,15 @@ describe('route permissions (Spec 024b)', () => {
     expect(document.paths['/media']?.get?.responses['403']?.description).toContain('media:read');
     for (const [path, methods] of Object.entries(document.paths)) {
       for (const [method, operation] of Object.entries(methods)) {
-        expect(operation.responses, `${method.toUpperCase()} ${path}`).toHaveProperty('403');
+        // A public route (Spec 052a: `GET /health`) checks no permission, so it never answers 403.
+        if (isPublicRoute(method, path)) {
+          expect(operation.responses, `${method.toUpperCase()} ${path}`).not.toHaveProperty('403');
+        } else {
+          expect(operation.responses, `${method.toUpperCase()} ${path}`).toHaveProperty('403');
+        }
       }
     }
+    expect(document.paths['/health']?.get).toBeDefined();
   });
 
   it('treats every caller as the local admin without a resolver', async () => {

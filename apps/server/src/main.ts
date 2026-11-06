@@ -15,6 +15,7 @@ import { configureApiTokens } from './api-token-config.js';
 import { buildServer, isLoopbackHost, localAdminWarning, type ServerDeps } from './app.js';
 import { DATABASE_URL_ENV, parseDatabaseUrl, redactDatabaseUrl } from './database-url.js';
 import { IMPOSITION_ENV, parseImpositionFlag } from './imposition-routes.js';
+import { JOB_INTAKE_ENV, parseJobIntakeConfig } from './job-intake-routes.js';
 import { JobService } from './jobs.js';
 import { MediaService } from './media-service.js';
 import { memoryMediaStores } from './media-stores.js';
@@ -68,6 +69,9 @@ const planeCurves = parsePlaneCurvesFlag(process.env);
 const tiling = parseTilingFlag(process.env);
 // Spec 043a: POST /jobs/:id/screen-preview only with BPS_SCREEN_PREVIEW=1; any other value stops startup.
 const screenPreview = parseScreenPreviewFlag(process.env);
+// Spec 052a: POST /jobs, GET /jobs and GET /jobs/:id only with BPS_JOB_INTAKE=1; any other value, or a
+// BPS_JOB_INTAKE_MAX_BYTES that is malformed or above 256 MiB, stops startup.
+const jobIntake = parseJobIntakeConfig(process.env);
 // Spec 034a: print output only with BPS_PRINT_OUTPUT=1 and BPS_PRINTER_PLUGIN; any other flag value, a missing,
 // relative or absent manifest or a bad BPS_PRINTER_SETTINGS stops startup. The plugin is started on first use, never here.
 const printOutput = configurePrintOutput(process.env, { spoolDir: join(dataDir, 'spool', 'print-output') });
@@ -169,6 +173,11 @@ const serverDeps: ServerDeps = {
   ...(planeCurves ? { planeCurves: { jobs: jobRepository } } : {}),
   ...(tiling ? { tiling: { jobs: jobRepository } } : {}),
   ...(screenPreview ? { screenPreview: { jobs: jobRepository } } : {}),
+  // Spec 052a: uploads land below BPS_DATA_DIR under server-generated names; the job service saves into
+  // the repository site scoping reads.
+  ...(jobIntake
+    ? { jobIntake: { jobs: jobRepository, service: jobService, intakeDir: join(dataDir, 'intake'), maxBytes: jobIntake.maxBytes } }
+    : {}),
   logger: true,
   ...(https === undefined ? {} : { https }),
 };
@@ -244,6 +253,11 @@ app.log.info(
   screenPreview
     ? `screen previews are on (${SCREEN_PREVIEW_ENV}=1): POST /jobs/:id/screen-preview`
     : `screen previews are off (set ${SCREEN_PREVIEW_ENV}=1 to preview a job's screening)`,
+);
+app.log.info(
+  jobIntake
+    ? `job intake is on (${JOB_INTAKE_ENV}=1): POST /jobs (at most ${String(jobIntake.maxBytes)} bytes), GET /jobs and GET /jobs/:id`
+    : `job intake is off (set ${JOB_INTAKE_ENV}=1 to upload and list jobs)`,
 );
 if (https === undefined) {
   app.log.info('TLS is off: serving plain HTTP (set BPS_TLS_CERT and BPS_TLS_KEY to serve HTTPS)');

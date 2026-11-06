@@ -9,6 +9,7 @@ import { registerCutRoutes, type CutExtractor, type CutJobLookup } from './cut-r
 import { registerFinishingRoutes, type FinishingRouteOptions } from './finishing-routes.js';
 import { registerImpositionRoutes } from './imposition-routes.js';
 import { registerInkLimitRoutes, type InkLimitRouteOptions } from './ink-limit-routes.js';
+import { registerJobIntakeRoutes, type JobIntakeRouteOptions } from './job-intake-routes.js';
 import { registerLayoutTemplateRoutes } from './layout-template-routes.js';
 import { registerLoginRoutes, type LoginRouteOptions } from './login-routes.js';
 import { registerMediaRoutes } from './media-routes.js';
@@ -20,7 +21,7 @@ import { registerProductionReportRoutes, type ProductionReportRouteOptions } fro
 import { registerPrintOutputRoutes, type PrintOutputRouteOptions } from './print-output-routes.js';
 import { registerProofRoutes, type ProofRouteOptions } from './proof-routes.js';
 import { guardRoutes, LOCAL_ADMIN } from './route-permissions.js';
-import { registerErrorHandler, registerPreflightRoutes, type RouteDeps } from './routes.js';
+import { registerErrorHandler, registerHealthRoute, registerPreflightRoutes, type RouteDeps } from './routes.js';
 import { registerScreenPreviewRoutes, type ScreenPreviewRouteOptions } from './screen-preview-routes.js';
 import { registerScreeningRoutes, type ScreeningRouteOptions } from './screening-routes.js';
 import { scopeJobRoutes, type SiteScopeOptions } from './site-scope.js';
@@ -120,6 +121,11 @@ export interface ServerDeps {
    */
   readonly screenPreview?: ScreenPreviewRouteOptions;
   /**
+   * Spec 052a: mounts `POST /jobs`, `GET /jobs` and `GET /jobs/:id`; `main.ts` sets it only with
+   * `BPS_JOB_INTAKE=1`. The caller and site scoping come from the server.
+   */
+  readonly jobIntake?: Omit<JobIntakeRouteOptions, 'authenticate' | 'siteScope'>;
+  /**
    * Spec 030c: scopes the `/jobs/:id` routes and the `GET /archive` and `GET /trash` lists to the
    * caller's site membership (`site-scope.ts`). Without it every caller sees every site's jobs.
    */
@@ -201,8 +207,15 @@ export function buildServer(deps: ServerDeps): FastifyInstance {
     registerMediaRoutes(app, { media: deps.media, openapi: new OpenApiCollector(deps.version ?? DEFAULT_API_VERSION) });
   }
 
+  // Spec 052a: always mounted and public (`PUBLIC_ROUTES`). It was listed there but never registered, so it answered 404.
+  registerHealthRoute(app);
+
   if (deps.login) {
     registerLoginRoutes(app, deps.login);
+  }
+
+  if (deps.jobIntake) {
+    registerJobIntakeRoutes(app, { ...deps.jobIntake, authenticate: actorOf, ...(siteScope ? { siteScope } : {}) });
   }
 
   if (deps.preflight) {
