@@ -1,8 +1,15 @@
-/** Spec 031c: the format of a job's source file, detected from its leading bytes. */
+/**
+ * Spec 031c: the format of a job's source file, detected from its leading bytes. Spec 035b adds
+ * `svg` and `dxf`; those have no fixed magic bytes, so {@link sniffSourceFormat} does not detect
+ * them. The inspect package's `sniffJobSourceFormat` adds them from its vector header reader.
+ */
 
-export type SourceFormat = 'pdf' | 'png' | 'jpeg' | 'tiff';
+export type SourceFormat = 'pdf' | 'png' | 'jpeg' | 'tiff' | 'svg' | 'dxf';
 
-export const SOURCE_FORMATS: readonly SourceFormat[] = ['pdf', 'png', 'jpeg', 'tiff'];
+export const SOURCE_FORMATS: readonly SourceFormat[] = ['pdf', 'png', 'jpeg', 'tiff', 'svg', 'dxf'];
+
+/** Detects a source format from a file's bytes, never from its name. */
+export type SourceFormatSniffer = (bytes: Uint8Array) => SourceFormat | undefined;
 
 const SIGNATURES: readonly { readonly format: SourceFormat; readonly prefix: readonly number[] }[] = [
   // ISO 32000-1 §7.5.2: the header line `%PDF-`.
@@ -20,7 +27,7 @@ function startsWith(bytes: Uint8Array, prefix: readonly number[]): boolean {
   return bytes.length >= prefix.length && prefix.every((byte, index) => bytes[index] === byte);
 }
 
-/** The source format from magic bytes, or `undefined` when the bytes match none of them. */
+/** The source format from magic bytes (PDF and raster), or `undefined` when the bytes match none of them. */
 export function sniffSourceFormat(bytes: Uint8Array): SourceFormat | undefined {
   return SIGNATURES.find((signature) => startsWith(bytes, signature.prefix))?.format;
 }

@@ -45,4 +45,21 @@ describe('hot folder file patterns', () => {
     expect(isCandidateFileName('logo.png.part', on)).toBe(false);
     expect(isCandidateFileName('logo.gif', on)).toBe(false);
   });
+
+  it('takes in SVG and DXF names only through the effective patterns of an opted-in folder (Spec 035b)', () => {
+    const off = effectiveFilePatterns({ filePatterns: ['*.pdf'] });
+    const rasterOnly = effectiveFilePatterns({ filePatterns: ['*.pdf'], acceptRaster: true });
+    const on = effectiveFilePatterns({ filePatterns: ['*.pdf'], acceptVector: true });
+    for (const name of ['cut.svg', 'CUT.SVG', 'plan.dxf', 'Plan.DXF']) {
+      expect(isCandidateFileName(name, off), name).toBe(false);
+      expect(isCandidateFileName(name, rasterOnly), name).toBe(false);
+      expect(isCandidateFileName(name, on), name).toBe(true);
+    }
+    expect(isCandidateFileName('order.pdf', on)).toBe(true);
+    expect(isCandidateFileName('logo.png', on)).toBe(false);
+    expect(isCandidateFileName('cut.svg.part', on)).toBe(false);
+    expect(isCandidateFileName('.cut.svg', on)).toBe(false);
+    expect(isCandidateFileName('cut.svgz', on)).toBe(false);
+    expect(isCandidateFileName('plan.dwg', on)).toBe(false);
+  });
 });

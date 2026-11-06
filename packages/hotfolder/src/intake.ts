@@ -16,6 +16,7 @@ import {
   type JobStatus,
   type JobStep,
   type Logger,
+  type SourceFormatSniffer,
 } from '@bax-print/core';
 import {
   EventTypes,
@@ -50,6 +51,12 @@ export interface IntakeDeps {
   readonly bus?: EventBus;
   readonly logger?: Logger;
   readonly clock?: Clock;
+  /**
+   * Detects `sourceFormat` from the file's bytes. Defaults to core's `sniffSourceFormat` (PDF and
+   * raster). Spec 035b: hosts that take in SVG and DXF pass the inspect package's
+   * `sniffJobSourceFormat`, which reads them with the vector header reader.
+   */
+  readonly sniffSourceFormat?: SourceFormatSniffer;
 }
 
 export type IntakeOutcome =
@@ -204,7 +211,7 @@ export async function ingestFile(path: string, folder: HotFolder, deps: IntakeDe
     const id = nextUlid(Date.parse(createdAt));
     const storageKey = sourceKey(id, 0, name);
     const template = folder.settings.ticketTemplate;
-    const sourceFormat = sniffSourceFormat(bytes);
+    const sourceFormat = (deps.sniffSourceFormat ?? sniffSourceFormat)(bytes);
     job = await recorder.create({
       id,
       name,

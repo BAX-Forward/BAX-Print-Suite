@@ -19,6 +19,7 @@ export * from "./profile.js";
 export * from "./raster-checks.js";
 export * from "./raster-header.js";
 export * from "./registry.js";
+export * from "./source-format.js";
 export * from "./spot-name.js";
 export {
   VECTOR_CHECKS,

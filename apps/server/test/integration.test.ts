@@ -121,6 +121,12 @@ describe('one server for archive, preflight and media (Spec 007d)', () => {
     expect(document.info.description).toContain('`acceptRaster: true`');
   });
 
+  it('documents the svg and dxf source formats and acceptVector in /openapi.json (Spec 035b)', async () => {
+    const document = (await h.app.inject({ method: 'GET', url: '/openapi.json' })).json<{ info: { description: string } }>();
+    expect(document.info.description).toContain('`svg` or `dxf`');
+    expect(document.info.description).toContain('`acceptVector: true`');
+  });
+
   it('takes a PNG job through the job routes like a PDF job and keeps its sourceFormat (Spec 031c)', async () => {
     const png = Uint8Array.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 0, 0, 0, 13, 0x49, 0x48, 0x44, 0x52]);
     const job = await h.jobs.create({ name: 'Photo', sources: [{ name: 'photo.png', bytes: png }], ticket: TICKET });

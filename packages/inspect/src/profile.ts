@@ -7,6 +7,8 @@ import type { DocumentModel } from "./document-model.js";
 import { RASTER_CHECKS } from "./raster-checks.js";
 import type { RasterHeader } from "./raster-header.js";
 import { BUILTIN_CHECKS, builtinRegistry, type CheckRegistry } from "./registry.js";
+import { VECTOR_CHECKS } from "./vector-checks.js";
+import type { VectorHeader } from "./vector-header.js";
 
 /** Core's generic `{ ok, value } | { ok, errors }` result, used here for profiles and params. */
 export type ProfileParseResult<T> = EditParseResult<T>;
@@ -220,6 +222,28 @@ export function evaluateRasterChecks(
     const raster = RASTER_CHECKS.find((candidate) => candidate.check === check);
     if (config === undefined || config.enabled === false || raster === undefined) continue;
     findings.push(...runCheck(check, config, (params) => raster.run(header, params)));
+  }
+  findings.push(...unknownCheckFindings(configs, registry));
+  return findings;
+}
+
+/**
+ * The vector form of `evaluateChecks` (Spec 035b): runs the configured vector checks (Spec 035a)
+ * on an SVG or DXF header, like {@link evaluateRasterChecks} does for raster headers. Registered
+ * checks without a vector form (the PDF and raster checks) do not apply and are skipped.
+ */
+export function evaluateVectorChecks(
+  header: VectorHeader,
+  checks: Readonly<Record<string, CheckConfig>> | undefined,
+  registry: CheckRegistry = builtinRegistry(),
+): Finding[] {
+  const configs: Record<string, CheckConfig> = checks ? { ...checks } : Object.fromEntries(registry.list().map((c) => [c.id, {}]));
+  const findings: Finding[] = [];
+  for (const check of registry.list()) {
+    const config = configs[check.id];
+    const vector = VECTOR_CHECKS.find((candidate) => candidate.check === check);
+    if (config === undefined || config.enabled === false || vector === undefined) continue;
+    findings.push(...runCheck(check, config, (params) => vector.run(header, params)));
   }
   findings.push(...unknownCheckFindings(configs, registry));
   return findings;
