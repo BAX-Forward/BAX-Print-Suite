@@ -104,6 +104,9 @@ export const ROUTE_PERMISSIONS: Readonly<Record<RouteKey, Permission>> = Object.
   // Spec 038c white ink setting: a job change like `PATCH /jobs/:id/edits`.
   'PUT /jobs/:id/white-ink': 'jobs:write',
   'DELETE /jobs/:id/white-ink': 'jobs:write',
+  // Spec 039c screening setting: a job change like the white ink setting.
+  'PUT /jobs/:id/screening': 'jobs:write',
+  'DELETE /jobs/:id/screening': 'jobs:write',
   // Archive, trash, legal hold and job history.
   'GET /archive': 'archive:read',
   'GET /archive/:id': 'archive:read',

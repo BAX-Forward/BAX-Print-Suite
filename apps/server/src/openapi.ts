@@ -2,6 +2,11 @@ import type { FastifySchema, RouteOptions } from 'fastify';
 import {
   FINISHING_STEP_KINDS,
   PERMISSIONS,
+  SCREENING_BAYER_SIZES,
+  SCREENING_BLUE_NOISE_SIZE_MAX,
+  SCREENING_BLUE_NOISE_SIZE_MIN,
+  SCREENING_SEED_MAX,
+  SCREENING_SEED_MIN,
   WHITE_INK_CHOKE_PX_MAX,
   WHITE_INK_CHOKE_PX_MIN,
   WHITE_INK_DENSITY_MAX,
@@ -617,6 +622,51 @@ const WHITE_INK_JOB_SCHEMA: JsonSchema = {
   },
 };
 
+/** `PUT /jobs/:id/screening` (Spec 039c): the Spec 039b screening setting, checked strictly by core `parseScreeningSetting`. */
+const SCREENING_SETTING_SCHEMA: JsonSchema = {
+  oneOf: [
+    {
+      type: 'object',
+      required: ['kind', 'size'],
+      additionalProperties: false,
+      properties: {
+        kind: { const: 'bayer' },
+        size: { enum: [...SCREENING_BAYER_SIZES] },
+      },
+    },
+    {
+      type: 'object',
+      required: ['kind', 'size', 'seed'],
+      additionalProperties: false,
+      properties: {
+        kind: { const: 'blue-noise' },
+        size: { type: 'integer', minimum: SCREENING_BLUE_NOISE_SIZE_MIN, maximum: SCREENING_BLUE_NOISE_SIZE_MAX },
+        seed: { type: 'integer', minimum: SCREENING_SEED_MIN, maximum: SCREENING_SEED_MAX, description: 'Unsigned 32-bit integer' },
+      },
+    },
+  ],
+};
+
+/** Spec 039c: the `{ job }` the screening routes answer; only the fields this route group documents are listed. */
+const SCREENING_JOB_SCHEMA: JsonSchema = {
+  type: 'object',
+  required: ['job'],
+  properties: {
+    job: {
+      type: 'object',
+      required: ['id'],
+      properties: {
+        id: { type: 'string' },
+        updatedAt: { type: 'string', format: 'date-time' },
+        screening: {
+          ...refTo('ScreeningSetting'),
+          description: 'Optional; absent means no screening is requested. A stored value that is not a valid setting reads back absent',
+        },
+      },
+    },
+  },
+};
+
 const itemsOf = (name: string): JsonSchema => ({
   type: 'object',
   required: ['items'],
@@ -660,6 +710,8 @@ const COMPONENT_SCHEMAS: Readonly<Record<string, JsonSchema>> = {
   PrintOutputStatus: PRINT_OUTPUT_STATUS_SCHEMA,
   WhiteInkSetting: WHITE_INK_SETTING_SCHEMA,
   WhiteInkJob: WHITE_INK_JOB_SCHEMA,
+  ScreeningSetting: SCREENING_SETTING_SCHEMA,
+  ScreeningJob: SCREENING_JOB_SCHEMA,
 };
 
 function parameters(schema: JsonSchema | undefined, location: 'path' | 'query'): unknown[] {
@@ -773,6 +825,8 @@ const API_DESCRIPTION = [
   "plugin failure 502 `printer_error`; each carries the plugin's uppercase code in `details.code`.",
   'Spec 038c: a job may carry an optional `whiteInk` setting (`WhiteInkSetting`); absent means white ink is off, and a stored value',
   'that is not a valid setting reads back absent. `PUT` and `DELETE /jobs/{id}/white-ink` set and clear it, and exist only with `BPS_WHITE_INK=1`.',
+  'Spec 039c: a job may carry an optional `screening` setting (`ScreeningSetting`); absent means no screening is requested, and a stored value',
+  'that is not a valid setting reads back absent. `PUT` and `DELETE /jobs/{id}/screening` set and clear it, and exist only with `BPS_SCREENING=1`.',
 ].join(' ');
 
 /** Collects documented routes through Fastify's `onRoute` hook. */

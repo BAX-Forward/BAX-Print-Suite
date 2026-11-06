@@ -19,6 +19,7 @@ import { registerPrintOutputRoutes, type PrintOutputRouteOptions } from './print
 import { registerProofRoutes, type ProofRouteOptions } from './proof-routes.js';
 import { guardRoutes, LOCAL_ADMIN } from './route-permissions.js';
 import { registerErrorHandler, registerPreflightRoutes, type RouteDeps } from './routes.js';
+import { registerScreeningRoutes, type ScreeningRouteOptions } from './screening-routes.js';
 import { scopeJobRoutes, type SiteScopeOptions } from './site-scope.js';
 import { registerStepRepeatRoutes, type StepRepeatRouteOptions } from './step-repeat-routes.js';
 import { registerSwatchChartRoutes } from './swatch-chart-routes.js';
@@ -89,6 +90,11 @@ export interface ServerDeps {
    * `jobs`. `main.ts` sets it only with `BPS_WHITE_INK=1`.
    */
   readonly whiteInk?: WhiteInkRouteOptions;
+  /**
+   * Spec 039c: mounts `PUT` and `DELETE /jobs/:id/screening` over these jobs; any job repository satisfies
+   * `jobs`. `main.ts` sets it only with `BPS_SCREENING=1`.
+   */
+  readonly screening?: ScreeningRouteOptions;
   /**
    * Spec 030c: scopes the `/jobs/:id` routes and the `GET /archive` and `GET /trash` lists to the
    * caller's site membership (`site-scope.ts`). Without it every caller sees every site's jobs.
@@ -230,6 +236,10 @@ export function buildServer(deps: ServerDeps): FastifyInstance {
 
   if (deps.whiteInk) {
     registerWhiteInkRoutes(app, deps.whiteInk);
+  }
+
+  if (deps.screening) {
+    registerScreeningRoutes(app, deps.screening);
   }
 
   app.get('/archive', async (request) => {
