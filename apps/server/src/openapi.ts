@@ -723,25 +723,68 @@ const SCREEN_PREVIEW_REQUEST_SCHEMA: JsonSchema = {
   type: 'object',
   required: ['width', 'height', 'c', 'm', 'y', 'k'],
   additionalProperties: false,
-  properties: { width: PREVIEW_SIDE, height: PREVIEW_SIDE, c: PREVIEW_PLANE, m: PREVIEW_PLANE, y: PREVIEW_PLANE, k: PREVIEW_PLANE },
+  properties: {
+    width: PREVIEW_SIDE,
+    height: PREVIEW_SIDE,
+    format: {
+      enum: ['packed', 'pbm'],
+      default: 'packed',
+      description: 'Spec 043b: how each screened plane is answered. Absent or `packed`: the Spec 043a packed planes with `rowBytes`; `pbm`: each plane is a raw PBM (`P4`) file',
+    },
+    c: PREVIEW_PLANE,
+    m: PREVIEW_PLANE,
+    y: PREVIEW_PLANE,
+    k: PREVIEW_PLANE,
+  },
 };
 
 /** One screened plane packed 1 bit per pixel: most significant bit first, bit 1 = ink, unused low bits of a row's last byte 0. */
 const PACKED_PLANE: JsonSchema = { type: 'string', contentEncoding: 'base64', description: 'Base64 of rowBytes * height bytes' };
 
-/** Spec 043a: the job's screening (and ink limit, if set) applied to the request planes. */
+/** Spec 043b: one screened plane as a raw PBM file; the packed rows follow its header unchanged, bit 1 = black = ink. */
+const PBM_PLANE: JsonSchema = {
+  type: 'string',
+  contentEncoding: 'base64',
+  contentMediaType: 'image/x-portable-bitmap',
+  description: 'Base64 of a raw PBM: the header `P4\\n<width> <height>\\n`, then ceil(width / 8) * height bytes of packed rows',
+};
+
+/**
+ * Spec 043a/043b: the job's screening (and ink limit, if set) applied to the request planes. The packed
+ * shape is the Spec 043a answer, unchanged and without `format`. The PBM shape drops `rowBytes`, since
+ * each PBM header carries the size, and names its `format` so a client can tell the two apart.
+ */
 const SCREEN_PREVIEW_SCHEMA: JsonSchema = {
-  type: 'object',
-  required: ['width', 'height', 'rowBytes', 'c', 'm', 'y', 'k'],
-  properties: {
-    width: PREVIEW_SIDE,
-    height: PREVIEW_SIDE,
-    rowBytes: { type: 'integer', minimum: 1, description: 'ceil(width / 8)' },
-    c: PACKED_PLANE,
-    m: PACKED_PLANE,
-    y: PACKED_PLANE,
-    k: PACKED_PLANE,
-  },
+  oneOf: [
+    {
+      type: 'object',
+      description: 'Absent or `format: "packed"` in the request',
+      required: ['width', 'height', 'rowBytes', 'c', 'm', 'y', 'k'],
+      properties: {
+        width: PREVIEW_SIDE,
+        height: PREVIEW_SIDE,
+        rowBytes: { type: 'integer', minimum: 1, description: 'ceil(width / 8)' },
+        c: PACKED_PLANE,
+        m: PACKED_PLANE,
+        y: PACKED_PLANE,
+        k: PACKED_PLANE,
+      },
+    },
+    {
+      type: 'object',
+      description: '`format: "pbm"` in the request',
+      required: ['width', 'height', 'format', 'c', 'm', 'y', 'k'],
+      properties: {
+        width: PREVIEW_SIDE,
+        height: PREVIEW_SIDE,
+        format: { const: 'pbm' },
+        c: PBM_PLANE,
+        m: PBM_PLANE,
+        y: PBM_PLANE,
+        k: PBM_PLANE,
+      },
+    },
+  ],
 };
 
 const itemsOf = (name: string): JsonSchema => ({
@@ -912,6 +955,7 @@ const API_DESCRIPTION = [
   'that is not a valid setting reads back absent. `PUT` and `DELETE /jobs/{id}/ink-limit` set and clear it, and exist only with `BPS_INK_LIMIT=1`.',
   "Spec 043a: `POST /jobs/{id}/screen-preview` screens CMYK planes with the job's `screening` and `inkLimit` settings and answers them packed",
 '1 bit per pixel; nothing is stored. A job without `screening` answers 409 `screening_not_set`. It exists only with `BPS_SCREEN_PREVIEW=1`.',
+  'Spec 043b: with `format: "pbm"` in the body, each plane is answered as a raw PBM (`P4`) file instead, and the answer names its `format`.',
 ].join(' ');
 
 /** Collects documented routes through Fastify's `onRoute` hook. */
