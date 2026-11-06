@@ -237,6 +237,19 @@ describe('MemoryJobRepository tiling (spec 050a)', () => {
     expect(plain).not.toHaveProperty('tiling');
   });
 
+  it('round-trips explicit seams (spec 050c)', async () => {
+    const repo = new MemoryJobRepository();
+    const seams = job({
+      id: 'seams',
+      tiling: { grid: { columns: 3, rows: 2 }, seam: { kind: 'butt' }, seamsX: [700, 1900.5], seamsY: [1000] },
+    });
+    await repo.save(seams);
+
+    const read = await repo.get('seams');
+    expect(read).toStrictEqual(seams);
+    expect(JSON.stringify(read)).toBe(JSON.stringify(seams));
+  });
+
   it.each<unknown>([
     'yes',
     null,
@@ -244,7 +257,10 @@ describe('MemoryJobRepository tiling (spec 050a)', () => {
     { grid: { columns: 2, rows: 2 }, seam: { kind: 'Butt' } },
     { grid: { columns: 2, rows: 2 }, seam: { kind: 'overlap', overlapMm: 1001 } },
     { grid: { columns: 2, rows: 2 }, seam: { kind: 'gap', gapMm: '5' } },
-    { grid: { columns: 2, rows: 2 }, seamsX: [100] },
+    { grid: { columns: 2, rows: 2 }, seamsX: [100, 200] },
+    { grid: { columns: 2, rows: 2 }, seamsY: [0] },
+    { grid: { columns: 3, rows: 1 }, seamsX: [200, 100] },
+    { grid: { columns: 2, rows: 2 }, seamsX: ['100'] },
     { grid: [2, 2] },
   ])('reads a stored invalid tiling %j back with no tiling', async (tiling) => {
     const repo = new MemoryJobRepository();
