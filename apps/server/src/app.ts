@@ -78,7 +78,10 @@ export interface ServerDeps {
   readonly login?: LoginRouteOptions;
   /** Spec 032b: `true` mounts `POST /swatch-charts`; `main.ts` sets it only with `BPS_SWATCH_CHARTS=1`. */
   readonly swatchCharts?: boolean;
-  /** Spec 036b: `true` mounts `POST /imposition/n-up` and `POST /imposition/booklet`; `main.ts` sets it only with `BPS_IMPOSITION=1`. */
+  /**
+   * Spec 036b: `true` mounts `POST /imposition/n-up` and `POST /imposition/booklet`; `main.ts` sets it only with `BPS_IMPOSITION=1`.
+   * Spec 036e: with `jobs` and `proof` too, it mounts `POST /jobs/:id/impose` over the proof route's blob path.
+   */
   readonly imposition?: boolean;
   /**
    * Spec 030c: scopes the `/jobs/:id` routes and the `GET /archive` and `GET /trash` lists to the
@@ -215,7 +218,8 @@ export function buildServer(deps: ServerDeps): FastifyInstance {
   }
 
   if (deps.imposition === true) {
-    registerImpositionRoutes(app);
+    // Spec 036e: `POST /jobs/:id/impose` reads the stored source PDF the proof route reads.
+    registerImpositionRoutes(app, deps.jobs && deps.proof ? { jobs: deps.jobs, blobPath: deps.proof.blobPath } : undefined);
   }
 
   app.get('/archive', async (request) => {

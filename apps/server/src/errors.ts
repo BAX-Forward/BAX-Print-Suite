@@ -15,6 +15,7 @@ import {
   InvalidLifecycleError,
   LegalHoldError,
 } from "@bax-print/core";
+import { ImposedSheetsError, type ImposedSheetsErrorCode } from "@bax-print/marks";
 import { NestInputError } from "@bax-print/nest";
 import { InvalidCursorError, InvalidFinishingPlanError, InvalidLayoutTemplateError, LayoutTemplateNameConflictError } from "@bax-print/store";
 
@@ -87,6 +88,22 @@ const PRINTER_ERROR_BY_CODE: ReadonlyMap<string, (code: string) => HttpError> = 
 
 /** Spec 034a: the HTTP error for a print output failure code: 409, 413 or 404 (Spec 034b) for the known codes, else 502. */
 export const printOutputHttpError = (code: string): HttpError => (PRINTER_ERROR_BY_CODE.get(code) ?? printerError)(code);
+
+/** Spec 036e: the job's source is a raster or vector file, so there are no PDF pages to impose. */
+export const jobSourceNotPdf = (message: string): HttpError => new HttpError(409, "job_source_not_pdf", message);
+
+/** Spec 036e: the stored source PDF is above the Spec 036d size limit, checked before it is read. */
+export const sourcePdfTooLarge = (message: string): HttpError => new HttpError(413, "source_pdf_too_large", message);
+
+/** Spec 036e: the status and lowercase code of each Spec 036d imposed sheet error. */
+const IMPOSED_SHEETS_ERRORS: Readonly<Record<ImposedSheetsErrorCode, readonly [number, string]>> = {
+  SOURCE_PDF_TOO_LARGE: [413, "source_pdf_too_large"],
+  SOURCE_PDF_ENCRYPTED: [422, "source_pdf_encrypted"],
+  SOURCE_PDF_INVALID: [422, "source_pdf_invalid"],
+  SOURCE_PDF_TOO_MANY_PAGES: [422, "source_pdf_too_many_pages"],
+  PLAN_PAGE_OUT_OF_RANGE: [400, "plan_page_out_of_range"],
+  PLAN_TOO_MANY_SIDES: [422, "imposition_too_many_sides"],
+};
 
 /** A list of problems (validation) or structured context (e.g. the ids an import must remap). */
 export type ErrorDetails = readonly string[] | Readonly<Record<string, unknown>>;
@@ -173,6 +190,11 @@ export function errorResponse(error: unknown): ErrorResponse {
   // Spec 036b: the n-up and booklet planners reject a value; their message names it.
   if (error instanceof NestInputError) {
     return { statusCode: 400, body: errorBody("invalid_imposition_input", error.message) };
+  }
+  // Spec 036e: the imposed sheet renderer keeps its uppercase codes; the API's are lowercase.
+  if (error instanceof ImposedSheetsError) {
+    const [statusCode, code] = IMPOSED_SHEETS_ERRORS[error.code];
+    return { statusCode, body: errorBody(code, error.message) };
   }
   const status = isRecord(error) && typeof error.statusCode === "number" ? error.statusCode : 500;
   if (status >= 400 && status < 500) {

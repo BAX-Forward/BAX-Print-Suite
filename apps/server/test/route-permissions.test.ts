@@ -132,6 +132,14 @@ describe('route permissions (Spec 024b)', () => {
     expect(Object.keys(ROUTE_PERMISSIONS).filter((key) => !routes.includes(key))).toEqual([]);
   });
 
+  it('mounts the Spec 036e impose route with the imposition flag and maps it to jobs:read', async () => {
+    h = createHarness();
+    await h.app.ready();
+
+    expect(routesOf(h.app)).toContain('POST /jobs/:id/impose');
+    expect(routePermission('POST', '/jobs/:id/impose')).toBe('jobs:read');
+  });
+
   it('denies every caller a route without a declared permission', async () => {
     const app = Fastify();
     registerErrorHandler(app);
