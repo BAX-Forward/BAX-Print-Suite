@@ -88,6 +88,8 @@ describe("registry", () => {
       "transparency-overprint",
       "output-intent",
       "conformance",
+      "raster-resolution",
+      "raster-color-mode",
     ]);
     expect(registry.has("fonts")).toBe(true);
     expect(registry.get("missing")).toBeUndefined();

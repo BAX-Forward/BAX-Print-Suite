@@ -12,7 +12,8 @@ import {
 } from "@bax-print/plugin-sdk";
 import { conformanceClaims } from "./checks/conformance.js";
 import { UnreadablePdfError, loadDocumentModel, type DocumentModel, type PreflightContext } from "./document-model.js";
-import { evaluateChecks } from "./profile.js";
+import { evaluateChecks, evaluateRasterChecks } from "./profile.js";
+import { RasterHeaderError, readRasterHeader, sniffRasterType } from "./raster-header.js";
 import { builtinRegistry, type CheckRegistry } from "./registry.js";
 
 /** The built-in `Inspector/1` implementation over pdf-lib. Apache-2.0 code, so it may run in-process (ADR-0003). */
@@ -57,8 +58,31 @@ function report(options: InspectBytesOptions, pageCount: number, findings: Findi
   };
 }
 
-/** Inspects PDF bytes. An unreadable file yields an error finding, never an exception. */
+/**
+ * Inspects a PNG, JPEG or TIFF from its header alone (Spec 031b): one page, no conformance
+ * claims. `undefined` when the bytes are not a raster format, so the caller reads them as PDF.
+ */
+function inspectRaster(bytes: Uint8Array, options: InspectBytesOptions): PreflightReport | undefined {
+  try {
+    const header = readRasterHeader(bytes);
+    return report(options, 1, evaluateRasterChecks(header, options.checks, options.registry ?? builtinRegistry()));
+  } catch (error) {
+    if (error instanceof RasterHeaderError) return error.code === "UNKNOWN_FORMAT" ? undefined : unreadableRaster(options, error);
+    throw error;
+  }
+}
+
+function unreadableRaster(options: InspectBytesOptions, error: RasterHeaderError): PreflightReport {
+  // Severity is fixed, as for an unreadable PDF.
+  return report(options, 0, [
+    { checkId: "document", severity: "error", message: error.message, data: { rule: "unreadable-raster", code: error.code } },
+  ]);
+}
+
+/** Inspects PDF, PNG, JPEG or TIFF bytes. An unreadable file yields an error finding, never an exception. */
 export async function inspectBytes(bytes: Uint8Array, options: InspectBytesOptions = {}): Promise<PreflightReport> {
+  const raster = sniffRasterType(bytes) === undefined ? undefined : inspectRaster(bytes, options);
+  if (raster) return raster;
   try {
     const doc = await loadDocumentModel(bytes, options.context ?? {});
     return report(options, doc.pageCount, evaluateChecks(doc, options.checks, options.registry ?? builtinRegistry()), doc);
