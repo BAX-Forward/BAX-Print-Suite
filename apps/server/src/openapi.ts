@@ -5,6 +5,11 @@ import {
   INK_LIMIT_PERCENT_MAX,
   INK_LIMIT_PERCENT_MIN,
   PERMISSIONS,
+  PLANE_CURVE_CHANNELS,
+  PLANE_CURVE_METHODS,
+  PLANE_CURVES_MAX_POINTS,
+  PLANE_CURVES_MAX_VALUE,
+  PLANE_CURVES_MIN_POINTS,
   SCREENING_BAYER_SIZES,
   SCREENING_BLUE_NOISE_SIZE_MAX,
   SCREENING_BLUE_NOISE_SIZE_MIN,
@@ -706,6 +711,60 @@ const INK_LIMIT_JOB_SCHEMA: JsonSchema = {
   },
 };
 
+/** Spec 044d: one 8-bit level of a plane curve point. */
+const PLANE_CURVE_LEVEL: JsonSchema = { type: 'integer', minimum: 0, maximum: PLANE_CURVES_MAX_VALUE };
+
+/** Spec 044b: one channel's curve. The ordering rules are checked by core and stated in the description. */
+const PLANE_CURVE_SCHEMA: JsonSchema = {
+  type: 'object',
+  required: ['points', 'method'],
+  additionalProperties: false,
+  properties: {
+    points: {
+      type: 'array',
+      minItems: PLANE_CURVES_MIN_POINTS,
+      maxItems: PLANE_CURVES_MAX_POINTS,
+      description: `Inputs strictly increase, the first is 0 and the last ${String(PLANE_CURVES_MAX_VALUE)}; outputs never decrease`,
+      items: {
+        type: 'object',
+        required: ['in', 'out'],
+        additionalProperties: false,
+        properties: { in: PLANE_CURVE_LEVEL, out: PLANE_CURVE_LEVEL },
+      },
+    },
+    method: { enum: [...PLANE_CURVE_METHODS] },
+  },
+};
+
+/** `PUT /jobs/:id/plane-curves` (Spec 044d): the Spec 044b plane-curves setting, checked strictly by core `parsePlaneCurvesSetting`. */
+const PLANE_CURVES_SETTING_SCHEMA: JsonSchema = {
+  type: 'object',
+  additionalProperties: false,
+  minProperties: 1,
+  description: 'At least one channel; `{}` is rejected. A missing channel leaves that plane unchanged',
+  properties: Object.fromEntries(PLANE_CURVE_CHANNELS.map((channel) => [channel, PLANE_CURVE_SCHEMA])),
+};
+
+/** Spec 044d: the `{ job }` the plane-curves routes answer; only the fields this route group documents are listed. */
+const PLANE_CURVES_JOB_SCHEMA: JsonSchema = {
+  type: 'object',
+  required: ['job'],
+  properties: {
+    job: {
+      type: 'object',
+      required: ['id'],
+      properties: {
+        id: { type: 'string' },
+        updatedAt: { type: 'string', format: 'date-time' },
+        planeCurves: {
+          ...refTo('PlaneCurvesSetting'),
+          description: 'Optional; absent means no curves are requested. A stored value that is not a valid setting reads back absent',
+        },
+      },
+    },
+  },
+};
+
 /** Spec 043a: the longest side of a `POST /jobs/:id/screen-preview` image, in pixels. */
 export const SCREEN_PREVIEW_MAX_SIDE = 1024;
 
@@ -834,6 +893,8 @@ const COMPONENT_SCHEMAS: Readonly<Record<string, JsonSchema>> = {
   ScreeningJob: SCREENING_JOB_SCHEMA,
   InkLimitSetting: INK_LIMIT_SETTING_SCHEMA,
   InkLimitJob: INK_LIMIT_JOB_SCHEMA,
+  PlaneCurvesSetting: PLANE_CURVES_SETTING_SCHEMA,
+  PlaneCurvesJob: PLANE_CURVES_JOB_SCHEMA,
   ScreenPreviewRequest: SCREEN_PREVIEW_REQUEST_SCHEMA,
   ScreenPreview: SCREEN_PREVIEW_SCHEMA,
 };
@@ -956,6 +1017,8 @@ const API_DESCRIPTION = [
   "Spec 043a: `POST /jobs/{id}/screen-preview` screens CMYK planes with the job's `screening` and `inkLimit` settings and answers them packed",
 '1 bit per pixel; nothing is stored. A job without `screening` answers 409 `screening_not_set`. It exists only with `BPS_SCREEN_PREVIEW=1`.',
   'Spec 043b: with `format: "pbm"` in the body, each plane is answered as a raw PBM (`P4`) file instead, and the answer names its `format`.',
+  'Spec 044d: a job may carry an optional `planeCurves` setting (`PlaneCurvesSetting`); absent means no curves are requested, and a stored value',
+  'that is not a valid setting reads back absent. `PUT` and `DELETE /jobs/{id}/plane-curves` set and clear it, and exist only with `BPS_PLANE_CURVES=1`.',
 ].join(' ');
 
 /** Collects documented routes through Fastify's `onRoute` hook. */

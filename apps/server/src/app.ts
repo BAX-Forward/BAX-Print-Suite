@@ -15,6 +15,7 @@ import { registerMediaRoutes } from './media-routes.js';
 import type { MediaService } from './media-service.js';
 import { OpenApiCollector } from './openapi.js';
 import { parseImportQuery, parseLegalHoldBody, parseReprintBody } from './parse.js';
+import { registerPlaneCurvesRoutes, type PlaneCurvesRouteOptions } from './plane-curves-routes.js';
 import { registerProductionReportRoutes, type ProductionReportRouteOptions } from './production-report-routes.js';
 import { registerPrintOutputRoutes, type PrintOutputRouteOptions } from './print-output-routes.js';
 import { registerProofRoutes, type ProofRouteOptions } from './proof-routes.js';
@@ -102,6 +103,11 @@ export interface ServerDeps {
    * `jobs`. `main.ts` sets it only with `BPS_INK_LIMIT=1`.
    */
   readonly inkLimit?: InkLimitRouteOptions;
+  /**
+   * Spec 044d: mounts `PUT` and `DELETE /jobs/:id/plane-curves` over these jobs; any job repository satisfies
+   * `jobs`. `main.ts` sets it only with `BPS_PLANE_CURVES=1`.
+   */
+  readonly planeCurves?: PlaneCurvesRouteOptions;
   /**
    * Spec 043a: mounts `POST /jobs/:id/screen-preview` over these jobs; any job repository satisfies
    * `jobs`. `main.ts` sets it only with `BPS_SCREEN_PREVIEW=1`.
@@ -256,6 +262,10 @@ export function buildServer(deps: ServerDeps): FastifyInstance {
 
   if (deps.inkLimit) {
     registerInkLimitRoutes(app, deps.inkLimit);
+  }
+
+  if (deps.planeCurves) {
+    registerPlaneCurvesRoutes(app, deps.planeCurves);
   }
 
   if (deps.screenPreview) {
