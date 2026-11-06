@@ -13,4 +13,17 @@ export const tilePreviewStrings = {
   noTiling: 'No tiling set for this job.',
   noPages: 'This job has no pages to tile.',
   issuesHeading: 'The tiling cannot be laid out:',
+  // Draggable seams (049d).
+  editorLabel: 'Tile seam editor',
+  seamColumns: (left: string, right: string) => `Seam between columns ${left} and ${right}`,
+  seamRows: (upper: string, lower: string) => `Seam between rows ${upper} and ${lower}`,
+  seamFromLeft: (mm: string) => `${mm} mm from the left edge`,
+  seamFromBottom: (mm: string) => `${mm} mm from the bottom edge`,
+  editHint:
+    'Drag a seam, or focus it and use the arrow keys (1 mm, Shift for 10 mm), Home and End. Changes are local.',
+  notSaved: 'Not saved',
+  reset: 'Reset',
+  sizesHeading: 'Panel sizes',
+  panelSize: (label: string, dimensions: string) => `${label}: ${dimensions}`,
+  lastValid: 'The drawing shows the last valid layout.',
 };

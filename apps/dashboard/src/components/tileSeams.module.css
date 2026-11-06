@@ -1,0 +1,21 @@
+/* Seam handles of the tile preview (049d). Flag-on graph only; ui.module.css stays unchanged. */
+.handle {
+  cursor: ew-resize;
+  outline: none;
+  /* Lets a touch drag move the seam instead of scrolling the page. */
+  touch-action: none;
+}
+
+.handle[data-axis='y'] {
+  cursor: ns-resize;
+}
+
+.handle:hover,
+.handle:focus-visible {
+  fill-opacity: 0.2;
+}
+
+.handle:focus-visible {
+  stroke: #1f6feb;
+  stroke-width: 3px;
+}
