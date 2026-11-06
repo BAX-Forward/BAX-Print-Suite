@@ -107,6 +107,9 @@ export const ROUTE_PERMISSIONS: Readonly<Record<RouteKey, Permission>> = Object.
   // Spec 039c screening setting: a job change like the white ink setting.
   'PUT /jobs/:id/screening': 'jobs:write',
   'DELETE /jobs/:id/screening': 'jobs:write',
+  // Spec 040c ink-limit setting: a job change like the screening setting.
+  'PUT /jobs/:id/ink-limit': 'jobs:write',
+  'DELETE /jobs/:id/ink-limit': 'jobs:write',
   // Archive, trash, legal hold and job history.
   'GET /archive': 'archive:read',
   'GET /archive/:id': 'archive:read',
