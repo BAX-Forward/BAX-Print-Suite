@@ -1,6 +1,9 @@
 import type { FastifySchema, RouteOptions } from 'fastify';
 import {
   FINISHING_STEP_KINDS,
+  INK_LIMIT_METHODS,
+  INK_LIMIT_PERCENT_MAX,
+  INK_LIMIT_PERCENT_MIN,
   PERMISSIONS,
   SCREENING_BAYER_SIZES,
   SCREENING_BLUE_NOISE_SIZE_MAX,
@@ -667,6 +670,42 @@ const SCREENING_JOB_SCHEMA: JsonSchema = {
   },
 };
 
+/** `PUT /jobs/:id/ink-limit` (Spec 040c): the Spec 040b ink-limit setting, checked strictly by core `parseInkLimitSetting`. */
+const INK_LIMIT_SETTING_SCHEMA: JsonSchema = {
+  type: 'object',
+  required: ['limitPercent', 'method'],
+  additionalProperties: false,
+  properties: {
+    limitPercent: {
+      type: 'integer',
+      minimum: INK_LIMIT_PERCENT_MIN,
+      maximum: INK_LIMIT_PERCENT_MAX,
+      description: 'Total area coverage limit in percent',
+    },
+    method: { enum: [...INK_LIMIT_METHODS] },
+  },
+};
+
+/** Spec 040c: the `{ job }` the ink-limit routes answer; only the fields this route group documents are listed. */
+const INK_LIMIT_JOB_SCHEMA: JsonSchema = {
+  type: 'object',
+  required: ['job'],
+  properties: {
+    job: {
+      type: 'object',
+      required: ['id'],
+      properties: {
+        id: { type: 'string' },
+        updatedAt: { type: 'string', format: 'date-time' },
+        inkLimit: {
+          ...refTo('InkLimitSetting'),
+          description: 'Optional; absent means no ink limit is requested. A stored value that is not a valid setting reads back absent',
+        },
+      },
+    },
+  },
+};
+
 const itemsOf = (name: string): JsonSchema => ({
   type: 'object',
   required: ['items'],
@@ -712,6 +751,8 @@ const COMPONENT_SCHEMAS: Readonly<Record<string, JsonSchema>> = {
   WhiteInkJob: WHITE_INK_JOB_SCHEMA,
   ScreeningSetting: SCREENING_SETTING_SCHEMA,
   ScreeningJob: SCREENING_JOB_SCHEMA,
+  InkLimitSetting: INK_LIMIT_SETTING_SCHEMA,
+  InkLimitJob: INK_LIMIT_JOB_SCHEMA,
 };
 
 function parameters(schema: JsonSchema | undefined, location: 'path' | 'query'): unknown[] {
@@ -827,6 +868,8 @@ const API_DESCRIPTION = [
   'that is not a valid setting reads back absent. `PUT` and `DELETE /jobs/{id}/white-ink` set and clear it, and exist only with `BPS_WHITE_INK=1`.',
   'Spec 039c: a job may carry an optional `screening` setting (`ScreeningSetting`); absent means no screening is requested, and a stored value',
   'that is not a valid setting reads back absent. `PUT` and `DELETE /jobs/{id}/screening` set and clear it, and exist only with `BPS_SCREENING=1`.',
+  'Spec 040c: a job may carry an optional `inkLimit` setting (`InkLimitSetting`); absent means no ink limit is requested, and a stored value',
+  'that is not a valid setting reads back absent. `PUT` and `DELETE /jobs/{id}/ink-limit` set and clear it, and exist only with `BPS_INK_LIMIT=1`.',
 ].join(' ');
 
 /** Collects documented routes through Fastify's `onRoute` hook. */

@@ -8,6 +8,7 @@ import { registerApiTokenRoutes, type ApiTokenRouteOptions } from './api-token-r
 import { registerCutRoutes, type CutExtractor, type CutJobLookup } from './cut-routes.js';
 import { registerFinishingRoutes, type FinishingRouteOptions } from './finishing-routes.js';
 import { registerImpositionRoutes } from './imposition-routes.js';
+import { registerInkLimitRoutes, type InkLimitRouteOptions } from './ink-limit-routes.js';
 import { registerLayoutTemplateRoutes } from './layout-template-routes.js';
 import { registerLoginRoutes, type LoginRouteOptions } from './login-routes.js';
 import { registerMediaRoutes } from './media-routes.js';
@@ -95,6 +96,11 @@ export interface ServerDeps {
    * `jobs`. `main.ts` sets it only with `BPS_SCREENING=1`.
    */
   readonly screening?: ScreeningRouteOptions;
+  /**
+   * Spec 040c: mounts `PUT` and `DELETE /jobs/:id/ink-limit` over these jobs; any job repository satisfies
+   * `jobs`. `main.ts` sets it only with `BPS_INK_LIMIT=1`.
+   */
+  readonly inkLimit?: InkLimitRouteOptions;
   /**
    * Spec 030c: scopes the `/jobs/:id` routes and the `GET /archive` and `GET /trash` lists to the
    * caller's site membership (`site-scope.ts`). Without it every caller sees every site's jobs.
@@ -240,6 +246,10 @@ export function buildServer(deps: ServerDeps): FastifyInstance {
 
   if (deps.screening) {
     registerScreeningRoutes(app, deps.screening);
+  }
+
+  if (deps.inkLimit) {
+    registerInkLimitRoutes(app, deps.inkLimit);
   }
 
   app.get('/archive', async (request) => {
