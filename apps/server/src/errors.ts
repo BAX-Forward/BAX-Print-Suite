@@ -38,6 +38,9 @@ export const invalid = (message: string, details?: readonly string[]): HttpError
 
 export const conflict = (message: string): HttpError => new HttpError(409, "conflict", message);
 
+/** Spec 028c: no credential verifier recognized the caller and the actor resolver denies anonymous callers. */
+export const unauthenticated = (message = "Authentication is required"): HttpError => new HttpError(401, "unauthenticated", message);
+
 /** Spec 004a: proof watermark options the marks package rejects; `details` are its zod issues. */
 export const proofWatermarkInvalid = (message: string, details: readonly string[]): HttpError =>
   new HttpError(422, "proof_watermark_invalid", message, details);

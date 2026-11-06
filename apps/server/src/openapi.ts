@@ -355,11 +355,24 @@ function parameters(schema: JsonSchema | undefined, location: 'path' | 'query'):
   }));
 }
 
-/** Spec 024b: the 403 of a route that needs `permission`, unless the route documents its own. */
+/** Spec 028c: the 401 of a route that needs a permission, unless the route documents its own. */
+const UNAUTHENTICATED_DESCRIPTION =
+  'No credential verifier recognized the caller and the actor resolver denies anonymous callers (`unauthenticated`)';
+
+/**
+ * Spec 024b: the 403 of a route that needs `permission`, unless the route documents its own.
+ * Spec 028c: and its 401, which a resolver with the `deny` fallback answers.
+ */
 function withForbidden(responses: Record<string, string> | undefined, permission: Permission | undefined): Record<string, string> {
   const declared = responses ?? { 200: 'OK' };
-  if (permission === undefined || declared['403'] !== undefined) return declared;
-  return { ...declared, 403: `The caller's role lacks the \`${permission}\` permission (\`forbidden\`, \`details.permission\` names it)` };
+  if (permission === undefined) return declared;
+  return {
+    ...(declared['401'] === undefined ? { 401: UNAUTHENTICATED_DESCRIPTION } : {}),
+    ...(declared['403'] === undefined
+      ? { 403: `The caller's role lacks the \`${permission}\` permission (\`forbidden\`, \`details.permission\` names it)` }
+      : {}),
+    ...declared,
+  };
 }
 
 function operation(route: RouteDoc, permission?: Permission): Record<string, unknown> {
@@ -404,10 +417,11 @@ function operation(route: RouteDoc, permission?: Permission): Record<string, unk
   return op;
 }
 
-/** Spec 024b: how callers are authorized, including the no-resolver default. */
+/** Spec 024b: how callers are authorized, including the no-resolver default. Spec 028c: and the 401. */
 const API_DESCRIPTION = [
   "Every route except `GET /openapi.json` needs a permission of the caller's role and answers 403 `forbidden`",
   'without it; `details.permission` names the missing permission.',
+  'An actor resolver configured to deny anonymous callers answers 401 `unauthenticated` when no credential verifier recognizes the caller.',
   'Without a configured actor resolver every caller is treated as the local admin, which holds every permission.',
   'The server binds 127.0.0.1 by default; do not expose it beyond loopback without a resolver.',
 ].join(' ');

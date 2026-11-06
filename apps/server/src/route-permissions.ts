@@ -137,9 +137,10 @@ export function routesOf(app: FastifyInstance): readonly RouteKey[] {
 
 /**
  * Checks the permission of every route registered after this call against the actor
- * `actorOf` resolves. Call it before registering any route.
+ * `actorOf` resolves. Call it before registering any route. Spec 028c: `actorOf` may be async;
+ * it runs once per guarded request, and never for public routes or unknown URLs.
  */
-export function guardRoutes(app: FastifyInstance, actorOf: (request: FastifyRequest) => Actor): void {
+export function guardRoutes(app: FastifyInstance, actorOf: (request: FastifyRequest) => Actor | Promise<Actor>): void {
   const routes = new Set<RouteKey>();
   registeredRoutes.set(app, routes);
 
@@ -159,6 +160,6 @@ export function guardRoutes(app: FastifyInstance, actorOf: (request: FastifyRequ
     if (permission === undefined) {
       throw new HttpError(403, 'forbidden', `No permission is declared for ${key}`);
     }
-    requirePermission(permissionRolesOf(actorOf(request)), permission, key);
+    requirePermission(permissionRolesOf(await actorOf(request)), permission, key);
   });
 }

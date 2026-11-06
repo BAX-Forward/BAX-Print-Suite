@@ -61,8 +61,10 @@ export interface ServerDeps {
    * role (Spec 024b, `route-permissions.ts`). Single-PC mode binds to loopback without auth
    * (ARCHITECTURE §6), so without a resolver every caller is the local admin (`LOCAL_ADMIN`) and
    * holds every permission. Server mode, reachable beyond loopback, must supply a real resolver.
+   * Spec 028c: the resolver may be async, e.g. `createActorResolver` from `actor-resolver.ts`; it
+   * runs once per guarded request, before the body is parsed.
    */
-  readonly authenticate?: (request: FastifyRequest) => Actor;
+  readonly authenticate?: (request: FastifyRequest) => Actor | Promise<Actor>;
   readonly importBodyLimit?: number;
   readonly logger?: boolean;
 }
@@ -92,7 +94,20 @@ export function localAdminWarning(deps: Pick<ServerDeps, 'authenticate'>, host: 
  */
 export function buildServer(deps: ServerDeps): FastifyInstance {
   const app = Fastify({ logger: deps.logger ?? false });
-  const actorOf = (request: FastifyRequest): Actor => (deps.authenticate ?? (() => LOCAL_ADMIN))(request);
+  const authenticate = deps.authenticate ?? ((): Actor => LOCAL_ADMIN);
+  // Spec 028c: the guard resolves the actor once, so handlers read it synchronously.
+  const actors = new WeakMap<FastifyRequest, Actor>();
+  const resolveActor = async (request: FastifyRequest): Promise<Actor> => {
+    const actor = await authenticate(request);
+    actors.set(request, actor);
+    return actor;
+  };
+  const actorOf = (request: FastifyRequest): Actor => {
+    const actor = actors.get(request);
+    // Only a route outside the guard could get here; answer 500 rather than guess an actor.
+    if (actor === undefined) throw new Error(`no actor was resolved for ${request.method} ${request.url}`);
+    return actor;
+  };
   const importBodyLimit = deps.importBodyLimit ?? DEFAULT_IMPORT_BODY_LIMIT;
   const { archive } = deps;
 
@@ -102,7 +117,7 @@ export function buildServer(deps: ServerDeps): FastifyInstance {
 
   registerErrorHandler(app);
   // Before any route, so every route is guarded.
-  guardRoutes(app, actorOf);
+  guardRoutes(app, resolveActor);
 
   // Registered first so its `onRoute` hook documents the media routes.
   if (deps.media) {
