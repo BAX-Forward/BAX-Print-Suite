@@ -7,6 +7,7 @@ import { registerAccountingRoutes, type AccountingRouteOptions } from './account
 import { registerApiTokenRoutes, type ApiTokenRouteOptions } from './api-token-routes.js';
 import { registerCutRoutes, type CutExtractor, type CutJobLookup } from './cut-routes.js';
 import { registerFinishingRoutes, type FinishingRouteOptions } from './finishing-routes.js';
+import { registerImpositionRoutes } from './imposition-routes.js';
 import { registerLayoutTemplateRoutes } from './layout-template-routes.js';
 import { registerLoginRoutes, type LoginRouteOptions } from './login-routes.js';
 import { registerMediaRoutes } from './media-routes.js';
@@ -77,6 +78,8 @@ export interface ServerDeps {
   readonly login?: LoginRouteOptions;
   /** Spec 032b: `true` mounts `POST /swatch-charts`; `main.ts` sets it only with `BPS_SWATCH_CHARTS=1`. */
   readonly swatchCharts?: boolean;
+  /** Spec 036b: `true` mounts `POST /imposition/n-up` and `POST /imposition/booklet`; `main.ts` sets it only with `BPS_IMPOSITION=1`. */
+  readonly imposition?: boolean;
   /**
    * Spec 030c: scopes the `/jobs/:id` routes and the `GET /archive` and `GET /trash` lists to the
    * caller's site membership (`site-scope.ts`). Without it every caller sees every site's jobs.
@@ -209,6 +212,10 @@ export function buildServer(deps: ServerDeps): FastifyInstance {
 
   if (deps.swatchCharts === true) {
     registerSwatchChartRoutes(app);
+  }
+
+  if (deps.imposition === true) {
+    registerImpositionRoutes(app);
   }
 
   app.get('/archive', async (request) => {
