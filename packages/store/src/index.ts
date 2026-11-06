@@ -12,6 +12,7 @@ export * from './sqlite-finishing.js';
 export * from './sqlite-hotfolders.js';
 export * from './sqlite-jobs.js';
 export * from './sqlite-layouts.js';
+export * from './sqlite-sites.js';
 export * from './sqlite-users.js';
 export * from './sqlite-webhooks.js';
 export * from './storage.js';

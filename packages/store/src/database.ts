@@ -118,6 +118,25 @@ export const MIGRATIONS: readonly Migration[] = Object.freeze([
       CREATE INDEX api_tokens_user ON api_tokens (user_id, created_at, id);
     `,
   },
+  {
+    version: 7,
+    name: 'sites and site memberships',
+    sql: `
+      CREATE TABLE sites (
+        id TEXT PRIMARY KEY,
+        name TEXT NOT NULL,
+        time_zone TEXT NOT NULL,
+        created_at TEXT NOT NULL
+      );
+      CREATE TABLE site_memberships (
+        user_id TEXT NOT NULL REFERENCES users (id) ON DELETE CASCADE,
+        site_id TEXT NOT NULL REFERENCES sites (id) ON DELETE CASCADE,
+        PRIMARY KEY (user_id, site_id)
+      );
+      CREATE INDEX site_memberships_site ON site_memberships (site_id, user_id);
+      ALTER TABLE users ADD COLUMN all_sites INTEGER NOT NULL DEFAULT 0;
+    `,
+  },
 ]);
 
 function applyMigrations(db: DatabaseSync): void {
@@ -207,7 +226,8 @@ export function openDatabase(location: string = IN_MEMORY): DatabaseSync {
     db.exec('PRAGMA journal_mode = WAL');
   }
   db.exec('PRAGMA busy_timeout = 5000');
-  // API tokens cascade on user delete (migration 6); do not rely on the driver's default.
+  // API tokens (migration 6) and site memberships (migration 7) cascade on delete; do not rely
+  // on the driver's default.
   db.exec('PRAGMA foreign_keys = ON');
   applyMigrations(db);
   return db;
