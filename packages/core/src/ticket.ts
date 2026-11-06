@@ -2,6 +2,7 @@ import type { Static } from "@sinclair/typebox";
 import { parseAccountingId } from "./accounting-id.js";
 import { parseEdits, type JobEditListSchema } from "./edits.js";
 import { InvalidArgumentError } from "./errors.js";
+import { parseSiteId } from "./sites.js";
 
 export interface FinishedSize {
   readonly widthMm: number;
@@ -29,6 +30,8 @@ export interface JobTicket {
   readonly marks?: readonly unknown[];
   /** Customer or cost-center code used to group device accounting reports (Spec 017c). */
   readonly accountingId?: string;
+  /** Site the job belongs to (Spec 030a). Absent means no site. */
+  readonly siteId?: string;
 }
 
 /** A validation error tied to one ticket field, e.g. `edits`. */
@@ -56,6 +59,19 @@ export function parseTicketAccountingId(input: unknown): TicketAccountingIdResul
   } catch (error) {
     if (!(error instanceof InvalidArgumentError)) throw error;
     return { ok: false, error: { field: "accountingId", errors: [error.message] } };
+  }
+}
+
+export type TicketSiteIdResult = { ok: true; value: string | undefined } | { ok: false; error: TicketFieldError };
+
+/** Validates the `siteId` field of an incoming ticket. An absent field is valid (no site); a valid ID is trimmed. */
+export function parseTicketSiteId(input: unknown): TicketSiteIdResult {
+  if (input === undefined) return { ok: true, value: undefined };
+  try {
+    return { ok: true, value: parseSiteId(input) };
+  } catch (error) {
+    if (!(error instanceof InvalidArgumentError)) throw error;
+    return { ok: false, error: { field: "siteId", errors: [error.message] } };
   }
 }
 
