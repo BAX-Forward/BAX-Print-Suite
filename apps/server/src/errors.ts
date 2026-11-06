@@ -58,6 +58,30 @@ export const reportFormatInvalid = (message: string): HttpError => new HttpError
 export const accountingIdInvalid = (message: string, field: string): HttpError =>
   new HttpError(422, "accounting_id_invalid", message, { field });
 
+/** Spec 034a: the job's source is not a format the print output takes. */
+export const unsupportedFormat = (message: string): HttpError => new HttpError(409, "unsupported_format", message);
+
+/** Spec 034a: the printer plugin failed; `details.code` is the plugin's uppercase error code. */
+export const printerError = (code: string): HttpError =>
+  new HttpError(502, "printer_error", `The printer plugin failed with ${code}`, { code });
+
+/** Spec 034a: the device takes no finished documents, or not this format; `details.code` is the uppercase code. */
+export const documentInputUnsupported = (code: string): HttpError =>
+  new HttpError(409, "document_input_unsupported", `The printer does not accept this document (${code})`, { code });
+
+/** Spec 034a: the document is above the device's document size limit; `details.code` is the uppercase code. */
+export const documentTooLarge = (code: string): HttpError =>
+  new HttpError(413, "document_too_large", `The document is larger than the printer accepts (${code})`, { code });
+
+const PRINTER_ERROR_BY_CODE: ReadonlyMap<string, (code: string) => HttpError> = new Map([
+  ["DOCUMENT_INPUT_UNSUPPORTED", documentInputUnsupported],
+  ["FORMAT_NOT_ACCEPTED", documentInputUnsupported],
+  ["DOCUMENT_TOO_LARGE", documentTooLarge],
+]);
+
+/** Spec 034a: the HTTP error for a print output failure code: 409 or 413 for the document refusals, else 502. */
+export const printOutputHttpError = (code: string): HttpError => (PRINTER_ERROR_BY_CODE.get(code) ?? printerError)(code);
+
 /** A list of problems (validation) or structured context (e.g. the ids an import must remap). */
 export type ErrorDetails = readonly string[] | Readonly<Record<string, unknown>>;
 

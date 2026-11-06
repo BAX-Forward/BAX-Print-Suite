@@ -19,6 +19,7 @@ import { MediaService } from './media-service.js';
 import { memoryMediaStores } from './media-stores.js';
 import { createPdfCutExtractor } from './pdf-cut-extractor.js';
 import { PreflightService } from './preflight-service.js';
+import { configurePrintOutput, PRINT_OUTPUT_ENV, PRINTER_PLUGIN_ENV } from './print-output.js';
 import { ProfileService } from './profiles.js';
 import { configureRollCut } from './roll-cut-config.js';
 import { startArchiveScheduler } from './scheduler.js';
@@ -45,6 +46,9 @@ const allowLanTargets = parseAllowLanTargets(process.env[ALLOW_LAN_TARGETS_ENV])
 const https = loadHttpsOptions(process.env);
 // Spec 032b: POST /swatch-charts only with BPS_SWATCH_CHARTS=1; any other value stops startup.
 const swatchCharts = parseSwatchChartsFlag(process.env);
+// Spec 034a: print output only with BPS_PRINT_OUTPUT=1 and BPS_PRINTER_PLUGIN; any other flag value, a missing,
+// relative or absent manifest or a bad BPS_PRINTER_SETTINGS stops startup. The plugin is started on first use, never here.
+const printOutput = configurePrintOutput(process.env, { spoolDir: join(dataDir, 'spool', 'print-output') });
 // Spec 019c: a SQLite job database (BPS_DATABASE) keeps webhook subscriptions across restarts.
 // Spec 019d: the file is mode 0600 and secrets are sealed when a secrets key is configured.
 const { store: webhookStore, database, warnings: persistenceWarnings } = openWebhookPersistence(process.env);
@@ -108,6 +112,8 @@ const serverDeps: ServerDeps = {
   stepRepeat: { blobPath, ...rollCut.stepRepeat },
   // Spec 004a: the proof watermark reads the same stored source PDF.
   proof: { blobPath },
+  // Spec 034a: the print output reads the same stored source PDF.
+  ...(printOutput ? { printOutput: { output: printOutput.output, blobPath } } : {}),
   // Spec 003x: saved layout templates live in the job database, so the routes need BPS_DATABASE.
   ...(database ? { layoutTemplates: new SqliteLayoutTemplateRepository(database) } : {}),
   // Spec 004d: finishing plans live in the job database too.
@@ -150,6 +156,12 @@ app.log.warn(
 const databaseUrlValue = process.env[DATABASE_URL_ENV];
 if (databaseUrl && databaseUrlValue) {
   app.log.warn(`${DATABASE_URL_ENV} ${redactDatabaseUrl(databaseUrlValue)} is parsed but not used in this build: no Postgres connection is made`);
+}
+if (printOutput) {
+  // The settings may hold secrets, so only the manifest path is logged.
+  app.log.info(`print output is on (${PRINT_OUTPUT_ENV}=1): ${PRINTER_PLUGIN_ENV} ${printOutput.config.manifestPath}`);
+} else {
+  app.log.info(`print output is off (set ${PRINT_OUTPUT_ENV}=1 and ${PRINTER_PLUGIN_ENV} to send jobs to a printer plugin)`);
 }
 if (https === undefined) {
   app.log.info('TLS is off: serving plain HTTP (set BPS_TLS_CERT and BPS_TLS_KEY to serve HTTPS)');

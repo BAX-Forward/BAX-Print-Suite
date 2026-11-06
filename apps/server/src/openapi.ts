@@ -360,6 +360,20 @@ const LOGIN_RESULT_SCHEMA: JsonSchema = {
   },
 };
 
+/** `POST /jobs/:id/print` (Spec 034a): the printer plugin's id of the output job it created. */
+const PRINT_SUBMISSION_SCHEMA: JsonSchema = {
+  type: 'object',
+  required: ['outputJobId'],
+  properties: { outputJobId: { type: 'string', minLength: 1 } },
+};
+
+/** An output job as the printer plugin reports it (Spec 034a); `state` is the plugin's word for it. */
+const PRINT_OUTPUT_STATUS_SCHEMA: JsonSchema = {
+  type: 'object',
+  required: ['outputJobId', 'state'],
+  properties: { outputJobId: { type: 'string', minLength: 1 }, state: { type: 'string' }, message: { type: 'string' } },
+};
+
 /** Spec 032b: the most colours one `POST /swatch-charts` library may have. */
 export const SWATCH_CHART_MAX_COLORS = 2000;
 /** Spec 032b: the longest library or colour name, in characters; the marks package also caps a colour name at 127 UTF-8 bytes. */
@@ -461,6 +475,8 @@ const COMPONENT_SCHEMAS: Readonly<Record<string, JsonSchema>> = {
   IssuedApiToken: ISSUED_API_TOKEN_SCHEMA,
   LoginResult: LOGIN_RESULT_SCHEMA,
   SwatchChartRequest: SWATCH_CHART_REQUEST_SCHEMA,
+  PrintSubmission: PRINT_SUBMISSION_SCHEMA,
+  PrintOutputStatus: PRINT_OUTPUT_STATUS_SCHEMA,
 };
 
 function parameters(schema: JsonSchema | undefined, location: 'path' | 'query'): unknown[] {
@@ -565,6 +581,10 @@ const API_DESCRIPTION = [
   'Spec 031c: a job records `sourceFormat` (`pdf`, `png`, `jpeg` or `tiff`), detected from the magic bytes of its first source file,',
   'and omits it when the bytes match none of them. Job creation takes any bytes; a hot folder takes in TIFF, JPEG and PNG files',
   'only when its settings have `acceptRaster: true`, and otherwise matches its `filePatterns` alone.',
+  'Spec 034a: the `/jobs/{id}/print` routes exist only with `BPS_PRINT_OUTPUT=1` and a printer plugin (`BPS_PRINTER_PLUGIN`);',
+  "they send the job's PDF source to it through `printer/submitDocument`. A device that takes no finished documents or not",
+  'this format answers 409 `document_input_unsupported`, a document above its limit 413 `document_too_large`, and any other',
+  "plugin failure 502 `printer_error`; each carries the plugin's uppercase code in `details.code`.",
 ].join(' ');
 
 /** Collects documented routes through Fastify's `onRoute` hook. */
