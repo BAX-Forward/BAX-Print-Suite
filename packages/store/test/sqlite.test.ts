@@ -229,6 +229,66 @@ describe('SqliteJobRepository', () => {
       expect(await repo.findLiveBySha256('hf-1', 'a'.repeat(64))).toStrictEqual(expected);
     });
   });
+
+  describe('planeCurves (spec 044b)', () => {
+    it('round-trips valid settings, leaves an absent one absent, and keeps the other settings', async () => {
+      const repo = new SqliteJobRepository(openDatabase());
+      const black = job({
+        id: 'black',
+        planeCurves: { k: { points: [{ in: 0, out: 0 }, { in: 200, out: 180 }, { in: 255, out: 255 }], method: 'monotone' } },
+      });
+      const all = job({
+        id: 'all',
+        whiteInk: { mode: 'flood', density: 100 },
+        screening: { kind: 'bayer', size: 8 },
+        inkLimit: { limitPercent: 300, method: 'gcr' },
+        planeCurves: {
+          c: { points: [{ in: 0, out: 0 }, { in: 255, out: 230 }], method: 'linear' },
+          m: { points: [{ in: 0, out: 0 }, { in: 255, out: 255 }], method: 'monotone' },
+          y: { points: [{ in: 0, out: 12 }, { in: 255, out: 255 }], method: 'linear' },
+          k: { points: [{ in: 0, out: 0 }, { in: 255, out: 255 }], method: 'linear' },
+        },
+      });
+      const existing = job({ id: 'existing', inkLimit: { limitPercent: 100, method: 'proportional' } });
+      await repo.save(black);
+      await repo.save(all);
+      await repo.save(existing);
+      await repo.save(job({ id: 'plain' }));
+
+      expect(await repo.get('black')).toStrictEqual(black);
+      expect(await repo.get('all')).toStrictEqual(all);
+      expect(await repo.get('existing')).toStrictEqual(existing);
+      const plain = await repo.get('plain');
+      expect(plain).toStrictEqual(job({ id: 'plain' }));
+      expect(plain).not.toHaveProperty('planeCurves');
+    });
+
+    it.each<unknown>([
+      'yes',
+      null,
+      {},
+      { c: { points: [{ in: 0, out: 0 }], method: 'linear' } },
+      { c: { points: [{ in: 1, out: 0 }, { in: 255, out: 255 }], method: 'linear' } },
+      { c: { points: [{ in: 0, out: 0 }, { in: 128, out: 200 }, { in: 255, out: 100 }], method: 'monotone' } },
+      { c: { points: [{ in: 0, out: 0 }, { in: 255, out: 256 }], method: 'linear' } },
+      { c: { points: [{ in: 0, out: 0 }, { in: 255, out: 255 }], method: 'linear', extra: 1 } },
+    ])('reads a stored invalid planeCurves %j back with no planeCurves', async (planeCurves) => {
+      const db = openDatabase();
+      const repo = new SqliteJobRepository(db);
+      const expected = job({
+        status: 'queued',
+        screening: { kind: 'bayer', size: 4 },
+        inkLimit: { limitPercent: 280, method: 'gcr' },
+      });
+      await repo.save(expected);
+      db.prepare('UPDATE jobs SET doc = ? WHERE id = ?').run(JSON.stringify({ ...expected, planeCurves }), 'job-1');
+
+      expect(await repo.get('job-1')).toStrictEqual(expected);
+      expect(await repo.list()).toStrictEqual([expected]);
+      expect((await repo.queue()).items).toStrictEqual([expected]);
+      expect(await repo.findLiveBySha256('hf-1', 'a'.repeat(64))).toStrictEqual(expected);
+    });
+  });
 });
 
 describe('SqliteHotFolderRepository', () => {

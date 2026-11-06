@@ -44,6 +44,13 @@ function storedWithInkLimit(inkLimit: unknown): Job {
   throw new TypeError('not a job document');
 }
 
+/** A job document whose `planeCurves` is not a setting (spec 044b). */
+function storedWithPlaneCurves(planeCurves: unknown): Job {
+  const doc: unknown = JSON.parse(JSON.stringify({ ...job(), planeCurves }));
+  if (typeof doc === 'object' && doc && 'id' in doc) return Object.assign(job(), doc);
+  throw new TypeError('not a job document');
+}
+
 describe('MemoryJobRepository whiteInk (spec 038c)', () => {
   it('round-trips a valid setting and leaves an absent one absent', async () => {
     const repo = new MemoryJobRepository();
@@ -139,6 +146,54 @@ describe('MemoryJobRepository inkLimit (spec 040b)', () => {
   ])('reads a stored invalid inkLimit %j back with no inkLimit', async (inkLimit) => {
     const repo = new MemoryJobRepository();
     await repo.save(storedWithInkLimit(inkLimit));
+
+    expect(await repo.get('job-1')).toStrictEqual(job());
+    expect(await repo.list()).toStrictEqual([job()]);
+  });
+});
+
+describe('MemoryJobRepository planeCurves (spec 044b)', () => {
+  it('round-trips valid settings, keeps other settings, and leaves an absent one absent', async () => {
+    const repo = new MemoryJobRepository();
+    const magenta = job({
+      id: 'magenta',
+      planeCurves: { m: { points: [{ in: 0, out: 0 }, { in: 100, out: 90 }, { in: 255, out: 255 }], method: 'monotone' } },
+    });
+    const all = job({
+      id: 'all',
+      whiteInk: { mode: 'flood', density: 100 },
+      screening: { kind: 'bayer', size: 4 },
+      inkLimit: { limitPercent: 260, method: 'gcr' },
+      planeCurves: {
+        c: { points: [{ in: 0, out: 0 }, { in: 255, out: 255 }], method: 'linear' },
+        k: { points: [{ in: 0, out: 3 }, { in: 255, out: 250 }], method: 'monotone' },
+      },
+    });
+    const existing = job({ id: 'existing', inkLimit: { limitPercent: 100, method: 'proportional' } });
+    await repo.save(magenta);
+    await repo.save(all);
+    await repo.save(existing);
+    await repo.save(job({ id: 'plain' }));
+
+    expect(await repo.get('magenta')).toStrictEqual(magenta);
+    expect(await repo.get('all')).toStrictEqual(all);
+    expect(await repo.get('existing')).toStrictEqual(existing);
+    const plain = await repo.get('plain');
+    expect(plain).toStrictEqual(job({ id: 'plain' }));
+    expect(plain).not.toHaveProperty('planeCurves');
+  });
+
+  it.each<unknown>([
+    'yes',
+    null,
+    {},
+    { c: { points: [{ in: 0, out: 0 }, { in: 0, out: 0 }, { in: 255, out: 255 }], method: 'linear' } },
+    { c: { points: [{ in: 0, out: 0 }, { in: 255.5, out: 255 }], method: 'linear' } },
+    { m: { points: [{ in: 0, out: 0 }, { in: 255, out: 255 }], method: 'Linear' } },
+    { c: { points: [{ in: 0, out: 0, x: 1 }, { in: 255, out: 255 }], method: 'linear' } },
+  ])('reads a stored invalid planeCurves %j back with no planeCurves', async (planeCurves) => {
+    const repo = new MemoryJobRepository();
+    await repo.save(storedWithPlaneCurves(planeCurves));
 
     expect(await repo.get('job-1')).toStrictEqual(job());
     expect(await repo.list()).toStrictEqual([job()]);
