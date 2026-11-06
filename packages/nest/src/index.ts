@@ -49,5 +49,29 @@ export {
   type StepRepeatJob,
   type StepRepeatJobOptions,
 } from "./step-repeat-job.js";
+export {
+  MAX_GRID,
+  MAX_PAGES,
+  MAX_SHEETS,
+  NestInputError,
+  planNUp,
+  type NUpOptions,
+  type NUpOrientation,
+  type NUpPlacement,
+  type NUpPlan,
+  type NUpSheet,
+  type NUpSize,
+  type PageSlot,
+} from "./n-up.js";
+export {
+  MAX_CREEP_PT,
+  planBooklet,
+  type BookletBinding,
+  type BookletOptions,
+  type BookletPlan,
+  type BookletSheet,
+  type BookletSide,
+  type SignaturePages,
+} from "./booklet.js";
 export { toSvg, type SvgOptions } from "./svg.js";
 export { parseLength, parseMargins, pointsTo, POINTS_PER, type LengthUnit } from "./units.js";
