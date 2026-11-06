@@ -18,6 +18,7 @@
   "dependencies": {
     "@bax-print/core": "workspace:*",
     "@bax-print/events": "workspace:*",
+    "@bax-print/inspect": "workspace:*",
     "@bax-print/store": "workspace:*",
     "chokidar": "4.0.3"
   },

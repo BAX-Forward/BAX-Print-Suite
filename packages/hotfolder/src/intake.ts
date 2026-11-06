@@ -59,6 +59,11 @@ export interface IntakeDeps {
   readonly sniffSourceFormat?: SourceFormatSniffer;
 }
 
+export interface IngestOptions {
+  /** Spec 037b: entries added to the new job's metadata (e.g. facts from a paired JDF ticket). */
+  readonly metadata?: Readonly<Record<string, string>>;
+}
+
 export type IntakeOutcome =
   | { kind: 'ready'; job: Job; movedTo: string | undefined }
   | { kind: 'duplicate'; duplicateOf: Job; movedTo: string | undefined }
@@ -181,7 +186,12 @@ class IntakeRecorder {
  * bytes into managed storage keyed by job id, inspect (`inspecting` → `ready`), and move the
  * original to `_processed` (or `_failed`). Never throws: failures are returned as outcomes.
  */
-export async function ingestFile(path: string, folder: HotFolder, deps: IntakeDeps): Promise<IntakeOutcome> {
+export async function ingestFile(
+  path: string,
+  folder: HotFolder,
+  deps: IntakeDeps,
+  options: IngestOptions = {},
+): Promise<IntakeOutcome> {
   const logger = deps.logger ?? noopLogger;
   const recorder = new IntakeRecorder(deps);
   const name = basename(path);
@@ -223,7 +233,7 @@ export async function ingestFile(path: string, folder: HotFolder, deps: IntakeDe
       artifacts: [],
       ticket: template ? structuredClone(template) : { intent: { quantity: 1 }, process: {} },
       tags: [],
-      metadata: {},
+      metadata: { ...options.metadata },
       createdAt,
       updatedAt: createdAt,
       lifecycle: 'active',
@@ -293,7 +303,8 @@ async function failJob(
   return current;
 }
 
-async function moveQuietly(
+/** {@link moveIntoFolder} that logs a failure and returns `undefined` instead of throwing. */
+export async function moveQuietly(
   source: string,
   dir: string,
   tag: string,

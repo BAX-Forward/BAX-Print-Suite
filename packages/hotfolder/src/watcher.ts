@@ -5,6 +5,7 @@ import { FAILED_SUBFOLDER, effectiveFilePatterns, noopLogger, type HotFolder, ty
 import { hotFolderFileDetectedEvent } from '@bax-print/events';
 import type { HotFolderRepository } from '@bax-print/store';
 import { HOTFOLDER_EVENT_SOURCE, ingestFile, type IntakeDeps, type IntakeOutcome } from './intake.js';
+import { findClaimingTicket, ingestJdfTicket, isJdfFileName, pairJdfTicket } from './jdf-pairing.js';
 import { isCandidateFileName } from './patterns.js';
 import { StableWriteTracker } from './stable.js';
 
@@ -217,7 +218,10 @@ export class HotFolderWatcher {
 
   private async ingest(path: string): Promise<void> {
     try {
-      const outcome = await ingestFile(path, this.folder, this.options.deps);
+      const outcome = await this.ingestOne(path);
+      if (outcome === undefined) {
+        return;
+      }
       if (outcome.movedTo === undefined) {
         await this.rememberUnmoved(path);
       }
@@ -232,6 +236,43 @@ export class HotFolderWatcher {
     } finally {
       this.inFlight.delete(path);
     }
+  }
+
+  /**
+   * Spec 037b: with `acceptJdf` on, a ticket brings the file it names along, and a file that a
+   * ticket in the folder names waits for that ticket instead of becoming a job on its own.
+   * `undefined` means nothing was ingested this time.
+   */
+  private async ingestOne(path: string): Promise<IntakeOutcome | undefined> {
+    if (this.folder.settings.acceptJdf === true) {
+      return isJdfFileName(basename(path)) ? this.ingestTicket(path) : this.ingestUnlessClaimed(path);
+    }
+    return ingestFile(path, this.folder, this.options.deps);
+  }
+
+  private async ingestTicket(path: string): Promise<IntakeOutcome | undefined> {
+    const pairing = await pairJdfTicket(path, this.folder).catch(() => undefined);
+    const source = pairing?.kind === 'paired' ? pairing.sourcePath : undefined;
+    if (source !== undefined && (this.tracker.isTracking(source) || this.inFlight.has(source))) {
+      // The named file is still being written or is queued; a later rescan retries the ticket.
+      return undefined;
+    }
+    const outcome = await ingestJdfTicket(path, this.folder, this.options.deps);
+    if (source !== undefined) {
+      this.unmoved.delete(source);
+    }
+    return outcome;
+  }
+
+  private async ingestUnlessClaimed(path: string): Promise<IntakeOutcome | undefined> {
+    const ticket = await findClaimingTicket(path, this.folder);
+    if (ticket === undefined) {
+      return ingestFile(path, this.folder, this.options.deps);
+    }
+    this.logger.debug('file waits for its jdf ticket', { hotFolderId: this.folder.id, path, ticket });
+    // Not considered again until it changes; the ticket's intake moves it away.
+    await this.rememberUnmoved(path);
+    return undefined;
   }
 
   private async rememberUnmoved(path: string): Promise<void> {
