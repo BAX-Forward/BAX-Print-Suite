@@ -3,7 +3,7 @@ export { mmToPt, ptToMm, PT_PER_MM } from "./units.js";
 export { DEFAULT_OVERLAP_MM, DEFAULT_SEAM, MAX_PANELS_PER_AXIS } from "./axis.js";
 export { letters, panelLabel, panelLabelParts } from "./labels.js";
 export { seamTreatmentAt, tile, widthLimitMm } from "./tile.js";
-export { suggest, type SuggestOptions, type SuggestResult, type Suggestion } from "./suggest.js";
+export { MAX_KEEP_OUT_REGIONS, suggest, type SuggestOptions, type SuggestResult, type Suggestion } from "./suggest.js";
 export {
   DEFAULT_LABEL_INSET_MM,
   DEFAULT_TICK_LENGTH_MM,
