@@ -30,6 +30,14 @@ export interface Point {
 /** Closed polygon ring (phase 2 true-shape nesting). */
 export type Polygon = Point[];
 
+/** A rectangle in the source page's user space (pt), bottom-left origin. */
+export interface ClipBox {
+  x: Unit;
+  y: Unit;
+  width: Unit;
+  height: Unit;
+}
+
 export type RotationPolicy = "none" | "90" | "any";
 export type GrainLock = "along-roll" | "across-roll";
 
@@ -52,6 +60,12 @@ export interface NestItem {
   group?: string;
   /** Phase 2 true-shape (outer + holes); ignored by rectangle nesters. */
   shape?: Polygon[];
+  /**
+   * Only this part of the source page is drawn (Spec 009 FR7 panels). It is
+   * embedded as a Form XObject whose BBox is the clip box, centered in the
+   * footprint; normally `widthPt × heightPt` equals the clip box size.
+   */
+  clipBox?: ClipBox;
 }
 
 export type Algorithm = "maxrects" | "skyline" | "auto";

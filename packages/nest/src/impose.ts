@@ -14,10 +14,12 @@ import {
   pushGraphicsState,
   type PDFEmbeddedPage,
   type PDFObject,
+  type PDFOperator,
 } from "pdf-lib";
+import { clipBoxProblem } from "./clip-box.js";
 import { cosSin } from "./geometry.js";
 import { layoutToJson } from "./layout.js";
-import type { Layout, Panel, Placement } from "./types.js";
+import type { ClipBox, Layout, Panel, Placement } from "./types.js";
 
 export type SourceBox = "trim" | "bleed";
 
@@ -26,6 +28,11 @@ export interface ImposeSource {
   readonly pdfBytes: Uint8Array;
   readonly pageIndex: number;
   readonly box: SourceBox;
+  /**
+   * Draw only this rectangle of the page (pt, page user space, inside `box`).
+   * The Form XObject's BBox is the clip box, centered in the footprint.
+   */
+  readonly clipBox?: ClipBox;
 }
 
 /** Maps nesting coordinates to page space: page = origin + scale × (x, y). */
@@ -48,6 +55,7 @@ export type ImposeWarningCode =
   | "unreadable-source"
   | "page-out-of-range"
   | "box-mismatch"
+  | "invalid-clip-box"
   | "output-intent-conflict";
 
 export interface ImposeWarning {
@@ -99,6 +107,15 @@ interface LoadedSource {
 interface Art {
   readonly embedded: PDFEmbeddedPage;
   readonly group: PDFObject | undefined;
+  /** Where a clip box's bottom-left sits in art space; absent without a clip box. */
+  readonly offset?: { readonly x: number; readonly y: number };
+}
+
+/** Extra translation for clipped art; none (so the stream is unchanged) when the clip fills the footprint. */
+function offsetOperators(art: Art): PDFOperator[] {
+  const { offset } = art;
+  if (!offset || (offset.x === 0 && offset.y === 0)) return [];
+  return [concatTransformationMatrix(1, 0, 0, 1, offset.x, offset.y)];
 }
 
 /** Panels drawn as pages (an empty layout still produces one page). */
@@ -170,7 +187,8 @@ function arrayItems(doc: PDFDocument, value: PDFObject | undefined): PDFObject[]
 
 /**
  * Imposes a layout into a PDF: one page per panel, each placement embedded as a
- * Form XObject clipped to its footprint (trim + bleed). Spot colors, DeviceN,
+ * Form XObject clipped to its footprint (trim + bleed), or to the source's
+ * `clipBox` when it has one. Spot colors, DeviceN,
  * optional content and transparency groups travel with the form resources.
  * Annotations are dropped, and a source page's /Rotate is not applied.
  */
@@ -234,6 +252,36 @@ export async function impose(
       }
       const size = artSize(placement);
       const box = source.box === "bleed" ? page.getBleedBox() : page.getTrimBox();
+      if (source.clipBox) {
+        const clip = source.clipBox;
+        const problem = clipBoxProblem(clip, box);
+        if (problem) {
+          warn({ code: "invalid-clip-box", itemId, message: `item ${itemId}: ${problem.message}, placement left blank` });
+          return undefined;
+        }
+        if (!boxMatches(source.box, clip, size)) {
+          warn({
+            code: "box-mismatch",
+            itemId,
+            message:
+              `item ${itemId}: clip box ${clip.width}×${clip.height} pt does not match ` +
+              `footprint ${size.w}×${size.h} pt; art is centered`,
+          });
+        }
+        // The BBox is the clip box itself, so nothing outside it is drawn.
+        const embedded = await out.embedPage(page, {
+          left: clip.x,
+          bottom: clip.y,
+          right: clip.x + clip.width,
+          top: clip.y + clip.height,
+        });
+        if (!used.includes(loadedSource)) used.push(loadedSource);
+        return {
+          embedded,
+          group: page.node.get(PDFName.of("Group")),
+          offset: { x: (size.w - clip.width) / 2, y: (size.h - clip.height) / 2 },
+        };
+      }
       if (!boxMatches(source.box, box, size)) {
         warn({
           code: "box-mismatch",
@@ -287,6 +335,7 @@ export async function impose(
       page.pushOperators(
         pushGraphicsState(),
         concatTransformationMatrix(...placementMatrix(placement, frame)),
+        ...offsetOperators(art),
         drawObject(name),
         popGraphicsState(),
       );

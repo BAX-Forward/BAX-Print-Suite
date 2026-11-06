@@ -31,6 +31,19 @@ export {
   type SourceBox,
 } from "./impose.js";
 export {
+  imposeNestItems,
+  type NestItemIssue,
+  type NestItemIssueCode,
+  type NestItemsResult,
+  type NestItemsSource,
+} from "./nest-items.js";
+export {
+  CLIP_BOX_TOLERANCE_PT,
+  clipBoxProblem,
+  type ClipBoxProblem,
+  type ClipBoxProblemCode,
+} from "./clip-box.js";
+export {
   STEP_REPEAT_ALGORITHM,
   stepAndRepeat,
   type StepRepeatItem,
