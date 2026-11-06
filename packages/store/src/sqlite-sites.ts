@@ -8,6 +8,8 @@ import {
   type SiteMembership,
 } from '@bax-print/core';
 import type { Database } from './database.js';
+import type { DbPort } from './db-port.js';
+import { SqliteDbPort } from './sqlite-port.js';
 
 /**
  * Spec 030b: sites and site memberships (spec 030a) persisted in the job database (migration 7).
@@ -176,84 +178,75 @@ function rowToSiteId(row: unknown, userId: string): string {
   return siteId;
 }
 
-/** Runs `work` in one transaction so checks and writes cannot interleave. */
-function inTransaction<T>(db: Database, work: () => T): T {
-  db.exec('BEGIN IMMEDIATE');
-  try {
-    const result = work();
-    db.exec('COMMIT');
-    return result;
-  } catch (error) {
-    db.exec('ROLLBACK');
-    throw error;
-  }
-}
-
 export class SqliteSiteRepository implements SiteRepository {
+  /** Spec 027a: all queries go through the port; the constructor still takes the sqlite handle. */
+  private readonly port: DbPort;
+
   /** `db` must come from `openDatabase`, which applies the migrations and enables foreign keys. */
-  constructor(private readonly db: Database) {}
+  constructor(db: Database) {
+    this.port = new SqliteDbPort(db);
+  }
 
   create(site: Site): Site {
     const checked = toSite({ id: site.id, name: site.name, timeZone: site.timeZone, createdAt: site.createdAt });
-    return inTransaction(this.db, () => {
-      if (this.db.prepare('SELECT id FROM sites WHERE id = ?').get(checked.id) !== undefined) {
+    return this.port.transaction(() => {
+      if (this.siteExists(checked.id)) {
         throw new SiteIdTakenError(checked.id);
       }
-      this.db
-        .prepare(`INSERT INTO sites (${COLUMNS}) VALUES (?, ?, ?, ?)`)
-        .run(checked.id, checked.name, checked.timeZone, checked.createdAt);
+      this.port.exec(`INSERT INTO sites (${COLUMNS}) VALUES (?, ?, ?, ?)`, [
+        checked.id,
+        checked.name,
+        checked.timeZone,
+        checked.createdAt,
+      ]);
       return checked;
     });
   }
 
   get(id: string): Site | undefined {
-    const row: unknown = this.db.prepare(`SELECT ${COLUMNS} FROM sites WHERE id = ?`).get(id);
+    const row = this.port.query(`SELECT ${COLUMNS} FROM sites WHERE id = ?`, [id])[0];
     return row === undefined ? undefined : rowToSite(row);
   }
 
   list(): Site[] {
-    const rows: unknown[] = this.db.prepare(`SELECT ${COLUMNS} FROM sites ORDER BY id`).all();
-    return rows.map((row) => rowToSite(row));
+    return this.port.query(`SELECT ${COLUMNS} FROM sites ORDER BY id`).map((row) => rowToSite(row));
   }
 
   delete(id: string): boolean {
-    const result = this.db.prepare('DELETE FROM sites WHERE id = ?').run(id);
-    return Number(result.changes) > 0;
+    return this.port.exec('DELETE FROM sites WHERE id = ?', [id]) > 0;
   }
 
   setMembership(userId: string, membership: SiteMembership): boolean {
     const checked = checkMembership(userId, membership);
     // Core never returns an empty site list, so no rows means all sites.
     const siteIds = 'siteIds' in checked ? checked.siteIds : [];
-    return inTransaction(this.db, () => {
-      if (this.db.prepare('SELECT id FROM users WHERE id = ?').get(userId) === undefined) {
+    return this.port.transaction(() => {
+      if (this.port.query('SELECT id FROM users WHERE id = ?', [userId]).length === 0) {
         return false;
       }
-      const findSite = this.db.prepare('SELECT id FROM sites WHERE id = ?');
       for (const siteId of siteIds) {
-        if (findSite.get(siteId) === undefined) {
+        if (!this.siteExists(siteId)) {
           throw new UnknownSiteError(siteId);
         }
       }
-      this.db.prepare('DELETE FROM site_memberships WHERE user_id = ?').run(userId);
-      this.db.prepare('UPDATE users SET all_sites = ? WHERE id = ?').run(siteIds.length === 0 ? 1 : 0, userId);
-      const insert = this.db.prepare('INSERT INTO site_memberships (user_id, site_id) VALUES (?, ?)');
+      this.port.exec('DELETE FROM site_memberships WHERE user_id = ?', [userId]);
+      this.port.exec('UPDATE users SET all_sites = ? WHERE id = ?', [siteIds.length === 0 ? 1 : 0, userId]);
       for (const siteId of siteIds) {
-        insert.run(userId, siteId);
+        this.port.exec('INSERT INTO site_memberships (user_id, site_id) VALUES (?, ?)', [userId, siteId]);
       }
       return true;
     });
   }
 
   getMembership(userId: string): SiteMembership | undefined {
-    const user: unknown = this.db.prepare('SELECT all_sites FROM users WHERE id = ?').get(userId);
+    const user = this.port.query('SELECT all_sites FROM users WHERE id = ?', [userId])[0];
     if (user === undefined) {
       return undefined;
     }
-    const allSites = toAllSitesFlag(isRecord(user) ? user.all_sites : undefined, userId);
-    const rows: unknown[] = this.db
-      .prepare('SELECT site_id FROM site_memberships WHERE user_id = ? ORDER BY site_id')
-      .all(userId);
+    const allSites = toAllSitesFlag(user.all_sites, userId);
+    const rows = this.port.query('SELECT site_id FROM site_memberships WHERE user_id = ? ORDER BY site_id', [
+      userId,
+    ]);
     if (allSites) {
       if (rows.length > 0) {
         throw new InvalidSiteRecordError(`user ${userId} has all sites and also a site list`);
@@ -265,5 +258,9 @@ export class SqliteSiteRepository implements SiteRepository {
     }
     const siteIds = rows.map((row) => rowToSiteId(row, userId));
     return Object.freeze({ userId, siteIds: Object.freeze(siteIds) });
+  }
+
+  private siteExists(id: string): boolean {
+    return this.port.query('SELECT id FROM sites WHERE id = ?', [id]).length > 0;
   }
 }
