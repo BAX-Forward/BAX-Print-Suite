@@ -8,6 +8,7 @@ import { registerApiTokenRoutes, type ApiTokenRouteOptions } from './api-token-r
 import { registerCutRoutes, type CutExtractor, type CutJobLookup } from './cut-routes.js';
 import { registerFinishingRoutes, type FinishingRouteOptions } from './finishing-routes.js';
 import { registerLayoutTemplateRoutes } from './layout-template-routes.js';
+import { registerLoginRoutes, type LoginRouteOptions } from './login-routes.js';
 import { registerMediaRoutes } from './media-routes.js';
 import type { MediaService } from './media-service.js';
 import { OpenApiCollector } from './openapi.js';
@@ -60,6 +61,11 @@ export interface ServerDeps {
    * `tokens`. Pair it with `createBearerTokenVerifier` in `authenticate` so the tokens are accepted.
    */
   readonly apiTokens?: ApiTokenRouteOptions;
+  /**
+   * Mounts the Spec 028d `POST /login` and `POST /logout` routes. Pair it with an `authenticate`
+   * that recognizes the sessions, e.g. what `configureLogin` from `session-config.ts` returns.
+   */
+  readonly login?: LoginRouteOptions;
   /** `info.version` of the OpenAPI document. */
   readonly version?: string;
   /**
@@ -128,6 +134,10 @@ export function buildServer(deps: ServerDeps): FastifyInstance {
   // Registered first so its `onRoute` hook documents the media routes.
   if (deps.media) {
     registerMediaRoutes(app, { media: deps.media, openapi: new OpenApiCollector(deps.version ?? DEFAULT_API_VERSION) });
+  }
+
+  if (deps.login) {
+    registerLoginRoutes(app, deps.login);
   }
 
   if (deps.preflight) {

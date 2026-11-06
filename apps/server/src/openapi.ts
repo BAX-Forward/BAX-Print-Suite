@@ -338,6 +338,27 @@ const ISSUED_API_TOKEN_SCHEMA: JsonSchema = {
   },
 };
 
+/** `POST /login` (Spec 028d): `token` is present only when the session is not handed out as a cookie. */
+const LOGIN_RESULT_SCHEMA: JsonSchema = {
+  type: 'object',
+  required: ['user', 'expiresAt'],
+  properties: {
+    user: {
+      type: 'object',
+      required: ['id', 'username', 'displayName', 'roles', 'createdAt'],
+      properties: {
+        id: { type: 'string' },
+        username: { type: 'string' },
+        displayName: { type: 'string' },
+        roles: { type: 'array', minItems: 1, items: { type: 'string' } },
+        createdAt: DATE_TIME,
+      },
+    },
+    expiresAt: DATE_TIME,
+    token: { type: 'string', pattern: '^[A-Za-z0-9_-]{43}$' },
+  },
+};
+
 const itemsOf = (name: string): JsonSchema => ({
   type: 'object',
   required: ['items'],
@@ -370,6 +391,7 @@ const COMPONENT_SCHEMAS: Readonly<Record<string, JsonSchema>> = {
   ApiTokenList: itemsOf('ApiToken'),
   ApiTokenEnvelope: { type: 'object', required: ['token'], properties: { token: refTo('ApiToken') } },
   IssuedApiToken: ISSUED_API_TOKEN_SCHEMA,
+  LoginResult: LOGIN_RESULT_SCHEMA,
 };
 
 function parameters(schema: JsonSchema | undefined, location: 'path' | 'query'): unknown[] {
@@ -456,6 +478,8 @@ const API_DESCRIPTION = [
   'Managing tokens needs the admin-only `webhooks:*` permissions, and a caller may only issue scopes it holds.',
   'Without a configured actor resolver every caller is treated as the local admin, which holds every permission.',
   'The server binds 127.0.0.1 by default; do not expose it beyond loopback without a resolver.',
+  'With login on (`BPS_LOGIN=1`), `POST /login` starts a session and every guarded route needs its token, as the',
+  '`bps_session` cookie or an `Authorization: Bearer` header; a caller without one gets 401 and there is no local admin.',
 ].join(' ');
 
 /** Collects documented routes through Fastify's `onRoute` hook. */
