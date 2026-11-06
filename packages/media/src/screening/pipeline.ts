@@ -6,6 +6,11 @@ import {
   limitInk,
 } from '../color/ink-limit.js';
 import { MAX_PLANE_CURVE_PIXELS, type PlaneCurveLuts, applyPlaneCurves } from '../color/plane-curves.js';
+/*
+ * error-diffusion.ts imports SCREEN_DOT_ON from this module. The cycle is safe because neither
+ * module reads the other's bindings at evaluation time, only inside functions.
+ */
+import { ERROR_DIFFUSION_KERNELS, type ErrorDiffusionKernel, applyErrorDiffusion } from './error-diffusion.js';
 import {
   BAYER_SIZES,
   type BayerSize,
@@ -23,6 +28,7 @@ export const MAX_SCREEN_PIPELINE_PIXELS = Math.min(MAX_INK_LIMIT_PIXELS, MAX_PLA
 export const SCREEN_DOT_ON = 255;
 const MIN_BLUE_NOISE_SIZE = 2;
 const MAX_SEED = 0xffff_ffff;
+const ERROR_DIFFUSION_KEYS: readonly string[] = ['kind', 'kernel', 'serpentine'];
 
 export interface ScreenPipelineInkLimit {
   /** Total area coverage limit in percent (integer 100..400). */
@@ -32,7 +38,11 @@ export interface ScreenPipelineInkLimit {
 
 export type ScreenPipelineScreening =
   | { kind: 'bayer'; size: BayerSize }
-  | { kind: 'blue-noise'; size: number; seed: number };
+  | { kind: 'blue-noise'; size: number; seed: number }
+  /** Spec 045b: spec 045a error diffusion per plane; serpentine defaults to false. */
+  | { kind: 'error-diffusion'; kernel: ErrorDiffusionKernel; serpentine?: boolean };
+
+type ThresholdScreening = Exclude<ScreenPipelineScreening, { kind: 'error-diffusion' }>;
 
 /** Integer tile shift of one plane, each coordinate in 0..size-1 of the threshold array. */
 export interface ScreenPlaneOffset {
@@ -59,7 +69,7 @@ export interface ScreenPipelineInput {
   /** Spec 044c: one 256-entry LUT per plane (spec 044a), applied after the ink limit; a missing plane is unchanged. */
   planeCurves?: PlaneCurveLuts;
   screening?: ScreenPipelineScreening;
-  /** Only valid together with `screening`; a missing plane entry means no shift. */
+  /** Only valid together with threshold `screening` (not error diffusion); a missing plane entry means no shift. */
   planeOffsets?: ScreenPlaneOffsets;
 }
 
@@ -132,6 +142,25 @@ function requireBayerSize(size: unknown): BayerSize {
   return fail(`screening.size must be ${BAYER_SIZES.join(', ')} for bayer (got ${String(size)})`);
 }
 
+function requireKernel(kernel: unknown): ErrorDiffusionKernel {
+  for (const name of ERROR_DIFFUSION_KERNELS) if (name === kernel) return name;
+  return fail(`screening.kernel must be ${ERROR_DIFFUSION_KERNELS.join(' or ')} (got ${String(kernel)})`);
+}
+
+/** Error diffusion has no tile, so its keys are checked strictly; any other key is rejected. */
+function requireErrorDiffusion(value: object): ScreenPipelineScreening {
+  for (const key of Object.keys(value)) {
+    if (ERROR_DIFFUSION_KEYS.includes(key)) continue;
+    return fail(`screening has unknown key ${key} for error-diffusion`);
+  }
+  const kernel = requireKernel('kernel' in value ? value.kernel : undefined);
+  const serpentine = 'serpentine' in value ? value.serpentine : undefined;
+  if (serpentine === undefined || typeof serpentine === 'boolean') {
+    return { kind: 'error-diffusion', kernel, serpentine: serpentine ?? false };
+  }
+  return fail(`screening.serpentine must be a boolean (got ${String(serpentine)})`);
+}
+
 function requireScreening(value: unknown): ScreenPipelineScreening | undefined {
   if (value === undefined) return undefined;
   if (typeof value === 'object' && value && 'kind' in value) {
@@ -144,7 +173,8 @@ function requireScreening(value: unknown): ScreenPipelineScreening | undefined {
         seed: requireIntegerInRange('screening.seed', 'seed' in value ? value.seed : undefined, 0, MAX_SEED),
       };
     }
-    return fail(`screening.kind must be bayer or blue-noise (got ${String(value.kind)})`);
+    if (value.kind === 'error-diffusion') return requireErrorDiffusion(value);
+    return fail(`screening.kind must be bayer, blue-noise or error-diffusion (got ${String(value.kind)})`);
   }
   return fail('screening must be an object with a kind');
 }
@@ -160,10 +190,14 @@ function requireOffset(name: string, value: unknown, size: number): ScreenPlaneO
   return fail(`${name} must be an object with x and y`);
 }
 
-/** `arraySize` is undefined without screening, where offsets have nothing to shift. */
-function requireOffsets(value: unknown, arraySize: number | undefined): Required<ScreenPlaneOffsets> {
+/** Offsets shift a threshold tile; without screening, or with error diffusion, there is none. */
+function requireOffsets(value: unknown, screening: ScreenPipelineScreening | undefined): Required<ScreenPlaneOffsets> {
   if (value === undefined) return { c: NO_OFFSET, m: NO_OFFSET, y: NO_OFFSET, k: NO_OFFSET };
-  if (arraySize === undefined) return fail('planeOffsets requires screening');
+  if (screening === undefined) return fail('planeOffsets requires screening');
+  if (screening.kind === 'error-diffusion') {
+    return fail('planeOffsets is not supported with error-diffusion screening (it applies to threshold tiles only)');
+  }
+  const arraySize = screening.size;
   if (typeof value === 'object' && value) {
     return {
       c: requireOffset('planeOffsets.c', 'c' in value ? value.c : undefined, arraySize),
@@ -193,14 +227,47 @@ function screenPlane(width: number, height: number, plane: Uint8Array, array: Th
   return mask;
 }
 
+function thresholdScreen(
+  width: number,
+  height: number,
+  source: ScreenPipelinePlanes,
+  screening: ThresholdScreening,
+  offsets: Required<ScreenPlaneOffsets>,
+): ScreenPipelinePlanes {
+  const array =
+    screening.kind === 'bayer' ? bayerArray(screening.size) : blueNoiseArray(screening.size, screening.seed);
+  return {
+    c: screenPlane(width, height, source.c, shiftedArray(array, offsets.c)),
+    m: screenPlane(width, height, source.m, shiftedArray(array, offsets.m)),
+    y: screenPlane(width, height, source.y, shiftedArray(array, offsets.y)),
+    k: screenPlane(width, height, source.k, shiftedArray(array, offsets.k)),
+  };
+}
+
+function diffuse(
+  width: number,
+  height: number,
+  source: ScreenPipelinePlanes,
+  screening: Extract<ScreenPipelineScreening, { kind: 'error-diffusion' }>,
+): ScreenPipelinePlanes {
+  const options = { kernel: screening.kernel, serpentine: screening.serpentine ?? false };
+  return {
+    c: applyErrorDiffusion({ width, height, plane: source.c }, options),
+    m: applyErrorDiffusion({ width, height, plane: source.m }, options),
+    y: applyErrorDiffusion({ width, height, plane: source.y }, options),
+    k: applyErrorDiffusion({ width, height, plane: source.k }, options),
+  };
+}
+
 /**
  * Spec 041a: composes the optional ink limit (spec 040a) and threshold screening (spec 039a) of a
  * CMYK image; spec 044c adds the optional plane curves (spec 044a) between them. Every input is
  * validated before any stage runs or allocates. The ink limit, if set, runs first; the plane
  * curves, if set, map its result; screening then builds one threshold array and screens each plane
  * with it, where the plane's pixel (x, y) uses the tile threshold at ((x + offset.x) mod size,
- * (y + offset.y) mod size). Screened planes hold only 0 and 255. Without options the result is a
- * copy of the input planes.
+ * (y + offset.y) mod size). Spec 045b adds error-diffusion screening, which screens each plane
+ * independently with spec 045a's applyErrorDiffusion and rejects planeOffsets. Screened planes hold
+ * only 0 and 255. Without options the result is a copy of the input planes.
  */
 export function composeScreening(input: ScreenPipelineInput): ScreenPipelinePlanes {
   const { width, height } = requirePixelCount(input.width, input.height);
@@ -212,7 +279,7 @@ export function composeScreening(input: ScreenPipelineInput): ScreenPipelinePlan
   const inkLimit = requireInkLimit(input.inkLimit);
   const planeCurves = requirePlaneCurves(input.planeCurves);
   const screening = requireScreening(input.screening);
-  const offsets = requireOffsets(input.planeOffsets, screening?.size);
+  const offsets = requireOffsets(input.planeOffsets, screening);
 
   const limited = inkLimit ? limitInk({ width, height, c, m, y, k, ...inkLimit }) : undefined;
   const curved = planeCurves
@@ -224,12 +291,6 @@ export function composeScreening(input: ScreenPipelineInput): ScreenPipelinePlan
   }
 
   const source = curved ?? { c, m, y, k };
-  const array =
-    screening.kind === 'bayer' ? bayerArray(screening.size) : blueNoiseArray(screening.size, screening.seed);
-  return {
-    c: screenPlane(width, height, source.c, shiftedArray(array, offsets.c)),
-    m: screenPlane(width, height, source.m, shiftedArray(array, offsets.m)),
-    y: screenPlane(width, height, source.y, shiftedArray(array, offsets.y)),
-    k: screenPlane(width, height, source.k, shiftedArray(array, offsets.k)),
-  };
+  if (screening.kind === 'error-diffusion') return diffuse(width, height, source, screening);
+  return thresholdScreen(width, height, source, screening, offsets);
 }
