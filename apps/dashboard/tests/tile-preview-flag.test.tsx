@@ -1,4 +1,4 @@
-import { screen, waitFor, within } from '@testing-library/react';
+import { screen, within } from '@testing-library/react';
 import { describe, expect, it } from 'vitest';
 import { fixtureId } from '../mock/fixtures';
 import { strings } from '../src/strings';
@@ -23,10 +23,9 @@ describe('tile preview flag off', () => {
   it('renders the job detail page without any tile preview markup', async () => {
     const db = useMockDb();
     const { container } = renderApp(`/jobs/${READY_JOB}`, db);
-    await screen.findByRole('heading', { level: 1, name: db.getJob(READY_JOB).name });
+    await screen.findByRole('heading', { level: 1, name: db.readJob(READY_JOB).name });
     await waitForLive();
-    expect(await within(screen.getByRole('region', { name: t.detailsHeading })).findByText('Posters')).toBeInTheDocument();
-    await waitFor(() => expect(screen.getAllByRole('img', { name: /^Screen preview of page \d$/ })).toHaveLength(3));
+    expect(within(screen.getByRole('region', { name: t.detailsHeading })).getByText(READY_JOB)).toBeInTheDocument();
 
     expect(container.querySelector('[data-tile-preview], [data-panel-id], [data-seam]')).toBeNull();
     expect(screen.queryByRole('img', { name: /^Tile preview/ })).not.toBeInTheDocument();

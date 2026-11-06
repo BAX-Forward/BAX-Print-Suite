@@ -1,4 +1,4 @@
-import type { AuditEntry, Job, JobStep } from '../api/types';
+import type { AuditEntry, JobRecord as Job, JobStep } from '../api/types';
 
 /** One row of the job-detail timeline: a pipeline step or an audit entry (recorded from events). */
 export type TimelineItem =

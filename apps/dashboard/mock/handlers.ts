@@ -1,5 +1,5 @@
 import { http, HttpResponse, type PathParams } from 'msw';
-import { MockProblem, sanitizeFileName, type MockDb } from './db';
+import { MockJobError, MockProblem, sanitizeFileName, type MockDb } from './db';
 import { toSseFrame } from './events';
 import openapi from './openapi.json';
 
@@ -10,6 +10,8 @@ import openapi from './openapi.json';
 
 const JSON_TYPE = 'application/json';
 const PROBLEM_TYPE = 'application/problem+json';
+const PDF_TYPE = 'application/pdf';
+const JOB_NAME_HEADER = 'x-bps-job-name';
 const MIN_PREVIEW_PX = 16;
 const MAX_PREVIEW_PX = 2048;
 
@@ -41,6 +43,41 @@ function guard(resolve: Resolver) {
       throw error;
     }
   };
+}
+
+/** `{error: {code}}` codes for store problems on the Spec 052a job endpoints. */
+const JOB_ERROR_CODES: Record<number, string> = { 400: 'invalid_request', 404: 'not_found' };
+
+/**
+ * Like `guard`, but for GET /jobs, GET /jobs/:id and POST /jobs, which answer
+ * `{error: {code, message, details?}}` instead of RFC 9457 problems (Spec 052a).
+ */
+function jobGuard(resolve: Resolver) {
+  return async (info: ResolverInfo): Promise<HttpResponse> => {
+    try {
+      return await resolve(info);
+    } catch (error) {
+      if (error instanceof MockJobError) return json(error.toBody(), error.status);
+      if (error instanceof MockProblem) {
+        const code = JOB_ERROR_CODES[error.status] ?? 'error';
+        const details = error.errors.length ? { errors: error.errors } : undefined;
+        return json(new MockJobError(error.status, code, error.detail, details).toBody(), error.status);
+      }
+      throw error;
+    }
+  };
+}
+
+function mediaType(request: Request): string {
+  return (request.headers.get('content-type') ?? '').split(';')[0]?.trim().toLowerCase() ?? '';
+}
+
+async function createJob(db: MockDb, request: Request): Promise<HttpResponse> {
+  if (mediaType(request) !== PDF_TYPE) {
+    throw new MockJobError(415, 'upload_media_type_unsupported', `Send the PDF as a raw ${PDF_TYPE} body`);
+  }
+  const bytes = new Uint8Array(await request.arrayBuffer());
+  return json({ job: db.upload({ bytes, name: request.headers.get(JOB_NAME_HEADER) }) }, 201);
 }
 
 function param(params: PathParams, name: string): string {
@@ -99,8 +136,9 @@ export function createHandlers(db: MockDb, baseUrl: string) {
     http.get(at('/health'), guard(() => json(db.health()))),
     http.get(at('/openapi.json'), guard(() => json(openapi))),
 
-    http.get(at('/jobs'), guard(({ request }) => json(db.listJobs(new URL(request.url).searchParams)))),
-    http.get(at('/jobs/:id'), guard(({ params }) => json(db.getJob(param(params, 'id'))))),
+    http.get(at('/jobs'), jobGuard(({ request }) => json(db.listJobs(new URL(request.url).searchParams)))),
+    http.post(at('/jobs'), jobGuard(({ request }) => createJob(db, request))),
+    http.get(at('/jobs/:id'), jobGuard(({ params }) => json({ job: db.readJob(param(params, 'id')) }))),
     http.patch(
       at('/jobs/:id'),
       guard(async ({ request, params }) => json(db.patchJob(param(params, 'id'), await readJson(request)))),

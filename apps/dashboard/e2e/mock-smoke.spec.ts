@@ -19,26 +19,16 @@ async function expectNoSeriousA11yViolations(page: Page): Promise<void> {
   expect(blocking).toEqual([]);
 }
 
-test('jobs list runs on the mock API with live updates, filters and search', async ({ page }) => {
+// GET /jobs takes only limit and cursor (Spec 052a), so the list has no filter or search controls.
+test('jobs list runs on the mock API with live updates', async ({ page }) => {
   await page.goto('/ui/');
   await expect(page).toHaveURL(/\/ui\/jobs$/);
   await expect(page.getByRole('heading', { level: 1, name: 'Jobs' })).toBeVisible();
   await expect(jobRows(page)).toHaveCount(FIXTURE_JOBS);
   await expect(page.getByRole('status', { name: 'Live updates' })).toHaveAttribute('data-state', 'open');
+  await expect(page.getByRole('searchbox')).toHaveCount(0);
+  await expect(page.getByRole('button', { name: 'Clear filters' })).toHaveCount(0);
   await expectNoSeriousA11yViolations(page);
-
-  await page.getByRole('checkbox', { name: 'Failed', exact: true }).check();
-  await expect(jobRows(page)).toHaveCount(2);
-  const statuses = await page
-    .locator('tr[data-job-id] [data-status]')
-    .evaluateAll((elements) => elements.map((element) => (element as HTMLElement).dataset.status));
-  expect(statuses).toEqual(['failed', 'failed']);
-  await page.getByRole('button', { name: 'Clear filters' }).click();
-  await expect(jobRows(page)).toHaveCount(FIXTURE_JOBS);
-
-  await page.getByRole('searchbox', { name: 'Search by name' }).fill('banner');
-  await expect(jobRows(page)).toHaveCount(2);
-  await expect(page).toHaveURL(/q=banner/);
 });
 
 test('job detail renders non-blank screen-preview thumbnails with pdf.js', async ({ page }) => {

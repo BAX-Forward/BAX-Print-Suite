@@ -1,0 +1,3784 @@
+{
+  "openapi": "3.1.0",
+  "info": {
+    "title": "BAX Print Suite media library and profiling API",
+    "version": "0.1.0",
+    "description": "Every route except `GET /openapi.json` needs a permission of the caller's role and answers 403 `forbidden` without it; `details.permission` names the missing permission. An actor resolver configured to deny anonymous callers answers 401 `unauthenticated` when no credential verifier recognizes the caller. Spec 029c: when API tokens are enabled, `Authorization: Bearer bps_...` authenticates as the token, whose permissions are exactly its scopes; an unknown, revoked, expired or malformed token answers 401 `unauthenticated` and never falls back. Other credentials are ignored. Managing tokens needs the admin-only `webhooks:*` permissions, and a caller may only issue scopes it holds. Spec 030c: when site scoping is enabled (`BPS_SITE_SCOPE=1`), every `/jobs/{id}` route answers 404 `not_found` for a job of a site the caller's membership does not grant, and `GET /archive` and `GET /trash` list only the jobs of granted sites; a job without a `siteId` belongs to the `default` site, and a caller without a membership sees no jobs. The site is read from the stored job, never from the request. Without a configured actor resolver every caller is treated as the local admin, which holds every permission. The server binds 127.0.0.1 by default; do not expose it beyond loopback without a resolver. With login on (`BPS_LOGIN=1`), `POST /login` starts a session and every guarded route needs its token, as the `bps_session` cookie or an `Authorization: Bearer` header; a caller without one gets 401 and there is no local admin. Spec 031c: a job records `sourceFormat` (`pdf`, `png`, `jpeg` or `tiff`), detected from the magic bytes of its first source file, and omits it when the bytes match none of them. Job creation takes any bytes; a hot folder takes in TIFF, JPEG and PNG files only when its settings have `acceptRaster: true`, and otherwise matches its `filePatterns` alone. Spec 035b: `sourceFormat` may also be `svg` or `dxf`, read from the SVG root element or the ASCII DXF section header, never from the file name; a hot folder takes in SVG and DXF files only when its settings have `acceptVector: true`. Preflight of such a job runs the vector checks (`vector-size`, `vector-markup`) on the header alone; nothing an SVG declares or references is fetched. Spec 034a: the `/jobs/{id}/print` routes exist only with `BPS_PRINT_OUTPUT=1` and a printer plugin (`BPS_PRINTER_PLUGIN`); they send the job's PDF source to it through `printer/submitDocument`. A device that takes no finished documents or not this format answers 409 `document_input_unsupported`, a document above its limit 413 `document_too_large`, and any other plugin failure 502 `printer_error`; each carries the plugin's uppercase code in `details.code`. Spec 038c: a job may carry an optional `whiteInk` setting (`WhiteInkSetting`); absent means white ink is off, and a stored value that is not a valid setting reads back absent. `PUT` and `DELETE /jobs/{id}/white-ink` set and clear it, and exist only with `BPS_WHITE_INK=1`. Spec 039c: a job may carry an optional `screening` setting (`ScreeningSetting`); absent means no screening is requested, and a stored value that is not a valid setting reads back absent. `PUT` and `DELETE /jobs/{id}/screening` set and clear it, and exist only with `BPS_SCREENING=1`. Spec 040c: a job may carry an optional `inkLimit` setting (`InkLimitSetting`); absent means no ink limit is requested, and a stored value that is not a valid setting reads back absent. `PUT` and `DELETE /jobs/{id}/ink-limit` set and clear it, and exist only with `BPS_INK_LIMIT=1`. Spec 043a: `POST /jobs/{id}/screen-preview` screens CMYK planes with the job's `screening` and `inkLimit` settings and answers them packed 1 bit per pixel; nothing is stored. A job without `screening` answers 409 `screening_not_set`. It exists only with `BPS_SCREEN_PREVIEW=1`. Spec 043b: with `format: \"pbm\"` in the body, each plane is answered as a raw PBM (`P4`) file instead, and the answer names its `format`. Spec 044d: a job may carry an optional `planeCurves` setting (`PlaneCurvesSetting`); absent means no curves are requested, and a stored value that is not a valid setting reads back absent. `PUT` and `DELETE /jobs/{id}/plane-curves` set and clear it, and exist only with `BPS_PLANE_CURVES=1`. Spec 044e: `POST /jobs/{id}/screen-preview` applies stored `planeCurves` after the ink limit and before screening; a job without them is screened as before, and a job with curves but no `screening` still answers 409 `screening_not_set`. Spec 050a: a job may carry an optional `tiling` setting (`TilingSetting`); absent means the job is not tiled, and a stored value that is not a valid setting reads back absent. `PUT` and `DELETE /jobs/{id}/tiling` set and clear it, and exist only with `BPS_TILING=1`. Spec 052a: `POST /jobs`, `GET /jobs` and `GET /jobs/{id}` exist only with `BPS_JOB_INTAKE=1`. An upload is a raw `application/pdf` body of at most 256 MiB (lower with `BPS_JOB_INTAKE_MAX_BYTES`) that starts with `%PDF-`; it is stored under a server-generated name, never the client's. `GET /health` is public and always mounted.",
+    "license": {
+      "name": "Apache-2.0",
+      "identifier": "Apache-2.0"
+    }
+  },
+  "paths": {
+    "/media": {
+      "get": {
+        "operationId": "listMedia",
+        "summary": "List media",
+        "tags": [
+          "media"
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "401": {
+            "description": "No credential verifier recognized the caller and the actor resolver denies anonymous callers (`unauthenticated`)"
+          },
+          "403": {
+            "description": "The caller's role, or an API token's scopes, lack the `media:read` permission (`forbidden`, `details.permission` names it)"
+          },
+          "default": {
+            "description": "Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      },
+      "post": {
+        "operationId": "createMedium",
+        "summary": "Add a medium",
+        "tags": [
+          "media"
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "name"
+                ],
+                "additionalProperties": false,
+                "properties": {
+                  "id": {
+                    "type": "string",
+                    "minLength": 1
+                  },
+                  "name": {
+                    "type": "string",
+                    "minLength": 1
+                  },
+                  "attributes": {
+                    "type": "object"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Created",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "401": {
+            "description": "No credential verifier recognized the caller and the actor resolver denies anonymous callers (`unauthenticated`)"
+          },
+          "403": {
+            "description": "The caller's role, or an API token's scopes, lack the `media:write` permission (`forbidden`, `details.permission` names it)"
+          },
+          "409": {
+            "description": "Id in use"
+          },
+          "default": {
+            "description": "Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/media/sync": {
+      "post": {
+        "operationId": "syncMedia",
+        "summary": "Upsert media reported by a source",
+        "tags": [
+          "media"
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "source",
+                  "media"
+                ],
+                "additionalProperties": false,
+                "properties": {
+                  "source": {
+                    "type": "string",
+                    "minLength": 1
+                  },
+                  "media": {
+                    "type": "array",
+                    "items": {
+                      "type": "object",
+                      "required": [
+                        "id",
+                        "name"
+                      ],
+                      "additionalProperties": false,
+                      "properties": {
+                        "id": {
+                          "type": "string",
+                          "minLength": 1
+                        },
+                        "name": {
+                          "type": "string",
+                          "minLength": 1
+                        },
+                        "attributes": {
+                          "type": "object"
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "401": {
+            "description": "No credential verifier recognized the caller and the actor resolver denies anonymous callers (`unauthenticated`)"
+          },
+          "403": {
+            "description": "The caller's role, or an API token's scopes, lack the `media:write` permission (`forbidden`, `details.permission` names it)"
+          },
+          "default": {
+            "description": "Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/media/{id}": {
+      "get": {
+        "operationId": "getMedium",
+        "summary": "Get a medium",
+        "tags": [
+          "media"
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "minLength": 1
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "401": {
+            "description": "No credential verifier recognized the caller and the actor resolver denies anonymous callers (`unauthenticated`)"
+          },
+          "403": {
+            "description": "The caller's role, or an API token's scopes, lack the `media:read` permission (`forbidden`, `details.permission` names it)"
+          },
+          "404": {
+            "description": "Not found"
+          },
+          "default": {
+            "description": "Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      },
+      "put": {
+        "operationId": "replaceMedium",
+        "summary": "Replace a medium",
+        "tags": [
+          "media"
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "minLength": 1
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "name"
+                ],
+                "additionalProperties": false,
+                "properties": {
+                  "id": {
+                    "type": "string",
+                    "minLength": 1
+                  },
+                  "name": {
+                    "type": "string",
+                    "minLength": 1
+                  },
+                  "attributes": {
+                    "type": "object"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "401": {
+            "description": "No credential verifier recognized the caller and the actor resolver denies anonymous callers (`unauthenticated`)"
+          },
+          "403": {
+            "description": "The caller's role, or an API token's scopes, lack the `media:write` permission (`forbidden`, `details.permission` names it)"
+          },
+          "default": {
+            "description": "Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      },
+      "delete": {
+        "operationId": "deleteMedium",
+        "summary": "Delete an unused medium",
+        "tags": [
+          "media"
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "minLength": 1
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Deleted"
+          },
+          "401": {
+            "description": "No credential verifier recognized the caller and the actor resolver denies anonymous callers (`unauthenticated`)"
+          },
+          "403": {
+            "description": "The caller's role, or an API token's scopes, lack the `media:delete` permission (`forbidden`, `details.permission` names it)"
+          },
+          "409": {
+            "description": "Used by a preset"
+          },
+          "default": {
+            "description": "Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/media/{id}/modes": {
+      "get": {
+        "operationId": "listOutputModes",
+        "summary": "List a medium's output modes",
+        "tags": [
+          "media"
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "minLength": 1
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "401": {
+            "description": "No credential verifier recognized the caller and the actor resolver denies anonymous callers (`unauthenticated`)"
+          },
+          "403": {
+            "description": "The caller's role, or an API token's scopes, lack the `media:read` permission (`forbidden`, `details.permission` names it)"
+          },
+          "default": {
+            "description": "Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      },
+      "post": {
+        "operationId": "createOutputMode",
+        "summary": "Add an output mode",
+        "tags": [
+          "media"
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "minLength": 1
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "name"
+                ],
+                "additionalProperties": false,
+                "properties": {
+                  "id": {
+                    "type": "string",
+                    "minLength": 1
+                  },
+                  "name": {
+                    "type": "string",
+                    "minLength": 1
+                  },
+                  "settings": {
+                    "type": "object"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Created",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "401": {
+            "description": "No credential verifier recognized the caller and the actor resolver denies anonymous callers (`unauthenticated`)"
+          },
+          "403": {
+            "description": "The caller's role, or an API token's scopes, lack the `media:write` permission (`forbidden`, `details.permission` names it)"
+          },
+          "default": {
+            "description": "Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/color-setups/{id}/revisions": {
+      "get": {
+        "operationId": "listColorSetupRevisions",
+        "summary": "List a color setup's revisions",
+        "tags": [
+          "color-setups"
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "minLength": 1
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "401": {
+            "description": "No credential verifier recognized the caller and the actor resolver denies anonymous callers (`unauthenticated`)"
+          },
+          "403": {
+            "description": "The caller's role, or an API token's scopes, lack the `media:read` permission (`forbidden`, `details.permission` names it)"
+          },
+          "default": {
+            "description": "Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      },
+      "post": {
+        "operationId": "createColorSetupRevision",
+        "summary": "Add a draft revision",
+        "tags": [
+          "color-setups"
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "minLength": 1
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "settings"
+                ],
+                "additionalProperties": false,
+                "properties": {
+                  "settings": {
+                    "type": "object"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Created",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "401": {
+            "description": "No credential verifier recognized the caller and the actor resolver denies anonymous callers (`unauthenticated`)"
+          },
+          "403": {
+            "description": "The caller's role, or an API token's scopes, lack the `media:write` permission (`forbidden`, `details.permission` names it)"
+          },
+          "default": {
+            "description": "Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/color-setups/{id}/revisions/{revisionId}/publish": {
+      "post": {
+        "operationId": "publishColorSetupRevision",
+        "summary": "Publish a draft revision",
+        "tags": [
+          "color-setups"
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "minLength": 1
+            }
+          },
+          {
+            "name": "revisionId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "minLength": 1
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "401": {
+            "description": "No credential verifier recognized the caller and the actor resolver denies anonymous callers (`unauthenticated`)"
+          },
+          "403": {
+            "description": "The caller's role, or an API token's scopes, lack the `media:write` permission (`forbidden`, `details.permission` names it)"
+          },
+          "404": {
+            "description": "Not found"
+          },
+          "409": {
+            "description": "Not a draft"
+          },
+          "default": {
+            "description": "Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/presets": {
+      "get": {
+        "operationId": "listPresets",
+        "summary": "List presets",
+        "tags": [
+          "presets"
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "401": {
+            "description": "No credential verifier recognized the caller and the actor resolver denies anonymous callers (`unauthenticated`)"
+          },
+          "403": {
+            "description": "The caller's role, or an API token's scopes, lack the `media:read` permission (`forbidden`, `details.permission` names it)"
+          },
+          "default": {
+            "description": "Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      },
+      "post": {
+        "operationId": "createPreset",
+        "summary": "Add a preset",
+        "tags": [
+          "presets"
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "name",
+                  "mediumId",
+                  "colorSetupId"
+                ],
+                "additionalProperties": false,
+                "properties": {
+                  "id": {
+                    "type": "string",
+                    "minLength": 1
+                  },
+                  "name": {
+                    "type": "string",
+                    "minLength": 1
+                  },
+                  "mediumId": {
+                    "type": "string",
+                    "minLength": 1
+                  },
+                  "outputModeId": {
+                    "type": "string",
+                    "minLength": 1
+                  },
+                  "colorSetupId": {
+                    "type": "string",
+                    "minLength": 1
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Created",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "401": {
+            "description": "No credential verifier recognized the caller and the actor resolver denies anonymous callers (`unauthenticated`)"
+          },
+          "403": {
+            "description": "The caller's role, or an API token's scopes, lack the `media:write` permission (`forbidden`, `details.permission` names it)"
+          },
+          "409": {
+            "description": "Id in use"
+          },
+          "default": {
+            "description": "Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/presets/{id}": {
+      "get": {
+        "operationId": "getPreset",
+        "summary": "Get a preset",
+        "tags": [
+          "presets"
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "minLength": 1
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "401": {
+            "description": "No credential verifier recognized the caller and the actor resolver denies anonymous callers (`unauthenticated`)"
+          },
+          "403": {
+            "description": "The caller's role, or an API token's scopes, lack the `media:read` permission (`forbidden`, `details.permission` names it)"
+          },
+          "default": {
+            "description": "Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      },
+      "put": {
+        "operationId": "replacePreset",
+        "summary": "Replace a preset",
+        "tags": [
+          "presets"
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "minLength": 1
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "name",
+                  "mediumId",
+                  "colorSetupId"
+                ],
+                "additionalProperties": false,
+                "properties": {
+                  "id": {
+                    "type": "string",
+                    "minLength": 1
+                  },
+                  "name": {
+                    "type": "string",
+                    "minLength": 1
+                  },
+                  "mediumId": {
+                    "type": "string",
+                    "minLength": 1
+                  },
+                  "outputModeId": {
+                    "type": "string",
+                    "minLength": 1
+                  },
+                  "colorSetupId": {
+                    "type": "string",
+                    "minLength": 1
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "401": {
+            "description": "No credential verifier recognized the caller and the actor resolver denies anonymous callers (`unauthenticated`)"
+          },
+          "403": {
+            "description": "The caller's role, or an API token's scopes, lack the `media:write` permission (`forbidden`, `details.permission` names it)"
+          },
+          "default": {
+            "description": "Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      },
+      "delete": {
+        "operationId": "deletePreset",
+        "summary": "Delete a preset",
+        "tags": [
+          "presets"
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "minLength": 1
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Deleted"
+          },
+          "401": {
+            "description": "No credential verifier recognized the caller and the actor resolver denies anonymous callers (`unauthenticated`)"
+          },
+          "403": {
+            "description": "The caller's role, or an API token's scopes, lack the `media:delete` permission (`forbidden`, `details.permission` names it)"
+          },
+          "default": {
+            "description": "Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/profiling-sessions": {
+      "post": {
+        "operationId": "createProfilingSession",
+        "summary": "Start a profiling session",
+        "tags": [
+          "profiling"
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "mediumId",
+                  "colorSetupId",
+                  "steps"
+                ],
+                "additionalProperties": false,
+                "properties": {
+                  "mediumId": {
+                    "type": "string",
+                    "minLength": 1
+                  },
+                  "outputModeId": {
+                    "type": "string",
+                    "minLength": 1
+                  },
+                  "colorSetupId": {
+                    "type": "string",
+                    "minLength": 1
+                  },
+                  "steps": {
+                    "type": "array",
+                    "minItems": 1,
+                    "items": {
+                      "type": "string",
+                      "minLength": 1
+                    }
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Created",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "401": {
+            "description": "No credential verifier recognized the caller and the actor resolver denies anonymous callers (`unauthenticated`)"
+          },
+          "403": {
+            "description": "The caller's role, or an API token's scopes, lack the `media:write` permission (`forbidden`, `details.permission` names it)"
+          },
+          "default": {
+            "description": "Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/profiling-sessions/{id}": {
+      "get": {
+        "operationId": "getProfilingSession",
+        "summary": "Get a profiling session",
+        "tags": [
+          "profiling"
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "minLength": 1
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "401": {
+            "description": "No credential verifier recognized the caller and the actor resolver denies anonymous callers (`unauthenticated`)"
+          },
+          "403": {
+            "description": "The caller's role, or an API token's scopes, lack the `media:read` permission (`forbidden`, `details.permission` names it)"
+          },
+          "default": {
+            "description": "Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/profiling-sessions/{id}/steps/{stepId}/complete": {
+      "post": {
+        "operationId": "completeProfilingStep",
+        "summary": "Complete the next step of a session",
+        "tags": [
+          "profiling"
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "minLength": 1
+            }
+          },
+          {
+            "name": "stepId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "minLength": 1
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "401": {
+            "description": "No credential verifier recognized the caller and the actor resolver denies anonymous callers (`unauthenticated`)"
+          },
+          "403": {
+            "description": "The caller's role, or an API token's scopes, lack the `media:write` permission (`forbidden`, `details.permission` names it)"
+          },
+          "404": {
+            "description": "Not found"
+          },
+          "409": {
+            "description": "Out of order"
+          },
+          "default": {
+            "description": "Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/health": {
+      "get": {
+        "operationId": "getHealth",
+        "summary": "Liveness check; reads no store",
+        "tags": [
+          "health"
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Health"
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/jobs": {
+      "get": {
+        "operationId": "listJobs",
+        "summary": "List the active jobs, newest first, one page at a time",
+        "tags": [
+          "jobs"
+        ],
+        "parameters": [
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "minimum": 1,
+              "default": 50,
+              "description": "Page size; a value above 200 is capped at 200"
+            }
+          },
+          {
+            "name": "cursor",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 512,
+              "description": "Opaque cursor from a previous page's `nextCursor`"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "`{ items, nextCursor }`: with site scoping only the jobs of the caller's sites; `nextCursor` is null on the last page",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/JobPage"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "`limit` is not a positive integer (`invalid_request`) or `cursor` is not one this route issued"
+          },
+          "401": {
+            "description": "No credential verifier recognized the caller and the actor resolver denies anonymous callers (`unauthenticated`)"
+          },
+          "403": {
+            "description": "The caller's role, or an API token's scopes, lack the `jobs:read` permission (`forbidden`, `details.permission` names it)"
+          },
+          "default": {
+            "description": "Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      },
+      "post": {
+        "operationId": "createJob",
+        "summary": "Upload a PDF as a new job. The optional `x-bps-job-name` header is kept, sanitized, as the display name only",
+        "tags": [
+          "jobs"
+        ],
+        "parameters": [
+          {
+            "name": "siteId",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "description": "Site of the new job (Spec 030a); without it the job has no `siteId` and belongs to `default`"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/pdf": {
+              "schema": {
+                "type": "string",
+                "format": "binary"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "`{ job }`: the new job, `received`, with the upload as its only source file",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/JobEnvelope"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "The body does not start with `%PDF-` (`upload_not_pdf`), or `siteId` is not a valid site id (`invalid_argument`); nothing is written"
+          },
+          "401": {
+            "description": "No credential verifier recognized the caller and the actor resolver denies anonymous callers (`unauthenticated`)"
+          },
+          "403": {
+            "description": "With site scoping, the caller's membership does not grant the job's site (`site_not_granted`)"
+          },
+          "413": {
+            "description": "The upload is larger than the cap, 64 bytes: by content-length (`upload_too_large`) or, for a body without one, while it is read (`invalid_request`); nothing is written"
+          },
+          "415": {
+            "description": "The body is not `application/pdf` (`upload_media_type_unsupported` or `invalid_request`)"
+          },
+          "default": {
+            "description": "Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/jobs/{id}": {
+      "get": {
+        "operationId": "getJob",
+        "summary": "Read one job",
+        "tags": [
+          "jobs"
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "`{ job }`",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/JobEnvelope"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "No credential verifier recognized the caller and the actor resolver denies anonymous callers (`unauthenticated`)"
+          },
+          "403": {
+            "description": "The caller's role, or an API token's scopes, lack the `jobs:read` permission (`forbidden`, `details.permission` names it)"
+          },
+          "404": {
+            "description": "No job has this id (`not_found`). With site scoping enabled, a job of a site the caller's membership does not grant answers like a missing job (`not_found`)"
+          },
+          "default": {
+            "description": "Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/jobs/{id}/cut-job": {
+      "post": {
+        "operationId": "planCutJob",
+        "summary": "Plans the cut job of a job's page from its cutContour edit or the configured cut settings",
+        "tags": [
+          "cut"
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "minLength": 1
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The cut job, or `{ kind: \"none\" }` when the job is not cut",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CutJobResult"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "No credential verifier recognized the caller and the actor resolver denies anonymous callers (`unauthenticated`)"
+          },
+          "403": {
+            "description": "The caller's role, or an API token's scopes, lack the `jobs:write` permission (`forbidden`, `details.permission` names it)"
+          },
+          "404": {
+            "description": "Unknown job. With site scoping enabled, a job of a site the caller's membership does not grant answers like a missing job (`not_found`)"
+          },
+          "409": {
+            "description": "The job has no source document or page boxes"
+          },
+          "422": {
+            "description": "The cut contour edit can not be resolved on the page, or the source is not a readable PDF (`unreadable_pdf`)"
+          },
+          "501": {
+            "description": "No cut extractor is configured (`cut_extractor_not_configured`)"
+          },
+          "default": {
+            "description": "Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  },
+  "components": {
+    "schemas": {
+      "Error": {
+        "type": "object",
+        "required": [
+          "error"
+        ],
+        "properties": {
+          "error": {
+            "type": "object",
+            "required": [
+              "code",
+              "message"
+            ],
+            "properties": {
+              "code": {
+                "type": "string"
+              },
+              "message": {
+                "type": "string"
+              },
+              "details": {
+                "oneOf": [
+                  {
+                    "type": "array",
+                    "items": {
+                      "type": "string"
+                    }
+                  },
+                  {
+                    "type": "object"
+                  }
+                ]
+              }
+            }
+          }
+        }
+      },
+      "WebhookSubscription": {
+        "type": "object",
+        "required": [
+          "id",
+          "url",
+          "eventTypes",
+          "active"
+        ],
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "url": {
+            "type": "string",
+            "format": "uri"
+          },
+          "eventTypes": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "active": {
+            "type": "boolean"
+          }
+        }
+      },
+      "WebhookSubscriptionList": {
+        "type": "object",
+        "required": [
+          "items"
+        ],
+        "properties": {
+          "items": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/WebhookSubscription"
+            }
+          }
+        }
+      },
+      "WebhookDelivery": {
+        "type": "object",
+        "required": [
+          "subscriptionId",
+          "eventId",
+          "attempt",
+          "ok",
+          "at"
+        ],
+        "properties": {
+          "subscriptionId": {
+            "type": "string"
+          },
+          "eventId": {
+            "type": "string"
+          },
+          "attempt": {
+            "type": "integer",
+            "minimum": 1
+          },
+          "ok": {
+            "type": "boolean"
+          },
+          "status": {
+            "type": "integer"
+          },
+          "error": {
+            "type": "string"
+          },
+          "at": {
+            "type": "string",
+            "format": "date-time"
+          }
+        }
+      },
+      "WebhookDeliveryList": {
+        "type": "object",
+        "required": [
+          "items"
+        ],
+        "properties": {
+          "items": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/WebhookDelivery"
+            }
+          }
+        }
+      },
+      "CutJobResult": {
+        "oneOf": [
+          {
+            "type": "object",
+            "required": [
+              "kind"
+            ],
+            "properties": {
+              "kind": {
+                "const": "none"
+              }
+            }
+          },
+          {
+            "type": "object",
+            "required": [
+              "kind",
+              "contours",
+              "warnings",
+              "job"
+            ],
+            "properties": {
+              "kind": {
+                "const": "job"
+              },
+              "contours": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "required": [
+                    "id",
+                    "tool",
+                    "source",
+                    "closed",
+                    "points",
+                    "bbox",
+                    "areaSigned"
+                  ],
+                  "properties": {
+                    "id": {
+                      "type": "string"
+                    },
+                    "tool": {
+                      "type": "string"
+                    },
+                    "source": {
+                      "type": "object"
+                    },
+                    "closed": {
+                      "type": "boolean"
+                    },
+                    "points": {
+                      "type": "array",
+                      "items": {
+                        "type": "array",
+                        "items": {
+                          "type": "number"
+                        },
+                        "minItems": 2,
+                        "maxItems": 2
+                      }
+                    },
+                    "bbox": {
+                      "type": "object"
+                    },
+                    "areaSigned": {
+                      "type": "number"
+                    }
+                  }
+                }
+              },
+              "warnings": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "required": [
+                    "severity",
+                    "code",
+                    "message"
+                  ],
+                  "properties": {
+                    "severity": {
+                      "enum": [
+                        "error",
+                        "warning"
+                      ]
+                    },
+                    "code": {
+                      "type": "string"
+                    },
+                    "message": {
+                      "type": "string"
+                    },
+                    "path": {
+                      "type": "string"
+                    }
+                  }
+                }
+              },
+              "job": {
+                "type": "object",
+                "required": [
+                  "jobId",
+                  "contours",
+                  "toolMap",
+                  "frame",
+                  "options"
+                ],
+                "properties": {
+                  "jobId": {
+                    "type": "string"
+                  },
+                  "contours": {
+                    "type": "array",
+                    "items": {
+                      "type": "object",
+                      "required": [
+                        "id",
+                        "tool",
+                        "source",
+                        "closed",
+                        "points",
+                        "bbox",
+                        "areaSigned"
+                      ],
+                      "properties": {
+                        "id": {
+                          "type": "string"
+                        },
+                        "tool": {
+                          "type": "string"
+                        },
+                        "source": {
+                          "type": "object"
+                        },
+                        "closed": {
+                          "type": "boolean"
+                        },
+                        "points": {
+                          "type": "array",
+                          "items": {
+                            "type": "array",
+                            "items": {
+                              "type": "number"
+                            },
+                            "minItems": 2,
+                            "maxItems": 2
+                          }
+                        },
+                        "bbox": {
+                          "type": "object"
+                        },
+                        "areaSigned": {
+                          "type": "number"
+                        }
+                      }
+                    }
+                  },
+                  "toolMap": {
+                    "type": "object"
+                  },
+                  "frame": {
+                    "type": "object",
+                    "properties": {
+                      "widthPt": {
+                        "type": "number"
+                      },
+                      "heightPt": {
+                        "type": "number"
+                      }
+                    }
+                  },
+                  "marks": {
+                    "type": "object"
+                  },
+                  "options": {
+                    "type": "object"
+                  }
+                }
+              }
+            }
+          }
+        ]
+      },
+      "StepRepeatResult": {
+        "type": "object",
+        "required": [
+          "layout",
+          "cutContours",
+          "warnings",
+          "imposedPdfBase64"
+        ],
+        "properties": {
+          "layout": {
+            "type": "object",
+            "required": [
+              "placements",
+              "mediaWidthPt",
+              "lengthUsedPt",
+              "utilization",
+              "unplaced",
+              "algorithm"
+            ],
+            "properties": {
+              "placements": {
+                "type": "array",
+                "items": {
+                  "type": "object"
+                }
+              },
+              "mediaWidthPt": {
+                "type": "number"
+              },
+              "lengthUsedPt": {
+                "type": "number"
+              },
+              "utilization": {
+                "type": "number"
+              },
+              "unplaced": {
+                "type": "array"
+              },
+              "algorithm": {
+                "type": "string"
+              },
+              "elapsedMs": {
+                "type": "number"
+              },
+              "media": {
+                "type": "object"
+              },
+              "panels": {
+                "type": "array",
+                "items": {
+                  "type": "object"
+                }
+              }
+            }
+          },
+          "cutContours": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "required": [
+                "id",
+                "tool",
+                "source",
+                "closed",
+                "points",
+                "bbox",
+                "areaSigned"
+              ],
+              "properties": {
+                "id": {
+                  "type": "string"
+                },
+                "tool": {
+                  "type": "string"
+                },
+                "source": {
+                  "type": "object"
+                },
+                "closed": {
+                  "type": "boolean"
+                },
+                "points": {
+                  "type": "array",
+                  "items": {
+                    "type": "array",
+                    "items": {
+                      "type": "number"
+                    },
+                    "minItems": 2,
+                    "maxItems": 2
+                  }
+                },
+                "bbox": {
+                  "type": "object"
+                },
+                "areaSigned": {
+                  "type": "number"
+                }
+              }
+            },
+            "description": "One closed trim rectangle per copy (`copy-<n>`); for a tiled job one panel outline per panel copy (`<panel item id>/copy-<n>`), in `layout.placements` order"
+          },
+          "warnings": {
+            "type": "array",
+            "items": {
+              "type": "object"
+            }
+          },
+          "imposedPdfBase64": {
+            "type": "string",
+            "contentEncoding": "base64",
+            "contentMediaType": "application/pdf",
+            "description": "One page per roll panel; a tiled job draws each tiling panel as a Form XObject whose /BBox is its clip box on the source page"
+          }
+        }
+      },
+      "LayoutTemplate": {
+        "type": "object",
+        "required": [
+          "id",
+          "name",
+          "createdAt",
+          "updatedAt",
+          "rollWidthMm",
+          "layoutJson"
+        ],
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "name": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 120
+          },
+          "createdAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "updatedAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "rollWidthMm": {
+            "type": "number",
+            "exclusiveMinimum": 0
+          },
+          "layoutJson": {
+            "type": "string",
+            "contentMediaType": "application/json"
+          }
+        }
+      },
+      "LayoutTemplateSummary": {
+        "type": "object",
+        "required": [
+          "id",
+          "name",
+          "createdAt",
+          "updatedAt",
+          "rollWidthMm"
+        ],
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "name": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 120
+          },
+          "createdAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "updatedAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "rollWidthMm": {
+            "type": "number",
+            "exclusiveMinimum": 0
+          }
+        }
+      },
+      "LayoutTemplateSummaryList": {
+        "type": "object",
+        "required": [
+          "items"
+        ],
+        "properties": {
+          "items": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/LayoutTemplateSummary"
+            }
+          }
+        }
+      },
+      "FinishingStep": {
+        "type": "object",
+        "required": [
+          "index",
+          "kind",
+          "status"
+        ],
+        "properties": {
+          "index": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "kind": {
+            "enum": [
+              "laminate",
+              "mount",
+              "cut",
+              "weed",
+              "hem",
+              "grommet",
+              "other"
+            ]
+          },
+          "label": {
+            "type": "string",
+            "minLength": 1
+          },
+          "status": {
+            "enum": [
+              "pending",
+              "in_progress",
+              "done",
+              "skipped"
+            ]
+          },
+          "startedBy": {
+            "type": "string",
+            "minLength": 1
+          },
+          "startedAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "completedBy": {
+            "type": "string",
+            "minLength": 1
+          },
+          "completedAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "skippedBy": {
+            "type": "string",
+            "minLength": 1
+          },
+          "skippedAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "skipReason": {
+            "type": "string",
+            "minLength": 1
+          }
+        }
+      },
+      "FinishingPlan": {
+        "type": "object",
+        "required": [
+          "jobId",
+          "createdAt",
+          "updatedAt",
+          "steps"
+        ],
+        "properties": {
+          "jobId": {
+            "type": "string",
+            "minLength": 1
+          },
+          "createdAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "updatedAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "steps": {
+            "type": "array",
+            "minItems": 1,
+            "items": {
+              "$ref": "#/components/schemas/FinishingStep"
+            }
+          }
+        }
+      },
+      "FinishingProgress": {
+        "type": "object",
+        "required": [
+          "total",
+          "pending",
+          "inProgress",
+          "done",
+          "skipped",
+          "isComplete"
+        ],
+        "properties": {
+          "total": {
+            "type": "integer",
+            "minimum": 1
+          },
+          "pending": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "inProgress": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "done": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "skipped": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "nextStep": {
+            "$ref": "#/components/schemas/FinishingStep"
+          },
+          "isComplete": {
+            "type": "boolean"
+          }
+        }
+      },
+      "FinishingPlanState": {
+        "type": "object",
+        "required": [
+          "plan",
+          "progress"
+        ],
+        "properties": {
+          "plan": {
+            "$ref": "#/components/schemas/FinishingPlan"
+          },
+          "progress": {
+            "$ref": "#/components/schemas/FinishingProgress"
+          }
+        }
+      },
+      "FinishingPlanStateList": {
+        "type": "object",
+        "required": [
+          "items"
+        ],
+        "properties": {
+          "items": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/FinishingPlanState"
+            }
+          }
+        }
+      },
+      "ProductionReportTotals": {
+        "type": "object",
+        "required": [
+          "jobsReceived",
+          "jobsCompleted",
+          "jobsFailedOrCancelled",
+          "medianTurnaroundMs",
+          "p90TurnaroundMs"
+        ],
+        "properties": {
+          "jobsReceived": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "jobsCompleted": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "jobsFailedOrCancelled": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "medianTurnaroundMs": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "minimum": 0
+          },
+          "p90TurnaroundMs": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "minimum": 0
+          }
+        }
+      },
+      "ProductionReportGroup": {
+        "type": "object",
+        "required": [
+          "key",
+          "jobsReceived",
+          "jobsCompleted",
+          "jobsFailedOrCancelled",
+          "medianTurnaroundMs",
+          "p90TurnaroundMs"
+        ],
+        "properties": {
+          "key": {
+            "type": "string"
+          },
+          "jobsReceived": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "jobsCompleted": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "jobsFailedOrCancelled": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "medianTurnaroundMs": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "minimum": 0
+          },
+          "p90TurnaroundMs": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "minimum": 0
+          }
+        }
+      },
+      "ProductionReport": {
+        "type": "object",
+        "required": [
+          "from",
+          "to",
+          "groups",
+          "totals"
+        ],
+        "properties": {
+          "from": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "to": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "groups": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ProductionReportGroup"
+            }
+          },
+          "totals": {
+            "$ref": "#/components/schemas/ProductionReportTotals"
+          }
+        }
+      },
+      "AccountingQuantity": {
+        "type": "object",
+        "required": [
+          "kind",
+          "name",
+          "value",
+          "unit"
+        ],
+        "properties": {
+          "kind": {
+            "enum": [
+              "ink",
+              "media",
+              "other"
+            ]
+          },
+          "name": {
+            "type": "string",
+            "minLength": 1
+          },
+          "value": {
+            "type": "number"
+          },
+          "unit": {
+            "type": "string",
+            "minLength": 1
+          }
+        }
+      },
+      "AccountingIdGroup": {
+        "type": "object",
+        "required": [
+          "accountingId",
+          "jobIds",
+          "quantities"
+        ],
+        "properties": {
+          "accountingId": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "jobIds": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "quantities": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/AccountingQuantity"
+            }
+          }
+        }
+      },
+      "AccountingReport": {
+        "type": "object",
+        "required": [
+          "from",
+          "to",
+          "groups"
+        ],
+        "properties": {
+          "from": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "to": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "groups": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/AccountingIdGroup"
+            }
+          }
+        }
+      },
+      "ApiToken": {
+        "type": "object",
+        "required": [
+          "id",
+          "name",
+          "prefix",
+          "scopes",
+          "createdAt"
+        ],
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "name": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 100
+          },
+          "prefix": {
+            "type": "string",
+            "description": "The first 8 characters of the secret after `bps_`, for display"
+          },
+          "scopes": {
+            "type": "array",
+            "minItems": 1,
+            "uniqueItems": true,
+            "items": {
+              "enum": [
+                "archive:delete",
+                "archive:read",
+                "archive:write",
+                "finishing:read",
+                "finishing:write",
+                "jobs:delete",
+                "jobs:read",
+                "jobs:write",
+                "layouts:delete",
+                "layouts:read",
+                "layouts:write",
+                "media:delete",
+                "media:read",
+                "media:write",
+                "reports:read",
+                "webhooks:delete",
+                "webhooks:read",
+                "webhooks:write"
+              ]
+            }
+          },
+          "createdAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "expiresAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "revokedAt": {
+            "type": "string",
+            "format": "date-time"
+          }
+        }
+      },
+      "ApiTokenList": {
+        "type": "object",
+        "required": [
+          "items"
+        ],
+        "properties": {
+          "items": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ApiToken"
+            }
+          }
+        }
+      },
+      "ApiTokenEnvelope": {
+        "type": "object",
+        "required": [
+          "token"
+        ],
+        "properties": {
+          "token": {
+            "$ref": "#/components/schemas/ApiToken"
+          }
+        }
+      },
+      "IssuedApiToken": {
+        "type": "object",
+        "required": [
+          "token",
+          "secret"
+        ],
+        "properties": {
+          "token": {
+            "$ref": "#/components/schemas/ApiToken"
+          },
+          "secret": {
+            "type": "string",
+            "pattern": "^bps_[A-Za-z0-9_-]{43}$",
+            "description": "Send as `Authorization: Bearer <secret>`"
+          }
+        }
+      },
+      "LoginResult": {
+        "type": "object",
+        "required": [
+          "user",
+          "expiresAt"
+        ],
+        "properties": {
+          "user": {
+            "type": "object",
+            "required": [
+              "id",
+              "username",
+              "displayName",
+              "roles",
+              "createdAt"
+            ],
+            "properties": {
+              "id": {
+                "type": "string"
+              },
+              "username": {
+                "type": "string"
+              },
+              "displayName": {
+                "type": "string"
+              },
+              "roles": {
+                "type": "array",
+                "minItems": 1,
+                "items": {
+                  "type": "string"
+                }
+              },
+              "createdAt": {
+                "type": "string",
+                "format": "date-time"
+              }
+            }
+          },
+          "expiresAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "token": {
+            "type": "string",
+            "pattern": "^[A-Za-z0-9_-]{43}$"
+          }
+        }
+      },
+      "SwatchChartRequest": {
+        "type": "object",
+        "required": [
+          "library"
+        ],
+        "additionalProperties": false,
+        "properties": {
+          "library": {
+            "type": "object",
+            "required": [
+              "name",
+              "colors"
+            ],
+            "properties": {
+              "name": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 127,
+                "description": "Printed in the page title; no control characters, not blank"
+              },
+              "colors": {
+                "type": "array",
+                "maxItems": 2000,
+                "items": {
+                  "type": "object",
+                  "required": [
+                    "name",
+                    "lab"
+                  ],
+                  "properties": {
+                    "name": {
+                      "type": "string",
+                      "minLength": 1,
+                      "maxLength": 127,
+                      "description": "The Separation colorant name; at most 127 UTF-8 bytes, no control characters, not blank"
+                    },
+                    "lab": {
+                      "type": "object",
+                      "required": [
+                        "L",
+                        "a",
+                        "b"
+                      ],
+                      "properties": {
+                        "L": {
+                          "type": "number",
+                          "minimum": 0,
+                          "maximum": 100
+                        },
+                        "a": {
+                          "type": "number",
+                          "minimum": -128,
+                          "maximum": 127
+                        },
+                        "b": {
+                          "type": "number",
+                          "minimum": -128,
+                          "maximum": 127
+                        }
+                      }
+                    },
+                    "cmykFallback": {
+                      "type": "array",
+                      "minItems": 4,
+                      "maxItems": 4,
+                      "items": {
+                        "type": "number",
+                        "minimum": 0,
+                        "maximum": 100
+                      },
+                      "description": "C, M, Y and K percent of the DeviceCMYK alternate; all zero when absent"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "options": {
+            "type": "object",
+            "description": "The swatch rows must fit between the margins and below the title",
+            "properties": {
+              "pageWidthMm": {
+                "type": "number",
+                "minimum": 20,
+                "maximum": 5000,
+                "default": 210
+              },
+              "pageHeightMm": {
+                "type": "number",
+                "minimum": 20,
+                "maximum": 5000,
+                "default": 297
+              },
+              "columns": {
+                "type": "integer",
+                "minimum": 1,
+                "maximum": 100,
+                "default": 6
+              },
+              "swatchSizeMm": {
+                "type": "number",
+                "minimum": 5,
+                "maximum": 1000,
+                "default": 25
+              },
+              "gapMm": {
+                "type": "number",
+                "minimum": 0,
+                "maximum": 100,
+                "default": 5
+              },
+              "marginMm": {
+                "type": "number",
+                "minimum": 0,
+                "maximum": 500,
+                "default": 10
+              },
+              "showLabels": {
+                "type": "boolean",
+                "default": true
+              }
+            }
+          }
+        }
+      },
+      "NUpRequest": {
+        "type": "object",
+        "required": [
+          "sheet",
+          "cell"
+        ],
+        "additionalProperties": false,
+        "properties": {
+          "sheet": {
+            "type": "object",
+            "required": [
+              "width",
+              "height"
+            ],
+            "additionalProperties": false,
+            "properties": {
+              "width": {
+                "type": "number",
+                "description": "Points (1/72 inch)",
+                "exclusiveMinimum": 0
+              },
+              "height": {
+                "type": "number",
+                "description": "Points (1/72 inch)",
+                "exclusiveMinimum": 0
+              }
+            }
+          },
+          "cell": {
+            "type": "object",
+            "required": [
+              "width",
+              "height"
+            ],
+            "additionalProperties": false,
+            "properties": {
+              "width": {
+                "type": "number",
+                "description": "Points (1/72 inch)",
+                "exclusiveMinimum": 0
+              },
+              "height": {
+                "type": "number",
+                "description": "Points (1/72 inch)",
+                "exclusiveMinimum": 0
+              }
+            },
+            "description": "The cell size before rotation"
+          },
+          "rows": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 50,
+            "description": "Omitted: as many as fit"
+          },
+          "cols": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 50,
+            "description": "Omitted: as many as fit"
+          },
+          "gutter": {
+            "type": "number",
+            "description": "Gap between neighboring cells; at most the smaller sheet side",
+            "minimum": 0,
+            "default": 0
+          },
+          "margin": {
+            "type": "number",
+            "description": "Same on all four sheet edges; must leave a usable area",
+            "minimum": 0,
+            "default": 0
+          },
+          "orientation": {
+            "enum": [
+              "upright",
+              "turned",
+              "auto"
+            ],
+            "default": "upright"
+          },
+          "pageCount": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 10000,
+            "description": "Omitted: the plan has no sheets; at most 5000 sheets"
+          }
+        }
+      },
+      "NUpPlan": {
+        "type": "object",
+        "required": [
+          "rows",
+          "cols",
+          "rotation",
+          "cellsPerSheet",
+          "pageCount",
+          "blankCount",
+          "placements",
+          "sheets"
+        ],
+        "properties": {
+          "rows": {
+            "type": "integer",
+            "minimum": 1
+          },
+          "cols": {
+            "type": "integer",
+            "minimum": 1
+          },
+          "rotation": {
+            "enum": [
+              0,
+              90
+            ]
+          },
+          "cellsPerSheet": {
+            "type": "integer",
+            "minimum": 1
+          },
+          "pageCount": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "blankCount": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "placements": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "required": [
+                "index",
+                "row",
+                "col",
+                "x",
+                "y",
+                "width",
+                "height",
+                "rotation"
+              ],
+              "description": "Row 0 is at the top; x and y are the bottom-left of the footprint (y up)",
+              "properties": {
+                "index": {
+                  "type": "integer",
+                  "minimum": 0
+                },
+                "row": {
+                  "type": "integer",
+                  "minimum": 0
+                },
+                "col": {
+                  "type": "integer",
+                  "minimum": 0
+                },
+                "x": {
+                  "type": "number",
+                  "description": "Points (1/72 inch)"
+                },
+                "y": {
+                  "type": "number",
+                  "description": "Points (1/72 inch)"
+                },
+                "width": {
+                  "type": "number",
+                  "description": "Points (1/72 inch)"
+                },
+                "height": {
+                  "type": "number",
+                  "description": "Points (1/72 inch)"
+                },
+                "rotation": {
+                  "enum": [
+                    0,
+                    90
+                  ]
+                }
+              }
+            }
+          },
+          "sheets": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "required": [
+                "index",
+                "pages"
+              ],
+              "properties": {
+                "index": {
+                  "type": "integer",
+                  "minimum": 0
+                },
+                "pages": {
+                  "type": "array",
+                  "items": {
+                    "oneOf": [
+                      {
+                        "type": "integer",
+                        "minimum": 1
+                      },
+                      {
+                        "const": "blank"
+                      }
+                    ]
+                  },
+                  "description": "`pages[k]` goes into `placements[k]`"
+                }
+              }
+            }
+          }
+        }
+      },
+      "BookletRequest": {
+        "type": "object",
+        "required": [
+          "pageCount",
+          "signaturePages",
+          "binding"
+        ],
+        "additionalProperties": false,
+        "properties": {
+          "pageCount": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 10000,
+            "description": "At most 5000 sheets of 4 pages"
+          },
+          "signaturePages": {
+            "enum": [
+              4,
+              8,
+              16,
+              "single"
+            ],
+            "description": "\"single\": every sheet nested in one signature"
+          },
+          "binding": {
+            "enum": [
+              "left",
+              "right"
+            ]
+          },
+          "creep": {
+            "type": "number",
+            "description": "Per sheet, growing inward; the innermost sheet offset must not exceed 10 mm either",
+            "minimum": 0,
+            "maximum": 28.34645669291339,
+            "default": 0
+          }
+        }
+      },
+      "BookletPlan": {
+        "type": "object",
+        "required": [
+          "pageCount",
+          "paddedPageCount",
+          "blankCount",
+          "pagesPerSignature",
+          "sheetsPerSignature",
+          "signatureCount",
+          "binding",
+          "sheets"
+        ],
+        "properties": {
+          "pageCount": {
+            "type": "integer",
+            "minimum": 1
+          },
+          "paddedPageCount": {
+            "type": "integer",
+            "minimum": 4
+          },
+          "blankCount": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "pagesPerSignature": {
+            "type": "integer",
+            "minimum": 4
+          },
+          "sheetsPerSignature": {
+            "type": "integer",
+            "minimum": 1
+          },
+          "signatureCount": {
+            "type": "integer",
+            "minimum": 1
+          },
+          "binding": {
+            "enum": [
+              "left",
+              "right"
+            ]
+          },
+          "sheets": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "required": [
+                "index",
+                "signature",
+                "position",
+                "front",
+                "back",
+                "creep"
+              ],
+              "properties": {
+                "index": {
+                  "type": "integer",
+                  "minimum": 0
+                },
+                "signature": {
+                  "type": "integer",
+                  "minimum": 0
+                },
+                "position": {
+                  "type": "integer",
+                  "minimum": 0
+                },
+                "front": {
+                  "type": "array",
+                  "items": {
+                    "oneOf": [
+                      {
+                        "type": "integer",
+                        "minimum": 1
+                      },
+                      {
+                        "const": "blank"
+                      }
+                    ]
+                  },
+                  "minItems": 2,
+                  "maxItems": 2,
+                  "description": "Left then right"
+                },
+                "back": {
+                  "type": "array",
+                  "items": {
+                    "oneOf": [
+                      {
+                        "type": "integer",
+                        "minimum": 1
+                      },
+                      {
+                        "const": "blank"
+                      }
+                    ]
+                  },
+                  "minItems": 2,
+                  "maxItems": 2,
+                  "description": "Left then right"
+                },
+                "creep": {
+                  "type": "number",
+                  "description": "Points (1/72 inch)",
+                  "minimum": 0
+                }
+              }
+            }
+          }
+        }
+      },
+      "ImposeRequest": {
+        "type": "object",
+        "required": [
+          "kind",
+          "options"
+        ],
+        "additionalProperties": false,
+        "properties": {
+          "kind": {
+            "enum": [
+              "n-up",
+              "booklet"
+            ]
+          },
+          "options": {
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/NUpRequest"
+              },
+              {
+                "$ref": "#/components/schemas/BookletRequest"
+              }
+            ],
+            "description": "The `POST /imposition/n-up` body for `n-up`, the `POST /imposition/booklet` body for `booklet`"
+          },
+          "proofMarks": {
+            "type": "boolean",
+            "default": false,
+            "description": "Draws the Spec 036c proof marks and labels over the content"
+          }
+        }
+      },
+      "PrintSubmission": {
+        "type": "object",
+        "required": [
+          "outputJobId"
+        ],
+        "properties": {
+          "outputJobId": {
+            "type": "string",
+            "minLength": 1
+          }
+        }
+      },
+      "PrintOutputStatus": {
+        "type": "object",
+        "required": [
+          "outputJobId",
+          "state"
+        ],
+        "properties": {
+          "outputJobId": {
+            "type": "string",
+            "minLength": 1
+          },
+          "state": {
+            "type": "string"
+          },
+          "message": {
+            "type": "string"
+          }
+        }
+      },
+      "WhiteInkSetting": {
+        "type": "object",
+        "required": [
+          "mode"
+        ],
+        "additionalProperties": false,
+        "properties": {
+          "mode": {
+            "enum": [
+              "flood",
+              "spot",
+              "choke"
+            ]
+          },
+          "threshold": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 255
+          },
+          "chokePx": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 64
+          },
+          "shape": {
+            "enum": [
+              "square",
+              "diamond"
+            ]
+          },
+          "density": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 100,
+            "description": "Percent"
+          },
+          "invert": {
+            "type": "boolean"
+          },
+          "separationName": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 63,
+            "pattern": "^[\\x20-\\x7e]+$",
+            "description": "Printable ASCII, not blank"
+          }
+        }
+      },
+      "WhiteInkJob": {
+        "type": "object",
+        "required": [
+          "job"
+        ],
+        "properties": {
+          "job": {
+            "type": "object",
+            "required": [
+              "id"
+            ],
+            "properties": {
+              "id": {
+                "type": "string"
+              },
+              "updatedAt": {
+                "type": "string",
+                "format": "date-time"
+              },
+              "whiteInk": {
+                "$ref": "#/components/schemas/WhiteInkSetting",
+                "description": "Optional; absent means white ink is off. A stored value that is not a valid setting reads back absent"
+              }
+            }
+          }
+        }
+      },
+      "ScreeningSetting": {
+        "oneOf": [
+          {
+            "type": "object",
+            "required": [
+              "kind",
+              "size"
+            ],
+            "additionalProperties": false,
+            "properties": {
+              "kind": {
+                "const": "bayer"
+              },
+              "size": {
+                "enum": [
+                  2,
+                  4,
+                  8,
+                  16
+                ]
+              }
+            }
+          },
+          {
+            "type": "object",
+            "required": [
+              "kind",
+              "size",
+              "seed"
+            ],
+            "additionalProperties": false,
+            "properties": {
+              "kind": {
+                "const": "blue-noise"
+              },
+              "size": {
+                "type": "integer",
+                "minimum": 2,
+                "maximum": 256
+              },
+              "seed": {
+                "type": "integer",
+                "minimum": 0,
+                "maximum": 4294967295,
+                "description": "Unsigned 32-bit integer"
+              }
+            }
+          },
+          {
+            "type": "object",
+            "description": "Spec 045c: error diffusion of each plane; it has no tile, so no size or seed",
+            "required": [
+              "kind",
+              "kernel"
+            ],
+            "additionalProperties": false,
+            "properties": {
+              "kind": {
+                "const": "error-diffusion"
+              },
+              "kernel": {
+                "enum": [
+                  "floyd-steinberg",
+                  "jarvis-judice-ninke"
+                ]
+              },
+              "serpentine": {
+                "type": "boolean",
+                "description": "Optional; absent means every row is scanned left to right"
+              }
+            }
+          }
+        ]
+      },
+      "ScreeningJob": {
+        "type": "object",
+        "required": [
+          "job"
+        ],
+        "properties": {
+          "job": {
+            "type": "object",
+            "required": [
+              "id"
+            ],
+            "properties": {
+              "id": {
+                "type": "string"
+              },
+              "updatedAt": {
+                "type": "string",
+                "format": "date-time"
+              },
+              "screening": {
+                "$ref": "#/components/schemas/ScreeningSetting",
+                "description": "Optional; absent means no screening is requested. A stored value that is not a valid setting reads back absent"
+              }
+            }
+          }
+        }
+      },
+      "InkLimitSetting": {
+        "type": "object",
+        "required": [
+          "limitPercent",
+          "method"
+        ],
+        "additionalProperties": false,
+        "properties": {
+          "limitPercent": {
+            "type": "integer",
+            "minimum": 100,
+            "maximum": 400,
+            "description": "Total area coverage limit in percent"
+          },
+          "method": {
+            "enum": [
+              "proportional",
+              "gcr"
+            ]
+          }
+        }
+      },
+      "InkLimitJob": {
+        "type": "object",
+        "required": [
+          "job"
+        ],
+        "properties": {
+          "job": {
+            "type": "object",
+            "required": [
+              "id"
+            ],
+            "properties": {
+              "id": {
+                "type": "string"
+              },
+              "updatedAt": {
+                "type": "string",
+                "format": "date-time"
+              },
+              "inkLimit": {
+                "$ref": "#/components/schemas/InkLimitSetting",
+                "description": "Optional; absent means no ink limit is requested. A stored value that is not a valid setting reads back absent"
+              }
+            }
+          }
+        }
+      },
+      "PlaneCurvesSetting": {
+        "type": "object",
+        "additionalProperties": false,
+        "minProperties": 1,
+        "description": "At least one channel; `{}` is rejected. A missing channel leaves that plane unchanged",
+        "properties": {
+          "c": {
+            "type": "object",
+            "required": [
+              "points",
+              "method"
+            ],
+            "additionalProperties": false,
+            "properties": {
+              "points": {
+                "type": "array",
+                "minItems": 2,
+                "maxItems": 256,
+                "description": "Inputs strictly increase, the first is 0 and the last 255; outputs never decrease",
+                "items": {
+                  "type": "object",
+                  "required": [
+                    "in",
+                    "out"
+                  ],
+                  "additionalProperties": false,
+                  "properties": {
+                    "in": {
+                      "type": "integer",
+                      "minimum": 0,
+                      "maximum": 255
+                    },
+                    "out": {
+                      "type": "integer",
+                      "minimum": 0,
+                      "maximum": 255
+                    }
+                  }
+                }
+              },
+              "method": {
+                "enum": [
+                  "monotone",
+                  "linear"
+                ]
+              }
+            }
+          },
+          "m": {
+            "type": "object",
+            "required": [
+              "points",
+              "method"
+            ],
+            "additionalProperties": false,
+            "properties": {
+              "points": {
+                "type": "array",
+                "minItems": 2,
+                "maxItems": 256,
+                "description": "Inputs strictly increase, the first is 0 and the last 255; outputs never decrease",
+                "items": {
+                  "type": "object",
+                  "required": [
+                    "in",
+                    "out"
+                  ],
+                  "additionalProperties": false,
+                  "properties": {
+                    "in": {
+                      "type": "integer",
+                      "minimum": 0,
+                      "maximum": 255
+                    },
+                    "out": {
+                      "type": "integer",
+                      "minimum": 0,
+                      "maximum": 255
+                    }
+                  }
+                }
+              },
+              "method": {
+                "enum": [
+                  "monotone",
+                  "linear"
+                ]
+              }
+            }
+          },
+          "y": {
+            "type": "object",
+            "required": [
+              "points",
+              "method"
+            ],
+            "additionalProperties": false,
+            "properties": {
+              "points": {
+                "type": "array",
+                "minItems": 2,
+                "maxItems": 256,
+                "description": "Inputs strictly increase, the first is 0 and the last 255; outputs never decrease",
+                "items": {
+                  "type": "object",
+                  "required": [
+                    "in",
+                    "out"
+                  ],
+                  "additionalProperties": false,
+                  "properties": {
+                    "in": {
+                      "type": "integer",
+                      "minimum": 0,
+                      "maximum": 255
+                    },
+                    "out": {
+                      "type": "integer",
+                      "minimum": 0,
+                      "maximum": 255
+                    }
+                  }
+                }
+              },
+              "method": {
+                "enum": [
+                  "monotone",
+                  "linear"
+                ]
+              }
+            }
+          },
+          "k": {
+            "type": "object",
+            "required": [
+              "points",
+              "method"
+            ],
+            "additionalProperties": false,
+            "properties": {
+              "points": {
+                "type": "array",
+                "minItems": 2,
+                "maxItems": 256,
+                "description": "Inputs strictly increase, the first is 0 and the last 255; outputs never decrease",
+                "items": {
+                  "type": "object",
+                  "required": [
+                    "in",
+                    "out"
+                  ],
+                  "additionalProperties": false,
+                  "properties": {
+                    "in": {
+                      "type": "integer",
+                      "minimum": 0,
+                      "maximum": 255
+                    },
+                    "out": {
+                      "type": "integer",
+                      "minimum": 0,
+                      "maximum": 255
+                    }
+                  }
+                }
+              },
+              "method": {
+                "enum": [
+                  "monotone",
+                  "linear"
+                ]
+              }
+            }
+          }
+        }
+      },
+      "PlaneCurvesJob": {
+        "type": "object",
+        "required": [
+          "job"
+        ],
+        "properties": {
+          "job": {
+            "type": "object",
+            "required": [
+              "id"
+            ],
+            "properties": {
+              "id": {
+                "type": "string"
+              },
+              "updatedAt": {
+                "type": "string",
+                "format": "date-time"
+              },
+              "planeCurves": {
+                "$ref": "#/components/schemas/PlaneCurvesSetting",
+                "description": "Optional; absent means no curves are requested. A stored value that is not a valid setting reads back absent"
+              }
+            }
+          }
+        }
+      },
+      "TilingSetting": {
+        "type": "object",
+        "required": [
+          "grid"
+        ],
+        "additionalProperties": false,
+        "description": "`{}` is rejected. Without `seam`, every seam overlaps by the tile default of 25 mm",
+        "properties": {
+          "grid": {
+            "type": "object",
+            "required": [
+              "columns",
+              "rows"
+            ],
+            "additionalProperties": false,
+            "properties": {
+              "columns": {
+                "type": "integer",
+                "minimum": 1,
+                "maximum": 500
+              },
+              "rows": {
+                "type": "integer",
+                "minimum": 1,
+                "maximum": 500
+              }
+            }
+          },
+          "seam": {
+            "oneOf": [
+              {
+                "type": "object",
+                "required": [
+                  "kind"
+                ],
+                "additionalProperties": false,
+                "properties": {
+                  "kind": {
+                    "const": "butt"
+                  }
+                }
+              },
+              {
+                "type": "object",
+                "required": [
+                  "kind"
+                ],
+                "additionalProperties": false,
+                "properties": {
+                  "kind": {
+                    "const": "overlap"
+                  },
+                  "overlapMm": {
+                    "type": "number",
+                    "minimum": 0,
+                    "maximum": 1000,
+                    "description": "Millimetres each neighbour prints past the seam; absent means the tile default of 25 mm"
+                  }
+                }
+              },
+              {
+                "type": "object",
+                "required": [
+                  "kind",
+                  "gapMm"
+                ],
+                "additionalProperties": false,
+                "properties": {
+                  "kind": {
+                    "const": "gap"
+                  },
+                  "gapMm": {
+                    "type": "number",
+                    "exclusiveMinimum": 0,
+                    "maximum": 1000,
+                    "description": "Width in millimetres of the unprinted strip centred on the seam"
+                  }
+                }
+              }
+            ]
+          }
+        }
+      },
+      "TilingJob": {
+        "type": "object",
+        "required": [
+          "job"
+        ],
+        "properties": {
+          "job": {
+            "type": "object",
+            "required": [
+              "id"
+            ],
+            "properties": {
+              "id": {
+                "type": "string"
+              },
+              "updatedAt": {
+                "type": "string",
+                "format": "date-time"
+              },
+              "tiling": {
+                "$ref": "#/components/schemas/TilingSetting",
+                "description": "Optional; absent means the job is not tiled. A stored value that is not a valid setting reads back absent"
+              }
+            }
+          }
+        }
+      },
+      "ScreenPreviewRequest": {
+        "type": "object",
+        "required": [
+          "width",
+          "height",
+          "c",
+          "m",
+          "y",
+          "k"
+        ],
+        "additionalProperties": false,
+        "properties": {
+          "width": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 1024
+          },
+          "height": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 1024
+          },
+          "format": {
+            "enum": [
+              "packed",
+              "pbm"
+            ],
+            "default": "packed",
+            "description": "Spec 043b: how each screened plane is answered. Absent or `packed`: the Spec 043a packed planes with `rowBytes`; `pbm`: each plane is a raw PBM (`P4`) file"
+          },
+          "c": {
+            "type": "string",
+            "contentEncoding": "base64",
+            "description": "Padded base64 of exactly width * height bytes, so 4 * ceil(width * height / 3) characters"
+          },
+          "m": {
+            "type": "string",
+            "contentEncoding": "base64",
+            "description": "Padded base64 of exactly width * height bytes, so 4 * ceil(width * height / 3) characters"
+          },
+          "y": {
+            "type": "string",
+            "contentEncoding": "base64",
+            "description": "Padded base64 of exactly width * height bytes, so 4 * ceil(width * height / 3) characters"
+          },
+          "k": {
+            "type": "string",
+            "contentEncoding": "base64",
+            "description": "Padded base64 of exactly width * height bytes, so 4 * ceil(width * height / 3) characters"
+          }
+        }
+      },
+      "ScreenPreview": {
+        "oneOf": [
+          {
+            "type": "object",
+            "description": "Absent or `format: \"packed\"` in the request",
+            "required": [
+              "width",
+              "height",
+              "rowBytes",
+              "c",
+              "m",
+              "y",
+              "k"
+            ],
+            "properties": {
+              "width": {
+                "type": "integer",
+                "minimum": 1,
+                "maximum": 1024
+              },
+              "height": {
+                "type": "integer",
+                "minimum": 1,
+                "maximum": 1024
+              },
+              "rowBytes": {
+                "type": "integer",
+                "minimum": 1,
+                "description": "ceil(width / 8)"
+              },
+              "c": {
+                "type": "string",
+                "contentEncoding": "base64",
+                "description": "Base64 of rowBytes * height bytes"
+              },
+              "m": {
+                "type": "string",
+                "contentEncoding": "base64",
+                "description": "Base64 of rowBytes * height bytes"
+              },
+              "y": {
+                "type": "string",
+                "contentEncoding": "base64",
+                "description": "Base64 of rowBytes * height bytes"
+              },
+              "k": {
+                "type": "string",
+                "contentEncoding": "base64",
+                "description": "Base64 of rowBytes * height bytes"
+              }
+            }
+          },
+          {
+            "type": "object",
+            "description": "`format: \"pbm\"` in the request",
+            "required": [
+              "width",
+              "height",
+              "format",
+              "c",
+              "m",
+              "y",
+              "k"
+            ],
+            "properties": {
+              "width": {
+                "type": "integer",
+                "minimum": 1,
+                "maximum": 1024
+              },
+              "height": {
+                "type": "integer",
+                "minimum": 1,
+                "maximum": 1024
+              },
+              "format": {
+                "const": "pbm"
+              },
+              "c": {
+                "type": "string",
+                "contentEncoding": "base64",
+                "contentMediaType": "image/x-portable-bitmap",
+                "description": "Base64 of a raw PBM: the header `P4\\n<width> <height>\\n`, then ceil(width / 8) * height bytes of packed rows"
+              },
+              "m": {
+                "type": "string",
+                "contentEncoding": "base64",
+                "contentMediaType": "image/x-portable-bitmap",
+                "description": "Base64 of a raw PBM: the header `P4\\n<width> <height>\\n`, then ceil(width / 8) * height bytes of packed rows"
+              },
+              "y": {
+                "type": "string",
+                "contentEncoding": "base64",
+                "contentMediaType": "image/x-portable-bitmap",
+                "description": "Base64 of a raw PBM: the header `P4\\n<width> <height>\\n`, then ceil(width / 8) * height bytes of packed rows"
+              },
+              "k": {
+                "type": "string",
+                "contentEncoding": "base64",
+                "contentMediaType": "image/x-portable-bitmap",
+                "description": "Base64 of a raw PBM: the header `P4\\n<width> <height>\\n`, then ceil(width / 8) * height bytes of packed rows"
+              }
+            }
+          }
+        ]
+      },
+      "Job": {
+        "type": "object",
+        "required": [
+          "id",
+          "name",
+          "status",
+          "priority",
+          "sourceFiles",
+          "artifacts",
+          "ticket",
+          "tags",
+          "metadata",
+          "createdAt",
+          "updatedAt"
+        ],
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "name": {
+            "type": "string",
+            "description": "The sanitized `x-bps-job-name` of an upload, else its server-generated file name"
+          },
+          "status": {
+            "type": "string"
+          },
+          "sourceFormat": {
+            "type": "string"
+          },
+          "priority": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 100
+          },
+          "sourceFiles": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "required": [
+                "name",
+                "sha256",
+                "sizeBytes",
+                "storageKey"
+              ],
+              "properties": {
+                "name": {
+                  "type": "string"
+                },
+                "sha256": {
+                  "type": "string"
+                },
+                "sizeBytes": {
+                  "type": "integer",
+                  "minimum": 0
+                },
+                "storageKey": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "artifacts": {
+            "type": "array",
+            "items": {
+              "type": "object"
+            }
+          },
+          "ticket": {
+            "type": "object",
+            "properties": {
+              "siteId": {
+                "type": "string"
+              }
+            }
+          },
+          "tags": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "metadata": {
+            "type": "object",
+            "additionalProperties": {
+              "type": "string"
+            },
+            "description": "Spec 052a: an upload records `intakeFile` (its server-generated file name) and, when sent, `displayName`"
+          },
+          "createdAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "updatedAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "lifecycle": {
+            "type": "string"
+          },
+          "legalHold": {
+            "type": "boolean"
+          }
+        }
+      },
+      "JobEnvelope": {
+        "type": "object",
+        "required": [
+          "job"
+        ],
+        "properties": {
+          "job": {
+            "$ref": "#/components/schemas/Job"
+          }
+        }
+      },
+      "JobPage": {
+        "type": "object",
+        "required": [
+          "items",
+          "nextCursor"
+        ],
+        "properties": {
+          "items": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/Job"
+            }
+          },
+          "nextCursor": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Pass as `cursor` for the next page; null on the last page"
+          }
+        }
+      },
+      "Health": {
+        "type": "object",
+        "required": [
+          "status"
+        ],
+        "properties": {
+          "status": {
+            "const": "ok"
+          }
+        }
+      }
+    }
+  }
+}

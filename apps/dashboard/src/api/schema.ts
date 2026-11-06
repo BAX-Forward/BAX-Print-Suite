@@ -29,8 +29,6 @@ export interface components {
       | "done"
       | "failed"
       | "cancelled";
-    /** @enum {string} */
-    JobSort: "createdAt" | "-createdAt" | "priority" | "-priority" | "name" | "-name";
     /** @description Rectangle in PDF points (1/72 in) */
     Box: {
       x: number;
@@ -78,7 +76,8 @@ export interface components {
         [key: string]: unknown;
       } | null;
     };
-    Job: {
+    /** @description Mock only (Spec 002): the control-plane job record answered by PATCH /jobs/{id}, POST /jobs/{id}/print and carried in job events. The 052a server answers Job instead. */
+    JobRecord: {
       /** @description ULID */
       id: string;
       name: string;
@@ -101,9 +100,49 @@ export interface components {
       updatedAt: string;
       error?: components["schemas"]["JobError"] | null;
     };
+    Job: {
+      id: string;
+      /** @description The sanitized `x-bps-job-name` of an upload, else its server-generated file name */
+      name: string;
+      status: string;
+      sourceFormat?: string;
+      priority: number;
+      sourceFiles: {
+        name: string;
+        sha256: string;
+        sizeBytes: number;
+        storageKey: string;
+      }[];
+      artifacts: Record<string, never>[];
+      ticket: {
+        siteId?: string;
+      };
+      tags: string[];
+      /** @description Spec 052a: an upload records `intakeFile` (its server-generated file name) and, when sent, `displayName` */
+      metadata: {
+        [key: string]: string;
+      };
+      /** Format: date-time */
+      createdAt: string;
+      /** Format: date-time */
+      updatedAt: string;
+      lifecycle?: string;
+      legalHold?: boolean;
+    };
+    JobEnvelope: {
+      job: components["schemas"]["Job"];
+    };
     JobPage: {
       items: components["schemas"]["Job"][];
+      /** @description Pass as `cursor` for the next page; null on the last page */
       nextCursor: string | null;
+    };
+    Error: {
+      error: {
+        code: string;
+        message: string;
+        details?: string[] | Record<string, never>;
+      };
     };
     JobPatch: {
       status?: components["schemas"]["JobStatus"];
@@ -257,13 +296,13 @@ export interface components {
     };
     JobCreatedData: {
       jobId: string;
-      job?: components["schemas"]["Job"];
+      job?: components["schemas"]["JobRecord"];
     };
     JobStatusChangedData: {
       jobId: string;
       from: components["schemas"]["JobStatus"];
       to: components["schemas"]["JobStatus"];
-      job?: components["schemas"]["Job"];
+      job?: components["schemas"]["JobRecord"];
     };
   };
 }

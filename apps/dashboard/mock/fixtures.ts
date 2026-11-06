@@ -1,4 +1,4 @@
-import type { AuditEntry, Device, HotFolder, Job, JobError, JobStatus, JobStep, Page, Plugin } from '../src/api/types';
+import type { AuditEntry, Device, HotFolder, JobError, JobRecord, JobStatus, JobStep, Page, Plugin } from '../src/api/types';
 
 /**
  * Deterministic seed data for the mock API. Names and paths are generic examples; device and
@@ -273,7 +273,7 @@ function step(jobId: string, stage: string, status: JobStep['status'], startMs: 
   };
 }
 
-function buildJob(spec: JobSpec, n: number): Job {
+function buildJob(spec: JobSpec, n: number): JobRecord {
   const id = fixtureId(n);
   const createdMs = FIXTURE_EPOCH + n * JOB_SPACING_MINUTES * MINUTE_MS;
   const sha256 = fakeSha256(id);
@@ -327,6 +327,6 @@ function buildJob(spec: JobSpec, n: number): Job {
   };
 }
 
-export function seedJobs(): Job[] {
+export function seedJobs(): JobRecord[] {
   return JOB_SPECS.map((spec, i) => buildJob(spec, i + 1));
 }

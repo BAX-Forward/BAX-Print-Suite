@@ -1,6 +1,6 @@
 import type { InfiniteData, QueryClient } from '@tanstack/react-query';
 import { queryKeys } from '../api/queries';
-import { JOB_STATUSES, type Job, type JobPage, type JobStatus } from '../api/types';
+import { isJobStatus, type Job, type JobPage } from '../api/types';
 
 export type ConnectionState = 'connecting' | 'open' | 'reconnecting' | 'offline';
 
@@ -45,14 +45,6 @@ function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null && !Array.isArray(value);
 }
 
-function isJobStatus(value: unknown): value is JobStatus {
-  return typeof value === 'string' && (JOB_STATUSES as readonly string[]).includes(value);
-}
-
-function isJob(value: unknown): value is Job {
-  return isRecord(value) && typeof value.id === 'string' && isJobStatus(value.status);
-}
-
 export function parseCloudEvent(raw: unknown): BpsEvent | null {
   if (typeof raw !== 'string') return null;
   let value: unknown;
@@ -95,9 +87,10 @@ export function applyEventToCache(queryClient: QueryClient, event: BpsEvent): vo
   if (!jobId) return;
 
   if (event.type === 'job.status.changed') {
-    const fullJob = isJob(event.data.job) ? event.data.job : undefined;
+    // Only the status is taken over: an event's `job` is the mock-only JobRecord, not the 052a Job
+    // the queries cache (the invalidation below refetches the rest).
     const to = isJobStatus(event.data.to) ? event.data.to : undefined;
-    const patch = (old: Job): Job => fullJob ?? (to ? { ...old, status: to, updatedAt: event.time } : old);
+    const patch = (old: Job): Job => (to ? { ...old, status: to, updatedAt: event.time } : old);
 
     queryClient.setQueryData<Job>(queryKeys.job(jobId), (old) => (old ? patch(old) : old));
     queryClient.setQueriesData<InfiniteData<JobPage>>({ queryKey: queryKeys.jobLists }, (old) =>

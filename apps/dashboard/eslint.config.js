@@ -30,8 +30,9 @@ export default tseslint.config(
     },
   },
   {
-    // The generated-types API client is the single place allowed to call fetch.
-    files: ['src/api/client.ts'],
+    // The generated-types API client is the single place allowed to call fetch, plus its opt-in
+    // upload extension (Spec 052b), kept apart so the flag-off bundle does not contain it.
+    files: ['src/api/client.ts', 'src/api/uploadClient.ts'],
     rules: { 'no-restricted-globals': 'off', 'no-restricted-properties': 'off' },
   },
   {

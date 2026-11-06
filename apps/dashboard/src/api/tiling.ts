@@ -1,4 +1,4 @@
-import type { Job } from './types';
+import type { Job, Page } from './types';
 
 /**
  * Spec 050a: the tiling a job carries, as GET /jobs/:id returns it (see TilingSetting in
@@ -27,5 +27,8 @@ export interface JobTiling {
   readonly seam?: JobTilingSeam;
 }
 
-/** A job with its optional tiling setting. Absent means the job is not tiled. */
-export type JobWithTiling = Job & { tiling?: JobTiling };
+/**
+ * A job with its optional tiling setting (absent means the job is not tiled) and page boxes. The
+ * 052a Job carries no page boxes, so `pages` is optional and a job without them has nothing to tile.
+ */
+export type JobWithTiling = Job & { pages?: readonly Page[]; tiling?: JobTiling };

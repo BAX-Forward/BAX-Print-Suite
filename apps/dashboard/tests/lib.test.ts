@@ -5,7 +5,6 @@ import { fixtureId } from '../mock/fixtures';
 import { queryKeys } from '../src/api/queries';
 import type { Job, JobPage } from '../src/api/types';
 import { formatBox, formatBytes, formatDateTime, formatLength, formatPageSize } from '../src/lib/format';
-import { DEFAULT_SORT, nextSort, readJobFilters, toListFilters, writeJobFilters } from '../src/lib/jobFilters';
 import { buildTimeline, deliveredPath } from '../src/lib/timeline';
 import {
   applyEventToCache,
@@ -19,7 +18,7 @@ import {
 import { createPdfThumbnailRenderer } from '../src/preview/pdfThumbnailRenderer';
 import { MAX_THUMBNAIL_PX, thumbnailScale, type RenderBackend } from '../src/preview/types';
 
-/** Unit tests for the UI's pure modules (formatting, URL filters, timeline, SSE, preview pipeline). */
+/** Unit tests for the UI's pure modules (formatting, timeline, SSE, preview pipeline). */
 
 describe('format', () => {
   it('converts points to inches and millimetres without trailing zeros', () => {
@@ -44,41 +43,6 @@ describe('format', () => {
     expect(formatDateTime(null)).toBe('—');
     expect(formatDateTime('not-a-date')).toBe('not-a-date');
     expect(formatDateTime('2026-01-02T03:04:05Z')).toMatch(/2026/);
-  });
-});
-
-describe('job filters in the URL', () => {
-  it('reads repeated and comma-separated statuses, dropping unknown values', () => {
-    const filters = readJobFilters(new URLSearchParams('status=failed,held&status=bogus&status=failed&q=sale&sort=-name'));
-    expect(filters).toEqual({ status: ['failed', 'held'], q: 'sale', hotFolderId: '', deviceId: '', sort: '-name' });
-  });
-
-  it('falls back to the default sort for unknown values', () => {
-    expect(readJobFilters(new URLSearchParams('sort=size')).sort).toBe(DEFAULT_SORT);
-  });
-
-  it('round-trips and omits defaults', () => {
-    const filters = { status: ['queued' as const], q: 'x', hotFolderId: 'h1', deviceId: '', sort: DEFAULT_SORT };
-    const params = writeJobFilters(filters);
-    expect(params.toString()).toBe('status=queued&q=x&hotFolderId=h1');
-    expect(readJobFilters(params)).toEqual(filters);
-  });
-
-  it('maps empty values to undefined for the API', () => {
-    expect(toListFilters({ status: [], q: '  ', hotFolderId: '', deviceId: 'd1', sort: 'priority' })).toEqual({
-      status: undefined,
-      q: undefined,
-      hotFolderId: undefined,
-      deviceId: 'd1',
-      sort: 'priority',
-    });
-  });
-
-  it('toggles direction on the same column and uses the column default otherwise', () => {
-    expect(nextSort('-createdAt', 'createdAt')).toBe('createdAt');
-    expect(nextSort('createdAt', 'createdAt')).toBe('-createdAt');
-    expect(nextSort('-createdAt', 'name')).toBe('name');
-    expect(nextSort('-createdAt', 'priority')).toBe('-priority');
   });
 });
 
@@ -183,10 +147,10 @@ describe('connectLive', () => {
 describe('applyEventToCache', () => {
   it('patches the job detail and every loaded list page in place', () => {
     const db = createMockDb();
-    const job: Job = db.getJob(fixtureId(7));
+    const job: Job = db.readJob(fixtureId(7));
     db.dispose();
     const queryClient = new QueryClient();
-    const listKey = [...queryKeys.jobLists, { sort: '-createdAt' }];
+    const listKey = queryKeys.jobLists;
     queryClient.setQueryData<Job>(queryKeys.job(job.id), job);
     queryClient.setQueryData<InfiniteData<JobPage>>(listKey, {
       pages: [{ items: [job], nextCursor: null }],
@@ -201,7 +165,7 @@ describe('applyEventToCache', () => {
     });
 
     expect(queryClient.getQueryData<Job>(queryKeys.job(job.id))?.status).toBe('held');
-    expect(queryClient.getQueryData<InfiniteData<JobPage>>(listKey)?.pages[0].items[0]).toMatchObject({
+    expect(queryClient.getQueryData<InfiniteData<JobPage>>(listKey)?.pages[0]?.items[0]).toMatchObject({
       status: 'held',
       updatedAt: '2026-01-01T12:00:00Z',
     });

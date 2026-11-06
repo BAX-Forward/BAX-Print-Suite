@@ -4,8 +4,11 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import type { MockDb } from '../mock/db';
 import { DEVICE_IDS, fixtureId, HOT_FOLDER_IDS, PLUGIN_IDS } from '../mock/fixtures';
 import openapi from '../mock/openapi.json';
-import { JOB_SORTS, JOB_STATUSES, type CloudEvent, type Device, type HotFolder, type Job, type JobPage, type Plugin, type Problem, type Transitions } from '../src/api/types';
+import { JOB_STATUSES, type CloudEvent, type Device, type HotFolder, type JobEnvelope, type JobPage, type JobRecord, type Plugin, type Problem, type Transitions } from '../src/api/types';
+import type { components } from '../src/api/schema';
 import { BASE_URL, installMockServer, useMockDb } from './helpers';
+
+type ErrorBody = components['schemas']['Error'];
 
 /**
  * Contract tests for the mock API against mock/openapi.json (Spec 002 acceptance 2): every
@@ -36,6 +39,13 @@ const HTTP_METHODS = ['get', 'post', 'put', 'patch', 'delete'];
 const NOT_PRODUCIBLE = new Set([
   // The preview image needs a RenderEngine (M5); until then the reserved contract answers 501.
   'getJobPreview 200',
+  // The 052a job routes are copied verbatim from the server, which documents its auth answers; the mock has no auth.
+  'listJobs 401',
+  'listJobs 403',
+  'createJob 401',
+  'createJob 403',
+  'getJob 401',
+  'getJob 403',
 ]);
 
 /** Points schema references at the component schemas registered under DOC_ID. */
@@ -73,6 +83,11 @@ async function expectContract(response: Response, path: string, method: string, 
     documented = doc.components.responses[name];
   }
   exercised.add(`${op.operationId} ${status}`);
+  // The server documents its error statuses by description only; their body is the `default` Error.
+  if (!documented.content && op.responses.default?.content) {
+    documented = op.responses.default;
+    exercised.add(`${op.operationId} default`);
+  }
 
   if (!documented.content) {
     expect(await response.text()).toBe('');
@@ -101,6 +116,16 @@ function fieldsOf(problem: unknown): string[] {
   return ((problem as Problem).errors ?? []).map((error) => error.field);
 }
 
+function errorCode(body: unknown): string {
+  return (body as ErrorBody).error.code;
+}
+
+const PDF_BYTES = new TextEncoder().encode('%PDF-1.7\n%%EOF\n');
+
+function upload(bytes: Uint8Array, headers: Record<string, string>): Promise<Response> {
+  return fetch(`${BASE_URL}/jobs`, { method: 'POST', headers, body: bytes });
+}
+
 const READY_JOB = fixtureId(7); // brochure-a4-3pages, 3 pages
 const HELD_JOB = fixtureId(10);
 const DONE_JOB = fixtureId(1);
@@ -113,10 +138,9 @@ beforeEach(() => {
 });
 
 describe('shared enums', () => {
-  it('JOB_STATUSES and JOB_SORTS mirror openapi.json', () => {
+  it('JOB_STATUSES mirrors openapi.json', () => {
     const schemas = doc.components.schemas as Record<string, { enum: string[] }>;
     expect([...JOB_STATUSES]).toEqual(schemas.JobStatus.enum);
-    expect([...JOB_SORTS]).toEqual(schemas.JobSort.enum);
   });
 });
 
@@ -134,33 +158,18 @@ describe('GET /jobs', () => {
   const list = async (query: string) =>
     (await expectContract(await call('GET', `/jobs${query}`), '/jobs', 'get', 200)) as JobPage;
 
-  it('lists all fixture jobs newest first by default', async () => {
+  it('lists all fixture jobs newest first as {items, nextCursor: null} on the last page', async () => {
     const page = await list('');
+    expect(Object.keys(page).sort()).toEqual(['items', 'nextCursor']);
     expect(page.items).toHaveLength(14);
-    expect(page.items[0].id).toBe(fixtureId(14));
+    expect(page.items[0]?.id).toBe(fixtureId(14));
     expect(page.nextCursor).toBeNull();
   });
 
-  it('filters by repeated status parameters', async () => {
-    const page = await list('?status=failed&status=cancelled');
-    expect(page.items).toHaveLength(3);
-    expect(page.items.every((job) => job.status === 'failed' || job.status === 'cancelled')).toBe(true);
-  });
-
-  it('filters by name (case-insensitive), hot folder and device', async () => {
-    const byName = await list('?q=BANNER');
-    expect(byName.items.map((job) => job.name).sort()).toEqual(['banner-3000x1000-sale', 'mesh-banner-fence']);
-
-    const scoped = await list(`?hotFolderId=${HOT_FOLDER_IDS.banners}&deviceId=${DEVICE_IDS.rollA}`);
-    expect(scoped.items.length).toBeGreaterThan(0);
-    expect(scoped.items.every((job) => job.hotFolderId === HOT_FOLDER_IDS.banners && job.deviceId === DEVICE_IDS.rollA)).toBe(true);
-  });
-
-  it('sorts by priority and name', async () => {
-    const priorities = (await list('?sort=-priority')).items.map((job) => job.priority);
-    expect(priorities).toEqual([...priorities].sort((a, b) => b - a));
-    const names = (await list('?sort=name')).items.map((job) => job.name);
-    expect(names).toEqual([...names].sort((a, b) => a.localeCompare(b, 'en', { sensitivity: 'base' })));
+  it('ignores query parameters other than limit and cursor, as 052a does', async () => {
+    const page = await list(`?status=failed&q=BANNER&hotFolderId=${HOT_FOLDER_IDS.banners}&deviceId=${DEVICE_IDS.rollA}&sort=name`);
+    expect(page.items).toHaveLength(14);
+    expect(page.items[0]?.id).toBe(fixtureId(14));
   });
 
   it('pages with an opaque cursor until nextCursor is null', async () => {
@@ -172,29 +181,68 @@ describe('GET /jobs', () => {
       ids.push(...page.items.map((job) => job.id));
       cursor = page.nextCursor;
       pages += 1;
-    } while (cursor);
+    } while (cursor !== null);
     expect(pages).toBe(3);
     expect(new Set(ids).size).toBe(14);
   });
 
-  it('rejects invalid query parameters with 400', async () => {
-    for (const query of ['?sort=size', '?limit=0', '?status=lost', '?cursor=not-a-cursor']) {
-      const problem = await expectContract(await call('GET', `/jobs${query}`), '/jobs', 'get', 400);
-      expect(fieldsOf(problem).length).toBeGreaterThan(0);
+  it('caps a limit above 200', async () => {
+    expect((await list('?limit=500')).items).toHaveLength(14);
+  });
+
+  it('rejects an invalid limit or cursor with 400 invalid_request', async () => {
+    for (const query of ['?limit=0', '?limit=abc', '?cursor=not-a-cursor']) {
+      const body = await expectContract(await call('GET', `/jobs${query}`), '/jobs', 'get', 400);
+      expect(errorCode(body)).toBe('invalid_request');
     }
   });
 });
 
+describe('POST /jobs', () => {
+  it('creates a job from a raw PDF and names it from x-bps-job-name', async () => {
+    const response = await upload(PDF_BYTES, { 'Content-Type': 'application/pdf', 'x-bps-job-name': 'uploaded-poster' });
+    const { job } = (await expectContract(response, '/jobs', 'post', 201)) as JobEnvelope;
+    expect(job.name).toBe('uploaded-poster');
+    expect(db.getJob(job.id).name).toBe('uploaded-poster');
+  });
+
+  it('picks a name when the header is absent', async () => {
+    const response = await upload(PDF_BYTES, { 'Content-Type': 'application/pdf' });
+    const { job } = (await expectContract(response, '/jobs', 'post', 201)) as JobEnvelope;
+    expect(job.name).not.toBe('');
+  });
+
+  it('answers 415 upload_media_type_unsupported for other content types', async () => {
+    const body = await expectContract(await upload(PDF_BYTES, { 'Content-Type': 'application/octet-stream' }), '/jobs', 'post', 415);
+    expect(errorCode(body)).toBe('upload_media_type_unsupported');
+  });
+
+  it('answers 400 upload_not_pdf when the body is not a PDF', async () => {
+    const notPdf = new TextEncoder().encode('hello');
+    const body = await expectContract(await upload(notPdf, { 'Content-Type': 'application/pdf' }), '/jobs', 'post', 400);
+    expect(errorCode(body)).toBe('upload_not_pdf');
+  });
+
+  it('answers 413 upload_too_large past the upload limit', async () => {
+    useMockDb({ uploadMaxBytes: PDF_BYTES.byteLength - 1 });
+    const body = await expectContract(await upload(PDF_BYTES, { 'Content-Type': 'application/pdf' }), '/jobs', 'post', 413);
+    expect(errorCode(body)).toBe('upload_too_large');
+    expect((body as ErrorBody).error.details).toEqual({ maxBytes: PDF_BYTES.byteLength - 1 });
+  });
+});
+
 describe('GET/PATCH /jobs/:id', () => {
-  it('returns a job or 404', async () => {
-    const job = (await expectContract(await call('GET', `/jobs/${READY_JOB}`), '/jobs/{id}', 'get', 200)) as Job;
-    expect(job.pages).toHaveLength(3);
-    await expectContract(await call('GET', `/jobs/${MISSING}`), '/jobs/{id}', 'get', 404);
+  it('returns {job} or 404 not_found', async () => {
+    const { job } = (await expectContract(await call('GET', `/jobs/${READY_JOB}`), '/jobs/{id}', 'get', 200)) as JobEnvelope;
+    expect(job).toEqual(db.readJob(READY_JOB));
+    expect(job.sourceFiles).toHaveLength(1);
+    const missing = await expectContract(await call('GET', `/jobs/${MISSING}`), '/jobs/{id}', 'get', 404);
+    expect(missing).toEqual({ error: { code: 'not_found', message: `Job ${MISSING} not found` } });
   });
 
   it('changes priority and status', async () => {
     const path = `/jobs/${READY_JOB}`;
-    const updated = (await expectContract(await call('PATCH', path, { priority: 90, status: 'held' }), '/jobs/{id}', 'patch', 200)) as Job;
+    const updated = (await expectContract(await call('PATCH', path, { priority: 90, status: 'held' }), '/jobs/{id}', 'patch', 200)) as JobRecord;
     expect(updated).toMatchObject({ priority: 90, status: 'held' });
     expect(updated.audit?.map((entry) => entry.type)).toEqual(expect.arrayContaining(['priority.changed', 'status.changed']));
   });
@@ -258,11 +306,14 @@ describe('POST /jobs/:id/print', () => {
       '/jobs/{id}/print',
       'post',
       202,
-    )) as Job;
+    )) as JobRecord;
     expect(accepted).toMatchObject({ status: 'processing', deviceId: DEVICE_IDS.rollA });
 
     await vi.waitFor(() => expect(db.getJob(READY_JOB).status).toBe('sent_to_device'));
-    const delivered = (await expectContract(await call('GET', `/jobs/${READY_JOB}`), '/jobs/{id}', 'get', 200)) as Job;
+    const { job } = (await expectContract(await call('GET', `/jobs/${READY_JOB}`), '/jobs/{id}', 'get', 200)) as JobEnvelope;
+    expect(job.status).toBe('sent_to_device');
+    // The 052a Job carries no steps or audit; the delivery is recorded on the mock's internal record.
+    const delivered = db.getJob(READY_JOB);
     const output = delivered.steps.find((step) => step.stage === 'output');
     expect(output?.status).toBe('completed');
     expect(output?.result?.deliveredPath).toBe(`/srv/rip/in/roll-a/brochure-a4-3pages_${READY_JOB}.pdf`);

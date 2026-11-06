@@ -7,14 +7,24 @@ import type {
   HotFolderCreate,
   HotFolderPatch,
   Job,
+  JobEnvelope,
   JobPage,
   JobPatch,
-  JobSort,
-  JobStatus,
+  JobRecord,
   Plugin,
   Problem,
   Transitions,
 } from './types';
+
+/**
+ * The `error` of an `{error: {code, message, details?}}` body (the server's Error schema). Only an
+ * object `details` is kept: the codes the dashboard reads (upload_too_large) carry an object.
+ */
+interface ErrorBody {
+  code: string;
+  message: string;
+  details?: Record<string, unknown>;
+}
 
 /**
  * Typed client for the public REST API (/openapi.json). This is the only module allowed to call
@@ -26,12 +36,17 @@ const JSON_TYPE = 'application/json';
 export class ApiError extends Error {
   readonly status: number;
   readonly problem: Problem | null;
+  /** Machine-readable code from an `{error: {code, message}}` body (job endpoints, Spec 052a). */
+  readonly code: string | null;
+  readonly details: Record<string, unknown> | null;
 
-  constructor(status: number, problem: Problem | null, fallbackMessage: string) {
-    super(problem?.detail ?? problem?.title ?? fallbackMessage);
+  constructor(status: number, problem: Problem | null, fallbackMessage: string, error: ErrorBody | null = null) {
+    super(problem?.detail ?? problem?.title ?? error?.message ?? fallbackMessage);
     this.name = 'ApiError';
     this.status = status;
     this.problem = problem;
+    this.code = error?.code ?? null;
+    this.details = error?.details ?? null;
   }
 
   /** Field-level validation errors keyed by dotted field path (first message per field). */
@@ -44,12 +59,8 @@ export class ApiError extends Error {
   }
 }
 
+/** GET /jobs takes only these two query parameters (Spec 052a). */
 export interface JobListParams {
-  status?: readonly JobStatus[];
-  q?: string;
-  hotFolderId?: string;
-  deviceId?: string;
-  sort?: JobSort;
   cursor?: string;
   limit?: number;
 }
@@ -84,13 +95,28 @@ function isProblem(value: unknown): value is Problem {
   );
 }
 
-async function toApiError(response: Response): Promise<ApiError> {
+function errorBody(value: unknown): ErrorBody | null {
+  if (typeof value !== 'object' || value === null || !('error' in value)) return null;
+  const error: unknown = value.error;
+  if (typeof error !== 'object' || error === null) return null;
+  if (!('code' in error) || typeof error.code !== 'string') return null;
+  if (!('message' in error) || typeof error.message !== 'string') return null;
+  const details =
+    'details' in error && typeof error.details === 'object' && error.details !== null && !Array.isArray(error.details)
+      ? Object.fromEntries(Object.entries(error.details))
+      : undefined;
+  return { code: error.code, message: error.message, ...(details ? { details } : {}) };
+}
+
+/** Reads an RFC 9457 problem or an `{error: {code, message, details?}}` body from a failed response. */
+export async function toApiError(response: Response): Promise<ApiError> {
   const fallback = `Request failed with status ${response.status}`;
   const contentType = response.headers.get('content-type') ?? '';
   if (!contentType.includes('json')) return new ApiError(response.status, null, fallback);
   try {
     const body: unknown = await response.json();
-    return new ApiError(response.status, isProblem(body) ? body : null, fallback);
+    if (isProblem(body)) return new ApiError(response.status, body, fallback);
+    return new ApiError(response.status, null, fallback, errorBody(body));
   } catch {
     return new ApiError(response.status, null, fallback);
   }
@@ -143,26 +169,18 @@ export function createApiClient(options: ApiClientOptions = {}) {
   return {
     health: (signal?: AbortSignal) => json<Health>('GET', '/health', { signal }),
 
+    /** `{items, nextCursor}`; nextCursor is null on the last page. */
     listJobs: (params: JobListParams = {}, signal?: AbortSignal) =>
-      json<JobPage>('GET', '/jobs', {
-        signal,
-        query: {
-          status: params.status,
-          q: params.q,
-          hotFolderId: params.hotFolderId,
-          deviceId: params.deviceId,
-          sort: params.sort,
-          cursor: params.cursor,
-          limit: params.limit,
-        },
-      }),
-    getJob: (jobId: string, signal?: AbortSignal) => json<Job>('GET', `/jobs/${id(jobId)}`, { signal }),
+      json<JobPage>('GET', '/jobs', { signal, query: { limit: params.limit, cursor: params.cursor } }),
+    getJob: async (jobId: string, signal?: AbortSignal): Promise<Job> =>
+      (await json<JobEnvelope>('GET', `/jobs/${id(jobId)}`, { signal })).job,
+    /** Mock only (Spec 002); the 052a server has no PATCH /jobs/:id. */
     patchJob: (jobId: string, patch: JobPatch) =>
-      json<Job>('PATCH', `/jobs/${id(jobId)}`, { body: patch }),
+      json<JobRecord>('PATCH', `/jobs/${id(jobId)}`, { body: patch }),
     getTransitions: (jobId: string, signal?: AbortSignal) =>
       json<Transitions>('GET', `/jobs/${id(jobId)}/transitions`, { signal }),
     printJob: (jobId: string, deviceId: string) =>
-      json<Job>('POST', `/jobs/${id(jobId)}/print`, { body: { deviceId } }),
+      json<JobRecord>('POST', `/jobs/${id(jobId)}/print`, { body: { deviceId } }),
 
     /** The stored PDF bytes (for the in-browser pdf.js preview). */
     async getJobFile(jobId: string, signal?: AbortSignal): Promise<ArrayBuffer> {

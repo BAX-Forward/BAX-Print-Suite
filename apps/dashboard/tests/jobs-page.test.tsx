@@ -1,7 +1,8 @@
 import { screen, waitFor, within } from '@testing-library/react';
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import { fixtureId, HOT_FOLDER_IDS } from '../mock/fixtures';
 import { JOBS_PAGE_SIZE } from '../src/api/queries';
+import { formatBytes } from '../src/lib/format';
 import { VIRTUALIZE_THRESHOLD } from '../src/pages/JobsPage';
 import { strings } from '../src/strings';
 import { installMockServer, jobRowIds, jobRowStatus, renderApp, useMockDb, waitForLive } from './helpers';
@@ -15,7 +16,6 @@ const READY_JOB = fixtureId(7); // brochure-a4-3pages
 const READY_JOB_2 = fixtureId(8); // menu-board-letter
 const HELD_JOB = fixtureId(10);
 const DONE_JOB = fixtureId(1);
-const MESH_BANNER = fixtureId(11); // priority 80, the highest
 /** Keeps ingested jobs in `received` so no events reach the UI during paging tests. */
 const PAUSED_PIPELINE = { pipelineDelayMs: 60_000 };
 const SLOW_UI_MS = 3_000;
@@ -37,7 +37,7 @@ async function renderJobs(path = '/jobs', options = {}) {
 
 describe('Jobs list', () => {
   it('shows every column for the fixture jobs, newest first', async () => {
-    const { container } = await renderJobs();
+    const { container, db } = await renderJobs();
     expect(jobRowIds(container)).toHaveLength(FIXTURE_COUNT);
     expect(jobRowIds(container)[0]).toBe(NEWEST);
 
@@ -49,77 +49,46 @@ describe('Jobs list', () => {
     const brochure = within(row(container, READY_JOB));
     expect(brochure.getByRole('link', { name: 'brochure-a4-3pages' })).toHaveAttribute('href', `/jobs/${READY_JOB}`);
     expect(brochure.getByText(strings.status.ready)).toBeInTheDocument();
-    expect(brochure.getByText('Posters')).toBeInTheDocument();
-    // First page incl. bleed: A4 + 2 × 8.5 pt.
-    expect(brochure.getByText('8.5 × 11.93 in')).toBeInTheDocument();
-
-    const mesh = within(row(container, MESH_BANNER));
-    expect(mesh.getByText('Roll printer A')).toBeInTheDocument();
-  });
-
-  it('switches the size column between inches and millimetres', async () => {
-    const { container, user } = await renderJobs();
-    await user.click(screen.getByRole('radio', { name: strings.common.millimetres }));
-    expect(within(row(container, READY_JOB)).getByText('216 × 303 mm')).toBeInTheDocument();
-    expect(localStorage.getItem('bps.lengthUnit')).toBe('mm');
+    const source = db.readJob(READY_JOB).sourceFiles[0];
+    if (!source) throw new Error('The fixture job has no source file');
+    expect(brochure.getByText(source.name)).toBeInTheDocument();
+    expect(brochure.getByText(formatBytes(source.sizeBytes))).toBeInTheDocument();
   });
 });
 
-describe('Filters', () => {
-  it('filters by status (multi-select) and clears again', async () => {
-    const { container, user } = await renderJobs();
-    await user.click(screen.getByRole('checkbox', { name: strings.status.failed }));
-    await waitFor(() => expect(jobRowIds(container)).toHaveLength(2));
-    expect(jobRowIds(container).every((id) => jobRowStatus(container, id) === 'failed')).toBe(true);
+describe('No filter or sort controls (GET /jobs takes only limit and cursor)', () => {
+  it('offers no status, search, hot folder, device or sort control', async () => {
+    await renderJobs();
+    expect(screen.queryByRole('searchbox')).not.toBeInTheDocument();
+    expect(screen.queryByRole('combobox')).not.toBeInTheDocument();
+    expect(screen.queryByRole('checkbox', { name: strings.status.failed })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: t.columns.priority })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: t.columns.name })).not.toBeInTheDocument();
+  });
 
-    await user.click(screen.getByRole('checkbox', { name: strings.status.cancelled }));
-    await waitFor(() => expect(jobRowIds(container)).toHaveLength(3));
+  it('ignores filter parameters in the URL', async () => {
+    const { container } = await renderJobs(`/jobs?status=held&q=banner&hotFolderId=${HOT_FOLDER_IDS.banners}&sort=name`);
+    expect(jobRowIds(container)).toHaveLength(FIXTURE_COUNT);
+    expect(jobRowIds(container)[0]).toBe(NEWEST);
+  });
 
-    await user.click(screen.getByRole('button', { name: t.clearFilters }));
+  it('asks the server for limit and cursor only', async () => {
+    const db = useMockDb();
+    const queries: URLSearchParams[] = [];
+    const listJobs = db.listJobs;
+    const spy = vi.spyOn(db, 'listJobs').mockImplementation((query) => {
+      queries.push(new URLSearchParams(query));
+      return listJobs(query);
+    });
+    const { container } = renderApp('/jobs', db);
     await waitFor(() => expect(jobRowIds(container)).toHaveLength(FIXTURE_COUNT));
-  });
-
-  it('narrows results with the text search', async () => {
-    const { container, user } = await renderJobs();
-    await user.type(screen.getByRole('searchbox', { name: t.search }), 'banner');
-    await waitFor(() => expect(jobRowIds(container)).toHaveLength(2), { timeout: SLOW_UI_MS });
-    const names = jobRowIds(container).map((id) => within(row(container, id)).getByRole('link').textContent);
-    expect(names.sort()).toEqual(['banner-3000x1000-sale', 'mesh-banner-fence']);
-  });
-
-  it('filters by hot folder and device', async () => {
-    const { container, user, db } = await renderJobs();
-    await user.selectOptions(screen.getByRole('combobox', { name: t.hotFolderFilter }), 'Banners');
-    const banners = db.listJobs(new URLSearchParams({ hotFolderId: HOT_FOLDER_IDS.banners })).items.length;
-    await waitFor(() => expect(jobRowIds(container)).toHaveLength(banners));
-
-    await user.selectOptions(screen.getByRole('combobox', { name: t.deviceFilter }), 'Roll printer A');
-    await waitFor(() =>
-      expect(jobRowIds(container).every((id) => db.getJob(id).deviceId && db.getJob(id).hotFolderId === HOT_FOLDER_IDS.banners)).toBe(true),
-    );
-    expect(jobRowIds(container).length).toBeLessThan(banners);
-  });
-
-  it('reads filters from the URL so views can be shared', async () => {
-    const { container } = await renderJobs('/jobs?status=held');
-    expect(jobRowIds(container)).toEqual([HELD_JOB]);
-    expect(screen.getByRole('checkbox', { name: strings.status.held })).toBeChecked();
+    expect(queries.length).toBeGreaterThan(0);
+    expect(queries.every((query) => [...query.keys()].every((key) => key === 'limit' || key === 'cursor'))).toBe(true);
+    spy.mockRestore();
   });
 });
 
-describe('Sorting and paging', () => {
-  it('sorts on column headers and reflects the order in aria-sort', async () => {
-    const { container, user } = await renderJobs();
-    await user.click(screen.getByRole('button', { name: t.columns.priority }));
-    await waitFor(() => expect(jobRowIds(container)[0]).toBe(MESH_BANNER));
-    // The table remounts while the new sort loads, so query the header again.
-    expect(screen.getByRole('button', { name: t.columns.priority }).closest('th')).toHaveAttribute('aria-sort', 'descending');
-
-    await user.click(screen.getByRole('button', { name: t.columns.name }));
-    await waitFor(() => expect(within(row(container, jobRowIds(container)[0])).getByRole('link')).toHaveTextContent('banner-3000x1000-sale'));
-    expect(screen.getByRole('button', { name: t.columns.name }).closest('th')).toHaveAttribute('aria-sort', 'ascending');
-  });
-
+describe('Paging', () => {
   it('loads further pages with the cursor', async () => {
     const db = useMockDb(PAUSED_PIPELINE);
     const extra = JOBS_PAGE_SIZE - FIXTURE_COUNT + 4;

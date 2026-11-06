@@ -1,6 +1,7 @@
 import { defaultClientConditions, defineConfig, loadEnv } from 'vite';
 import react from '@vitejs/plugin-react';
-import { tilePreviewFlag } from './src/lib/buildFlags';
+import { jobUploadFlag, tilePreviewFlag } from './src/lib/buildFlags';
+import { jobUploadPagePlugin } from './src/lib/jobUploadPage';
 import { tilePreviewPagePlugin, WORKSPACE_SOURCE_CONDITION } from './src/lib/tilePreviewPage';
 
 /** Where `pnpm dev` proxies API calls. Override with BPS_API_URL. */
@@ -34,10 +35,16 @@ export default defineConfig(({ mode }) => {
   const tilePreviewConfig = tilePreview
     ? { resolve: { conditions: [WORKSPACE_SOURCE_CONDITION, ...defaultClientConditions] } }
     : {};
+  // Spec 052b: same technique. Flag on only: route the job list through JobsUploadPage.
+  const jobUpload = jobUploadFlag(process.env);
+  const pagePlugins = [
+    ...(tilePreview ? [tilePreviewPagePlugin()] : []),
+    ...(jobUpload ? [jobUploadPagePlugin()] : []),
+  ];
 
   return {
     base: '/ui/',
-    plugins: tilePreview ? [react(), tilePreviewPagePlugin()] : [react()],
+    plugins: [react(), ...pagePlugins],
     ...tilePreviewConfig,
     define: { __BPS_TILE_PREVIEW__: JSON.stringify(tilePreview) },
     server: { host: '127.0.0.1', proxy },
