@@ -94,6 +94,12 @@ export interface HotFolderSettings {
    * `false`: only `filePatterns` decide, as before.
    */
   readonly acceptVector?: boolean;
+  /**
+   * Spec 037b: also take in JDF job tickets ({@link JDF_FILE_PATTERNS}) and pair each with the one
+   * file its FileSpec names in the same folder. Absent means `false`: `.jdf` files are handled by
+   * `filePatterns` alone, as before.
+   */
+  readonly acceptJdf?: boolean;
 }
 
 /** Spec 031c: the patterns a hot folder adds to `filePatterns` when `acceptRaster` is on. */
@@ -102,17 +108,22 @@ export const RASTER_FILE_PATTERNS: readonly string[] = Object.freeze(['*.tif', '
 /** Spec 035b: the patterns a hot folder adds to `filePatterns` when `acceptVector` is on. */
 export const VECTOR_FILE_PATTERNS: readonly string[] = Object.freeze(['*.svg', '*.dxf']);
 
+/** Spec 037b: the patterns a hot folder adds to `filePatterns` when `acceptJdf` is on. */
+export const JDF_FILE_PATTERNS: readonly string[] = Object.freeze(['*.jdf']);
+
 /**
  * The patterns a hot folder matches: `filePatterns`, plus {@link RASTER_FILE_PATTERNS} when
- * `acceptRaster` is on and {@link VECTOR_FILE_PATTERNS} when `acceptVector` is on, each only when
- * not already listed (compared case-insensitively, like the matching).
+ * `acceptRaster` is on, {@link VECTOR_FILE_PATTERNS} when `acceptVector` is on and
+ * {@link JDF_FILE_PATTERNS} when `acceptJdf` is on, each only when not already listed (compared
+ * case-insensitively, like the matching).
  */
 export function effectiveFilePatterns(
-  settings: Pick<HotFolderSettings, 'filePatterns' | 'acceptRaster' | 'acceptVector'>,
+  settings: Pick<HotFolderSettings, 'filePatterns' | 'acceptRaster' | 'acceptVector' | 'acceptJdf'>,
 ): readonly string[] {
   const extra = [
     ...(settings.acceptRaster === true ? RASTER_FILE_PATTERNS : []),
     ...(settings.acceptVector === true ? VECTOR_FILE_PATTERNS : []),
+    ...(settings.acceptJdf === true ? JDF_FILE_PATTERNS : []),
   ];
   if (extra.length === 0) return settings.filePatterns;
   const listed = new Set(settings.filePatterns.map((pattern) => pattern.toLowerCase()));
@@ -145,6 +156,8 @@ export function withHotFolderDefaults(settings: Partial<HotFolderSettings> = {})
     ...(settings.acceptRaster === true ? { acceptRaster: true } : {}),
     // Likewise for Spec 035b.
     ...(settings.acceptVector === true ? { acceptVector: true } : {}),
+    // And for Spec 037b.
+    ...(settings.acceptJdf === true ? { acceptJdf: true } : {}),
   };
 }
 

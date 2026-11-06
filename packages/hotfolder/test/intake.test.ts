@@ -125,6 +125,19 @@ describe('ingestFile', () => {
     expect('sourceFormat' in outcome.job).toBe(false);
   });
 
+  it('starts the job with empty metadata, or with the metadata the caller passes (Spec 037b)', async () => {
+    const { jobs, deps } = makeDeps();
+    await writeFile(join(dir, 'a.pdf'), '%PDF-1.7 a');
+    await writeFile(join(dir, 'b.pdf'), '%PDF-1.7 b');
+
+    const plain = await ingestFile(join(dir, 'a.pdf'), makeFolder(dir), deps);
+    const tagged = await ingestFile(join(dir, 'b.pdf'), makeFolder(dir), deps, { metadata: { 'jdf.jobId': 'J-1' } });
+
+    expect(plain.kind === 'ready' ? plain.job.metadata : undefined).toEqual({});
+    expect(tagged.kind === 'ready' ? tagged.job.metadata : undefined).toEqual({ 'jdf.jobId': 'J-1' });
+    expect([...jobs.byId.values()].map((job) => job.metadata)).toEqual([{}, { 'jdf.jobId': 'J-1' }]);
+  });
+
   it('reports a second file with the same sha256 as duplicate and does not re-ingest it', async () => {
     const { jobs, storage, deps } = makeDeps();
     const folder = makeFolder(dir);
