@@ -3,6 +3,7 @@ import type { SourceFormat } from './source-format.js';
 import type { JobStatus } from './status.js';
 import type { JobTicket } from './ticket.js';
 import type { JobError, JobPage, JobStep } from './types.js';
+import type { WhiteInkSetting } from './white-ink-setting.js';
 
 /** Archive axis, orthogonal to the print status machine. */
 export type JobLifecycle = 'active' | 'archived' | 'trashed';
@@ -61,4 +62,6 @@ export interface Job {
   readonly error?: JobError;
   /** Why the job is held (Spec 007), set only while status is `held`. */
   readonly hold?: Hold;
+  /** Spec 038b: requested white ink layer; absent means white ink is off. */
+  readonly whiteInk?: WhiteInkSetting;
 }
