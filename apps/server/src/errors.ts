@@ -73,13 +73,18 @@ export const documentInputUnsupported = (code: string): HttpError =>
 export const documentTooLarge = (code: string): HttpError =>
   new HttpError(413, "document_too_large", `The document is larger than the printer accepts (${code})`, { code });
 
+/** Spec 034b: the output job was not submitted by this server for this job; `details.code` is the uppercase code. */
+export const unknownOutputJob = (code: string): HttpError =>
+  new HttpError(404, "unknown_output_job", `The output job is not known for this job (${code})`, { code });
+
 const PRINTER_ERROR_BY_CODE: ReadonlyMap<string, (code: string) => HttpError> = new Map([
   ["DOCUMENT_INPUT_UNSUPPORTED", documentInputUnsupported],
   ["FORMAT_NOT_ACCEPTED", documentInputUnsupported],
   ["DOCUMENT_TOO_LARGE", documentTooLarge],
+  ["UNKNOWN_OUTPUT_JOB", unknownOutputJob],
 ]);
 
-/** Spec 034a: the HTTP error for a print output failure code: 409 or 413 for the document refusals, else 502. */
+/** Spec 034a: the HTTP error for a print output failure code: 409, 413 or 404 (Spec 034b) for the known codes, else 502. */
 export const printOutputHttpError = (code: string): HttpError => (PRINTER_ERROR_BY_CODE.get(code) ?? printerError)(code);
 
 /** A list of problems (validation) or structured context (e.g. the ids an import must remap). */

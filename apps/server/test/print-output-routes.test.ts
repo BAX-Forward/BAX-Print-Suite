@@ -53,6 +53,7 @@ interface Submitted {
 class FakePrintOutput implements PrintOutput {
   readonly submitted: Submitted[] = [];
   readonly cancelled: string[] = [];
+  readonly statusAsked: string[] = [];
   error: PrintOutputError | undefined;
   closed = false;
 
@@ -63,6 +64,7 @@ class FakePrintOutput implements PrintOutput {
   }
 
   async status(outputJobId: string): Promise<PrintOutputStatus> {
+    this.statusAsked.push(outputJobId);
     this.fail();
     return { outputJobId, state: 'queued', message: 'waiting' };
   }
@@ -325,6 +327,8 @@ describe('/jobs/:id/print (Spec 034a)', () => {
   ] as const)('answers %s with 502 printer_error and the plugin code', async (method, path) => {
     h = await createHarness();
     const jobId = await createJob(h, await sourcePdf());
+    // Spec 034b: an output job is only asked about under the job it was submitted for.
+    if (method !== 'POST') await h.app.inject({ method: 'POST', url: `/jobs/${jobId}/print` });
     h.output.error = new PrintOutputError('OUTPUT_EXISTS', 'output /secret/dir/job.pdf already exists');
 
     const response = await h.app.inject({ method, url: `/jobs/${jobId}${path}` });
@@ -361,8 +365,55 @@ describe('/jobs/:id/print (Spec 034a)', () => {
     expect(post.statusCode).toBe(403);
     expect(post.json()).toMatchObject({ error: { code: 'forbidden', details: { permission: 'jobs:write' } } });
     expect(del.statusCode).toBe(403);
-    expect(get.statusCode).toBe(200);
+    // The read is allowed; nothing was submitted, so the output job is unknown (Spec 034b).
+    expect(get.statusCode).toBe(404);
+    expect(get.json()).toMatchObject({ error: { code: 'unknown_output_job' } });
     expect(h.output.submitted).toEqual([]);
+  });
+
+  it.each(['GET', 'DELETE'] as const)('answers %s for an unknown output job with 404 unknown_output_job without asking the plugin', async (method) => {
+    h = await createHarness();
+    const jobId = await createJob(h, await sourcePdf());
+
+    const response = await h.app.inject({ method, url: `/jobs/${jobId}/print/no-such-output` });
+
+    expect(response.statusCode).toBe(404);
+    expect(response.json()).toEqual({
+      error: {
+        code: 'unknown_output_job',
+        message: 'The output job is not known for this job (UNKNOWN_OUTPUT_JOB)',
+        details: { code: 'UNKNOWN_OUTPUT_JOB' },
+      },
+    });
+    expect(h.output.statusAsked).toEqual([]);
+    expect(h.output.cancelled).toEqual([]);
+  });
+
+  it.each(['GET', 'DELETE'] as const)("answers %s for job B's output job under job A with 404 unknown_output_job", async (method) => {
+    h = await createHarness();
+    const jobA = await createJob(h, await sourcePdf());
+    const jobB = await createJob(h, await sourcePdf());
+    const post = await h.app.inject({ method: 'POST', url: `/jobs/${jobB}/print` });
+    const { outputJobId } = post.json<{ outputJobId: string }>();
+
+    const response = await h.app.inject({ method, url: `/jobs/${jobA}/print/${outputJobId}` });
+
+    expect(response.statusCode).toBe(404);
+    expect(response.json()).toMatchObject({ error: { code: 'unknown_output_job' } });
+    expect(h.output.statusAsked).toEqual([]);
+    expect(h.output.cancelled).toEqual([]);
+  });
+
+  it('maps the plugin code UNKNOWN_OUTPUT_JOB to 404 unknown_output_job', async () => {
+    h = await createHarness();
+    const jobId = await createJob(h, await sourcePdf());
+    await h.app.inject({ method: 'POST', url: `/jobs/${jobId}/print` });
+    h.output.error = new PrintOutputError('UNKNOWN_OUTPUT_JOB', 'output job out-1 was not submitted by this server');
+
+    const response = await h.app.inject({ method: 'GET', url: `/jobs/${jobId}/print/out-1` });
+
+    expect(response.statusCode).toBe(404);
+    expect(response.json()).toMatchObject({ error: { code: 'unknown_output_job', details: { code: 'UNKNOWN_OUTPUT_JOB' } } });
   });
 
   it('lets the local admin print without a resolver, whatever the headers say', async () => {

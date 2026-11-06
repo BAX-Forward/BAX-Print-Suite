@@ -19,6 +19,7 @@ import { MediaService } from './media-service.js';
 import { memoryMediaStores } from './media-stores.js';
 import { createPdfCutExtractor } from './pdf-cut-extractor.js';
 import { PreflightService } from './preflight-service.js';
+import { parsePrintAutoRouteFlag, PRINT_AUTO_ROUTE_ENV } from './print-auto-route.js';
 import { configurePrintOutput, PRINT_OUTPUT_ENV, PRINTER_PLUGIN_ENV } from './print-output.js';
 import { ProfileService } from './profiles.js';
 import { configureRollCut } from './roll-cut-config.js';
@@ -49,6 +50,9 @@ const swatchCharts = parseSwatchChartsFlag(process.env);
 // Spec 034a: print output only with BPS_PRINT_OUTPUT=1 and BPS_PRINTER_PLUGIN; any other flag value, a missing,
 // relative or absent manifest or a bad BPS_PRINTER_SETTINGS stops startup. The plugin is started on first use, never here.
 const printOutput = configurePrintOutput(process.env, { spoolDir: join(dataDir, 'spool', 'print-output') });
+// Spec 034b: ready jobs are sent to the print output only with BPS_PRINT_AUTO_ROUTE=1, which needs BPS_PRINT_OUTPUT=1;
+// any other value stops startup.
+const printAutoRoute = parsePrintAutoRouteFlag(process.env);
 // Spec 019c: a SQLite job database (BPS_DATABASE) keeps webhook subscriptions across restarts.
 // Spec 019d: the file is mode 0600 and secrets are sealed when a secrets key is configured.
 const { store: webhookStore, database, warnings: persistenceWarnings } = openWebhookPersistence(process.env);
@@ -75,11 +79,12 @@ const blobPath = (storageKey: string): string => resolve(blobsDir, ...storageKey
 
 const registry = builtinRegistry();
 const profiles = new ProfileService(new MemoryProfileStore(), registry);
+const jobService = new JobService({ jobs: jobRepository, blobs, bus });
 const preflight = new PreflightService({
   jobs: jobRepository,
   findings: new MemoryFindingsStore(),
   profiles,
-  events: new JobService({ jobs: jobRepository, blobs, bus }),
+  events: jobService,
   inspector: new BuiltinInspector({ registry }),
   blobPath,
   spoolDir: join(dataDir, 'spool'),
@@ -113,7 +118,16 @@ const serverDeps: ServerDeps = {
   // Spec 004a: the proof watermark reads the same stored source PDF.
   proof: { blobPath },
   // Spec 034a: the print output reads the same stored source PDF.
-  ...(printOutput ? { printOutput: { output: printOutput.output, blobPath } } : {}),
+  // Spec 034b: automatic routing records a failed submission as a failed step in the job history.
+  ...(printOutput
+    ? {
+        printOutput: {
+          output: printOutput.output,
+          blobPath,
+          ...(printAutoRoute ? { autoRoute: { bus, history: jobService } } : {}),
+        },
+      }
+    : {}),
   // Spec 003x: saved layout templates live in the job database, so the routes need BPS_DATABASE.
   ...(database ? { layoutTemplates: new SqliteLayoutTemplateRepository(database) } : {}),
   // Spec 004d: finishing plans live in the job database too.
@@ -160,6 +174,11 @@ if (databaseUrl && databaseUrlValue) {
 if (printOutput) {
   // The settings may hold secrets, so only the manifest path is logged.
   app.log.info(`print output is on (${PRINT_OUTPUT_ENV}=1): ${PRINTER_PLUGIN_ENV} ${printOutput.config.manifestPath}`);
+  app.log.info(
+    printAutoRoute
+      ? `print auto-route is on (${PRINT_AUTO_ROUTE_ENV}=1): jobs that become ready are sent to the printer plugin once`
+      : `print auto-route is off (set ${PRINT_AUTO_ROUTE_ENV}=1 to send jobs that become ready automatically)`,
+  );
 } else {
   app.log.info(`print output is off (set ${PRINT_OUTPUT_ENV}=1 and ${PRINTER_PLUGIN_ENV} to send jobs to a printer plugin)`);
 }
