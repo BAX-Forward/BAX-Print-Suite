@@ -19,7 +19,7 @@ import { HttpError } from './errors.js';
 export type RouteKey = string;
 
 /**
- * Routes anyone may call: the health check (when mounted), the OpenAPI document and the Spec 028d
+ * Routes anyone may call: the health check (always mounted since Spec 052a), the OpenAPI document and the Spec 028d
  * login routes, which check the credentials they are sent themselves.
  */
 export const PUBLIC_ROUTES: ReadonlySet<RouteKey> = new Set(['GET /health', 'GET /openapi.json', 'POST /login', 'POST /logout']);
@@ -116,6 +116,10 @@ export const ROUTE_PERMISSIONS: Readonly<Record<RouteKey, Permission>> = Object.
   // Spec 050a tiling setting: a job change like the plane-curves setting.
   'PUT /jobs/:id/tiling': 'jobs:write',
   'DELETE /jobs/:id/tiling': 'jobs:write',
+  // Spec 052a job intake.
+  'POST /jobs': 'jobs:write',
+  'GET /jobs': 'jobs:read',
+  'GET /jobs/:id': 'jobs:read',
   // Spec 043a screen preview: a read like the proof route; the planes are answered, not stored.
   'POST /jobs/:id/screen-preview': 'jobs:read',
   // Archive, trash, legal hold and job history.

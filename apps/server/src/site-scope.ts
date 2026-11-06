@@ -96,6 +96,8 @@ function jobIdParam(request: FastifyRequest): string | undefined {
 export interface SiteScope {
   /** The jobs of `items` the caller's membership grants; `jobIdOf` names each item's job. */
   filterJobs<T>(request: FastifyRequest, items: readonly T[], jobIdOf: (item: T) => string): Promise<T[]>;
+  /** Spec 052a: true when the caller's membership grants `siteId`, e.g. the site a new job is created in. */
+  grants(request: FastifyRequest, siteId: string): Promise<boolean>;
 }
 
 /**
@@ -137,6 +139,10 @@ export function scopeJobRoutes(
         }),
       );
       return filterBySite(sited, membership).map(({ item }) => item);
+    },
+    async grants(request: FastifyRequest, siteId: string): Promise<boolean> {
+      const membership = await membershipOf(request);
+      return membership !== undefined && canAccessSite(membership, siteId);
     },
   };
 }

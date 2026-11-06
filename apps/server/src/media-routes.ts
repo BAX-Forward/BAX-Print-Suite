@@ -4,7 +4,7 @@ import type { MediaService, MediumInput, OutputModeInput, PresetInput, Profiling
 import type { Attributes } from "./media-stores.js";
 import { doc, OpenApiCollector } from "./openapi.js";
 import { guardRoutes, LOCAL_ADMIN } from "./route-permissions.js";
-import { registerErrorHandler } from "./routes.js";
+import { registerErrorHandler, registerHealthRoute } from "./routes.js";
 
 /**
  * Spec 005 routes:
@@ -239,5 +239,6 @@ export function buildMediaServer(deps: { media: MediaService; version?: string; 
   registerErrorHandler(app);
   guardRoutes(app, () => LOCAL_ADMIN);
   registerMediaRoutes(app, { media: deps.media, openapi: new OpenApiCollector(deps.version ?? "0.1.0") });
+  registerHealthRoute(app);
   return app;
 }

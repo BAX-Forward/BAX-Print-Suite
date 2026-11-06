@@ -946,6 +946,56 @@ const SCREEN_PREVIEW_SCHEMA: JsonSchema = {
   ],
 };
 
+/** Spec 052a: a job as `POST /jobs`, `GET /jobs` and `GET /jobs/:id` answer it; the optional settings are omitted here. */
+const JOB_SCHEMA: JsonSchema = {
+  type: 'object',
+  required: ['id', 'name', 'status', 'priority', 'sourceFiles', 'artifacts', 'ticket', 'tags', 'metadata', 'createdAt', 'updatedAt'],
+  properties: {
+    id: { type: 'string' },
+    name: { type: 'string', description: 'The sanitized `x-bps-job-name` of an upload, else its server-generated file name' },
+    status: { type: 'string' },
+    sourceFormat: { type: 'string' },
+    priority: { type: 'integer', minimum: 0, maximum: 100 },
+    sourceFiles: {
+      type: 'array',
+      items: {
+        type: 'object',
+        required: ['name', 'sha256', 'sizeBytes', 'storageKey'],
+        properties: { name: { type: 'string' }, sha256: { type: 'string' }, sizeBytes: { type: 'integer', minimum: 0 }, storageKey: { type: 'string' } },
+      },
+    },
+    artifacts: { type: 'array', items: { type: 'object' } },
+    ticket: { type: 'object', properties: { siteId: { type: 'string' } } },
+    tags: { type: 'array', items: { type: 'string' } },
+    metadata: {
+      type: 'object',
+      additionalProperties: { type: 'string' },
+      description: 'Spec 052a: an upload records `intakeFile` (its server-generated file name) and, when sent, `displayName`',
+    },
+    createdAt: { type: 'string', format: 'date-time' },
+    updatedAt: { type: 'string', format: 'date-time' },
+    lifecycle: { type: 'string' },
+    legalHold: { type: 'boolean' },
+  },
+};
+
+/** Spec 052a: one page of `GET /jobs`. */
+const JOB_PAGE_SCHEMA: JsonSchema = {
+  type: 'object',
+  required: ['items', 'nextCursor'],
+  properties: {
+    items: { type: 'array', items: refTo('Job') },
+    nextCursor: { type: ['string', 'null'], description: 'Pass as `cursor` for the next page; null on the last page' },
+  },
+};
+
+/** Spec 052a: the body of `GET /health`. */
+const HEALTH_SCHEMA: JsonSchema = {
+  type: 'object',
+  required: ['status'],
+  properties: { status: { const: 'ok' } },
+};
+
 const itemsOf = (name: string): JsonSchema => ({
   type: 'object',
   required: ['items'],
@@ -999,6 +1049,10 @@ const COMPONENT_SCHEMAS: Readonly<Record<string, JsonSchema>> = {
   TilingJob: TILING_JOB_SCHEMA,
   ScreenPreviewRequest: SCREEN_PREVIEW_REQUEST_SCHEMA,
   ScreenPreview: SCREEN_PREVIEW_SCHEMA,
+  Job: JOB_SCHEMA,
+  JobEnvelope: { type: 'object', required: ['job'], properties: { job: refTo('Job') } },
+  JobPage: JOB_PAGE_SCHEMA,
+  Health: HEALTH_SCHEMA,
 };
 
 function parameters(schema: JsonSchema | undefined, location: 'path' | 'query'): unknown[] {
@@ -1125,6 +1179,9 @@ const API_DESCRIPTION = [
   'is screened as before, and a job with curves but no `screening` still answers 409 `screening_not_set`.',
   'Spec 050a: a job may carry an optional `tiling` setting (`TilingSetting`); absent means the job is not tiled, and a stored value',
   'that is not a valid setting reads back absent. `PUT` and `DELETE /jobs/{id}/tiling` set and clear it, and exist only with `BPS_TILING=1`.',
+  'Spec 052a: `POST /jobs`, `GET /jobs` and `GET /jobs/{id}` exist only with `BPS_JOB_INTAKE=1`. An upload is a raw `application/pdf` body',
+  'of at most 256 MiB (lower with `BPS_JOB_INTAKE_MAX_BYTES`) that starts with `%PDF-`; it is stored under a server-generated name, never the',
+  "client's. `GET /health` is public and always mounted.",
 ].join(' ');
 
 /** Collects documented routes through Fastify's `onRoute` hook. */

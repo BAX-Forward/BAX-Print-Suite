@@ -2,6 +2,7 @@ import type { FastifyInstance, FastifyReply, FastifyRequest } from "fastify";
 import { SYSTEM_ACTOR, type Actor } from "@bax-print/core";
 import type { CheckRegistry } from "@bax-print/inspect";
 import { errorBody, errorResponse, invalid } from "./errors.js";
+import { doc } from "./openapi.js";
 import type { PreflightService } from "./preflight-service.js";
 import type { ProfileService } from "./profiles.js";
 
@@ -46,6 +47,15 @@ export function registerErrorHandler(app: FastifyInstance): void {
     return reply.code(statusCode).send(body);
   });
   app.setNotFoundHandler((request, reply) => reply.code(404).send(errorBody("not_found", `No route for ${request.method} ${request.url}`)));
+}
+
+/** Spec 052a: `GET /health`, always mounted and public (`PUBLIC_ROUTES`); it reads no store. */
+export function registerHealthRoute(app: FastifyInstance): void {
+  app.get(
+    "/health",
+    { schema: doc({ operationId: "getHealth", summary: "Liveness check; reads no store", tags: ["health"], responseSchema: "Health" }) },
+    async () => ({ status: "ok" }),
+  );
 }
 
 export function registerPreflightRoutes(app: FastifyInstance, deps: RouteDeps): void {

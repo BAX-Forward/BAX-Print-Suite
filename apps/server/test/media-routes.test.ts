@@ -150,6 +150,8 @@ describe('OpenAPI document', () => {
     expect(Object.keys(document.paths).sort()).toEqual([
       '/color-setups/{id}/revisions',
       '/color-setups/{id}/revisions/{revisionId}/publish',
+      // Spec 052a: the always-mounted health check.
+      '/health',
       '/media',
       '/media/sync',
       '/media/{id}',

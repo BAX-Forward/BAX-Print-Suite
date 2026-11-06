@@ -124,6 +124,21 @@ export const screenPreviewInvalid = (message: string): HttpError => new HttpErro
 /** Spec 043a: the job has no screening setting, so there is nothing to preview. */
 export const screeningNotSet = (message: string): HttpError => new HttpError(409, "screening_not_set", message);
 
+/** Spec 052a: the upload's content-length is above the intake cap; nothing is read or written. */
+export const uploadTooLarge = (maxBytes: number): HttpError =>
+  new HttpError(413, "upload_too_large", `The upload is larger than ${String(maxBytes)} bytes`, { maxBytes });
+
+/** Spec 052a: the upload does not start with the `%PDF-` header; nothing is written. */
+export const uploadNotPdf = (): HttpError => new HttpError(400, "upload_not_pdf", "The upload does not start with %PDF-");
+
+/** Spec 052a: the upload was not sent as a raw `application/pdf` body. */
+export const uploadMediaTypeUnsupported = (): HttpError =>
+  new HttpError(415, "upload_media_type_unsupported", "Send the PDF as a raw application/pdf body");
+
+/** Spec 052a: with site scoping, the caller's membership does not grant the site the job would be created in. */
+export const siteNotGranted = (siteId: string): HttpError =>
+  new HttpError(403, "site_not_granted", `The caller's site membership does not grant site ${siteId}`, { siteId });
+
 /** Spec 036e: the status and lowercase code of each Spec 036d imposed sheet error. */
 const IMPOSED_SHEETS_ERRORS: Readonly<Record<ImposedSheetsErrorCode, readonly [number, string]>> = {
   SOURCE_PDF_TOO_LARGE: [413, "source_pdf_too_large"],
