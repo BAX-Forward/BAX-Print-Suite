@@ -47,6 +47,22 @@ export interface PrintOutput {
   close(): Promise<void>;
 }
 
+/**
+ * Spec 034b: the job each output job was submitted for, by the print route or automatic routing,
+ * so an output job is only reported or cancelled under its own job. Kept in memory.
+ */
+export class PrintSubmissionLedger {
+  private readonly jobIds = new Map<string, string>();
+
+  record(outputJobId: string, jobId: string): void {
+    this.jobIds.set(outputJobId, jobId);
+  }
+
+  belongsTo(outputJobId: string, jobId: string): boolean {
+    return this.jobIds.get(outputJobId) === jobId;
+  }
+}
+
 /** A printer plugin failure; `code` is uppercase, e.g. the plugin's own `OUTPUT_EXISTS`. */
 export class PrintOutputError extends Error {
   readonly code: string;
@@ -218,6 +234,8 @@ function sha256Hex(bytes: Uint8Array): string {
 export interface PrintOptions {
   readonly copies?: number;
   readonly mediaName?: string;
+  /** Spec 034b: the submission id to use instead of a random one, e.g. a deterministic one for automatic routing. */
+  readonly submissionId?: string;
 }
 
 /**
@@ -230,7 +248,8 @@ export interface PrintOptions {
  * format fails with `DOCUMENT_INPUT_UNSUPPORTED`, a document above the limit with
  * `DOCUMENT_TOO_LARGE`. Otherwise the document is written to a spool file, sent through
  * `printer/submitDocument` and the file is removed once the request settles. No bands are sent.
- * The submission id is the output job id; `status` and `cancel` go through `printer/getStatus` and
+ * The submission id, random unless `PrintOptions.submissionId` is given (Spec 034b), is the output
+ * job id; `status` and `cancel` go through `printer/getStatus` and
  * `printer/cancel`.
  */
 export class BppPrintOutput implements PrintOutput {
@@ -244,7 +263,7 @@ export class BppPrintOutput implements PrintOutput {
   async submit(job: Job, bytes: Uint8Array, format: PrintFormat, print: PrintOptions = {}): Promise<PrintSubmission> {
     const { client, device } = await this.plugin();
     checkDocument(device.capabilities, bytes, format);
-    const submissionId = randomUUID();
+    const submissionId = print.submissionId ?? randomUUID();
     const document = await this.spool(`${submissionId}.${format}`, bytes);
     try {
       const result = await client
