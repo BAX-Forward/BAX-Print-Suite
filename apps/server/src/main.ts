@@ -13,6 +13,7 @@ import {
 } from '@bax-print/store';
 import { configureApiTokens } from './api-token-config.js';
 import { buildServer, isLoopbackHost, localAdminWarning, type ServerDeps } from './app.js';
+import { DATABASE_URL_ENV, parseDatabaseUrl, redactDatabaseUrl } from './database-url.js';
 import { JobService } from './jobs.js';
 import { MediaService } from './media-service.js';
 import { memoryMediaStores } from './media-stores.js';
@@ -30,6 +31,8 @@ import { ALLOW_LAN_TARGETS_ENV, parseAllowLanTargets } from './webhook-routes.js
 
 // Spec 028d: parsed first, so a bad BPS_LOGIN or BPS_COOKIE stops the server before it opens anything.
 const sessionConfig = parseSessionConfig(process.env);
+// Spec 027d: BPS_DATABASE_URL is parsed only; a bad value stops startup, a good one is not connected to.
+const databaseUrl = parseDatabaseUrl(process.env);
 const dataDir = resolve(process.env.BPS_DATA_DIR ?? 'data');
 const host = process.env.BPS_HOST ?? '127.0.0.1';
 const port = Number(process.env.BPS_PORT ?? 8080);
@@ -140,6 +143,10 @@ app.log.warn(
     ? 'job rows, archive index, history, findings, profiles and media are kept in memory in this build'
     : 'job rows, archive index, history, findings, profiles, media and webhook subscriptions are kept in memory in this build (set BPS_DATABASE to persist webhook subscriptions)',
 );
+const databaseUrlValue = process.env[DATABASE_URL_ENV];
+if (databaseUrl && databaseUrlValue) {
+  app.log.warn(`${DATABASE_URL_ENV} ${redactDatabaseUrl(databaseUrlValue)} is parsed but not used in this build: no Postgres connection is made`);
+}
 if (https === undefined) {
   app.log.info('TLS is off: serving plain HTTP (set BPS_TLS_CERT and BPS_TLS_KEY to serve HTTPS)');
 } else {
