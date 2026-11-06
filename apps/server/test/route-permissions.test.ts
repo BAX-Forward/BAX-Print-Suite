@@ -19,6 +19,7 @@ import { JobService } from '../src/jobs.js';
 import { MediaService } from '../src/media-service.js';
 import { memoryMediaStores } from '../src/media-stores.js';
 import { PreflightService } from '../src/preflight-service.js';
+import type { PrintOutput } from '../src/print-output.js';
 import { ProfileService } from '../src/profiles.js';
 import { isPublicRoute, guardRoutes, ROUTE_PERMISSIONS, routePermission, routesOf } from '../src/route-permissions.js';
 import { registerErrorHandler } from '../src/routes.js';
@@ -39,6 +40,14 @@ function actorWithRole(role: string): Actor {
 }
 
 const FINISHING_BODY = { steps: [{ kind: 'laminate' }] };
+
+/** Spec 034a: mounts the print routes without a plugin process. */
+const PRINT_OUTPUT: PrintOutput = {
+  submit: async () => ({ outputJobId: 'out-1' }),
+  status: async (outputJobId) => ({ outputJobId, state: 'queued' }),
+  cancel: async (outputJobId) => ({ outputJobId, state: 'cancelled' }),
+  close: async () => undefined,
+};
 
 interface Harness {
   readonly app: FastifyInstance;
@@ -85,6 +94,7 @@ function createHarness(actor?: Actor): Harness {
     jobs,
     stepRepeat: { blobPath },
     proof: { blobPath },
+    printOutput: { output: PRINT_OUTPUT, blobPath },
     layoutTemplates: new SqliteLayoutTemplateRepository(db),
     finishing: { plans: new SqliteFinishingPlanRepository(db, { now }), now },
     productionReport: { jobs },

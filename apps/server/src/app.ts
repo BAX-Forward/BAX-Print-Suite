@@ -14,6 +14,7 @@ import type { MediaService } from './media-service.js';
 import { OpenApiCollector } from './openapi.js';
 import { parseImportQuery, parseLegalHoldBody, parseReprintBody } from './parse.js';
 import { registerProductionReportRoutes, type ProductionReportRouteOptions } from './production-report-routes.js';
+import { registerPrintOutputRoutes, type PrintOutputRouteOptions } from './print-output-routes.js';
 import { registerProofRoutes, type ProofRouteOptions } from './proof-routes.js';
 import { guardRoutes, LOCAL_ADMIN } from './route-permissions.js';
 import { registerErrorHandler, registerPreflightRoutes, type RouteDeps } from './routes.js';
@@ -48,6 +49,11 @@ export interface ServerDeps {
   readonly stepRepeat?: StepRepeatRouteOptions;
   /** With `jobs`, mounts the Spec 004a `POST /jobs/:id/proof` route. */
   readonly proof?: ProofRouteOptions;
+  /**
+   * With `jobs`, mounts the Spec 034a `/jobs/:id/print` routes over this printer output, which is
+   * closed with the server; `main.ts` sets it only with `BPS_PRINT_OUTPUT=1`. Tests inject a fake.
+   */
+  readonly printOutput?: PrintOutputRouteOptions;
   /** Mounts the Spec 003x `/layout-templates` routes; the store package's `SqliteLayoutTemplateRepository` satisfies it. */
   readonly layoutTemplates?: LayoutTemplateRepository;
   /** Mounts the Spec 004d finishing plan routes; the store package's `SqliteFinishingPlanRepository` satisfies `plans`. */
@@ -175,6 +181,10 @@ export function buildServer(deps: ServerDeps): FastifyInstance {
 
   if (deps.jobs && deps.proof) {
     registerProofRoutes(app, { jobs: deps.jobs, ...deps.proof });
+  }
+
+  if (deps.jobs && deps.printOutput) {
+    registerPrintOutputRoutes(app, { jobs: deps.jobs, ...deps.printOutput });
   }
 
   if (deps.layoutTemplates) {
