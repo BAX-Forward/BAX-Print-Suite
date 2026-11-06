@@ -2,7 +2,6 @@ import {
   InvalidArgumentError,
   SYSTEM_ACTOR,
   parseTicketEdits,
-  sniffSourceFormat,
   systemClock,
   ticketEdits,
   ulid,
@@ -18,6 +17,7 @@ import {
   type SourceFile,
 } from '@bax-print/core';
 import { applyEdits, type NestItem } from '@bax-print/edits';
+import { sniffJobSourceFormat } from '@bax-print/inspect';
 import { EventTypes, type CloudEvent, type EventBus } from '@bax-print/events';
 import { artifactKey, sourceKey, type JobRepository, type Storage } from '@bax-print/store';
 import { JobNotFoundError } from '@bax-print/archive';
@@ -98,7 +98,8 @@ export class JobService {
     }
 
     // Spec 031c: submission takes any bytes; the detected format of the first source is recorded.
-    const sourceFormat = input.sources[0] === undefined ? undefined : sniffSourceFormat(input.sources[0].bytes);
+    // Spec 035b: SVG and DXF are detected from their header, never from the file name.
+    const sourceFormat = input.sources[0] === undefined ? undefined : sniffJobSourceFormat(input.sources[0].bytes);
     const job: Job = {
       id,
       name: input.name,

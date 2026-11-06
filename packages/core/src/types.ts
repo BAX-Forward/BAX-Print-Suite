@@ -89,24 +89,35 @@ export interface HotFolderSettings {
    * `false`: only `filePatterns` decide, as before.
    */
   readonly acceptRaster?: boolean;
+  /**
+   * Spec 035b: also take in SVG and DXF files ({@link VECTOR_FILE_PATTERNS}). Absent means
+   * `false`: only `filePatterns` decide, as before.
+   */
+  readonly acceptVector?: boolean;
 }
 
 /** Spec 031c: the patterns a hot folder adds to `filePatterns` when `acceptRaster` is on. */
 export const RASTER_FILE_PATTERNS: readonly string[] = Object.freeze(['*.tif', '*.tiff', '*.jpg', '*.jpeg', '*.png']);
 
+/** Spec 035b: the patterns a hot folder adds to `filePatterns` when `acceptVector` is on. */
+export const VECTOR_FILE_PATTERNS: readonly string[] = Object.freeze(['*.svg', '*.dxf']);
+
 /**
- * The patterns a hot folder matches: `filePatterns`, plus {@link RASTER_FILE_PATTERNS} that are not
- * already listed (compared case-insensitively, like the matching) when `acceptRaster` is on.
+ * The patterns a hot folder matches: `filePatterns`, plus {@link RASTER_FILE_PATTERNS} when
+ * `acceptRaster` is on and {@link VECTOR_FILE_PATTERNS} when `acceptVector` is on, each only when
+ * not already listed (compared case-insensitively, like the matching).
  */
 export function effectiveFilePatterns(
-  settings: Pick<HotFolderSettings, 'filePatterns' | 'acceptRaster'>,
+  settings: Pick<HotFolderSettings, 'filePatterns' | 'acceptRaster' | 'acceptVector'>,
 ): readonly string[] {
-  if (settings.acceptRaster === true) {
-    const listed = new Set(settings.filePatterns.map((pattern) => pattern.toLowerCase()));
-    const missing = RASTER_FILE_PATTERNS.filter((pattern) => listed.has(pattern) === false);
-    return [...settings.filePatterns, ...missing];
-  }
-  return settings.filePatterns;
+  const extra = [
+    ...(settings.acceptRaster === true ? RASTER_FILE_PATTERNS : []),
+    ...(settings.acceptVector === true ? VECTOR_FILE_PATTERNS : []),
+  ];
+  if (extra.length === 0) return settings.filePatterns;
+  const listed = new Set(settings.filePatterns.map((pattern) => pattern.toLowerCase()));
+  const missing = extra.filter((pattern) => listed.has(pattern) === false);
+  return [...settings.filePatterns, ...missing];
 }
 
 export const DEFAULT_HOT_FOLDER_SETTINGS: Readonly<HotFolderSettings> = Object.freeze({
@@ -132,6 +143,8 @@ export function withHotFolderDefaults(settings: Partial<HotFolderSettings> = {})
     ...(settings.preflightProfileId ? { preflightProfileId: settings.preflightProfileId } : {}),
     // Only stored when on, so settings saved before Spec 031c keep their shape.
     ...(settings.acceptRaster === true ? { acceptRaster: true } : {}),
+    // Likewise for Spec 035b.
+    ...(settings.acceptVector === true ? { acceptVector: true } : {}),
   };
 }
 

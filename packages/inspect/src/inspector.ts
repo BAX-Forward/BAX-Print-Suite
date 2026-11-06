@@ -12,9 +12,10 @@ import {
 } from "@bax-print/plugin-sdk";
 import { conformanceClaims } from "./checks/conformance.js";
 import { UnreadablePdfError, loadDocumentModel, type DocumentModel, type PreflightContext } from "./document-model.js";
-import { evaluateChecks, evaluateRasterChecks } from "./profile.js";
+import { evaluateChecks, evaluateRasterChecks, evaluateVectorChecks } from "./profile.js";
 import { RasterHeaderError, readRasterHeader, sniffRasterType } from "./raster-header.js";
 import { builtinRegistry, type CheckRegistry } from "./registry.js";
+import { readVectorHeader } from "./vector-header.js";
 
 /** The built-in `Inspector/1` implementation over pdf-lib. Apache-2.0 code, so it may run in-process (ADR-0003). */
 
@@ -79,10 +80,29 @@ function unreadableRaster(options: InspectBytesOptions, error: RasterHeaderError
   ]);
 }
 
-/** Inspects PDF, PNG, JPEG or TIFF bytes. An unreadable file yields an error finding, never an exception. */
+/**
+ * Inspects an SVG or ASCII DXF from its header alone (Spec 035b): one page, no conformance
+ * claims. Nothing the SVG declares or references is expanded or fetched. `undefined` when the
+ * bytes are not a vector format, so the caller reads them as PDF.
+ */
+function inspectVector(bytes: Uint8Array, options: InspectBytesOptions): PreflightReport | undefined {
+  const header = readVectorHeader(bytes);
+  if (header.kind === "error") {
+    if (header.format === undefined) return undefined;
+    // Recognised as SVG or DXF but not readable; severity is fixed, as for an unreadable PDF.
+    return report(options, 0, [
+      { checkId: "document", severity: "error", message: header.message, data: { rule: "unreadable-vector", code: header.code } },
+    ]);
+  }
+  return report(options, 1, evaluateVectorChecks(header, options.checks, options.registry ?? builtinRegistry()));
+}
+
+/** Inspects PDF, PNG, JPEG, TIFF, SVG or DXF bytes. An unreadable file yields an error finding, never an exception. */
 export async function inspectBytes(bytes: Uint8Array, options: InspectBytesOptions = {}): Promise<PreflightReport> {
   const raster = sniffRasterType(bytes) === undefined ? undefined : inspectRaster(bytes, options);
   if (raster) return raster;
+  const vector = inspectVector(bytes, options);
+  if (vector) return vector;
   try {
     const doc = await loadDocumentModel(bytes, options.context ?? {});
     return report(options, doc.pageCount, evaluateChecks(doc, options.checks, options.registry ?? builtinRegistry()), doc);

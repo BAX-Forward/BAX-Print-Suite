@@ -38,3 +38,45 @@ describe('Spec 031c: JobService records the source format', () => {
     expect('sourceFormat' in unknown).toBe(false);
   });
 });
+
+// Markup openers are built from the code point so that no literal bang character appears here.
+const DOCTYPE = `<${String.fromCharCode(0x21)}DOCTYPE`;
+const SVG = new TextEncoder().encode('<?xml version="1.0"?>\n<svg xmlns="http://www.w3.org/2000/svg" width="10mm" height="10mm"/>');
+const DXF = new TextEncoder().encode('  0\nSECTION\n  2\nHEADER\n  9\n$ACADVER\n  1\nAC1027\n  0\nENDSEC\n  0\nEOF\n');
+
+describe('Spec 035b: JobService records the vector source formats', () => {
+  it.each([
+    ['a.svg', SVG, 'svg'],
+    ['a.dxf', DXF, 'dxf'],
+    // The name is never trusted: the bytes decide, as for raster in Spec 031c.
+    ['a.dxf', SVG, 'svg'],
+    ['a.svg', DXF, 'dxf'],
+    ['a.pdf', SVG, 'svg'],
+  ] as const)('records %s with %s bytes from its header', async (name, bytes, format) => {
+    const { jobs, repository } = createServerHarness();
+
+    const job = await jobs.create({ name, sources: [{ name, bytes }], ticket: TICKET });
+
+    expect(job.sourceFormat).toBe(format);
+    expect((await repository.get(job.id))?.sourceFormat).toBe(format);
+  });
+
+  it('records an SVG with a DOCTYPE and external references as svg without resolving them', async () => {
+    const { jobs } = createServerHarness();
+    const text = `${DOCTYPE} svg SYSTEM "http://127.0.0.1:9/evil.dtd"><svg width="1in" height="1in"><image href="http://127.0.0.1:9/a.png"/></svg>`;
+
+    const job = await jobs.create({ name: 'refs.svg', sources: [{ name: 'refs.svg', bytes: new TextEncoder().encode(text) }], ticket: TICKET });
+
+    expect(job.sourceFormat).toBe('svg');
+  });
+
+  it('omits the field for text that is neither SVG nor DXF, whatever its name', async () => {
+    const { jobs } = createServerHarness();
+
+    const html = await jobs.create({ name: 'a.svg', sources: [{ name: 'a.svg', bytes: new TextEncoder().encode('<html></html>') }], ticket: TICKET });
+    const text = await jobs.create({ name: 'a.dxf', sources: [{ name: 'a.dxf', bytes: new TextEncoder().encode('hello') }], ticket: TICKET });
+
+    expect('sourceFormat' in html).toBe(false);
+    expect('sourceFormat' in text).toBe(false);
+  });
+});

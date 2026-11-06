@@ -93,6 +93,38 @@ describe('ingestFile', () => {
     expect('sourceFormat' in outcome.job).toBe(false);
   });
 
+  it('records the sourceFormat the host sniffer reads from the bytes, never the name (Spec 035b)', async () => {
+    const { jobs, deps } = makeDeps();
+    const seen: Uint8Array[] = [];
+    const sniffer = (bytes: Uint8Array) => {
+      seen.push(bytes);
+      return 'svg' as const;
+    };
+    const source = join(dir, 'drawing.dxf');
+    await writeFile(source, '<svg width="1in" height="1in"/>');
+
+    const outcome = await ingestFile(source, makeFolder(dir, { acceptVector: true }), { ...deps, sniffSourceFormat: sniffer });
+
+    expect(outcome.kind).toBe('ready');
+    if (outcome.kind !== 'ready') return;
+    expect(new TextDecoder().decode(seen[0])).toBe('<svg width="1in" height="1in"/>');
+    expect(outcome.job.sourceFormat).toBe('svg');
+    expect(jobs.byId.get(outcome.job.id)?.sourceFormat).toBe('svg');
+    expect(outcome.movedTo).toBe(join(dir, PROCESSED, 'drawing.dxf'));
+  });
+
+  it('omits sourceFormat for SVG bytes without a vector-aware sniffer, as before (Spec 035b)', async () => {
+    const { deps } = makeDeps();
+    const source = join(dir, 'cut.svg');
+    await writeFile(source, '<svg width="1in" height="1in"/>');
+
+    const outcome = await ingestFile(source, makeFolder(dir, { acceptVector: true }), deps);
+
+    expect(outcome.kind).toBe('ready');
+    if (outcome.kind !== 'ready') return;
+    expect('sourceFormat' in outcome.job).toBe(false);
+  });
+
   it('reports a second file with the same sha256 as duplicate and does not re-ingest it', async () => {
     const { jobs, storage, deps } = makeDeps();
     const folder = makeFolder(dir);
