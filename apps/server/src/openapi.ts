@@ -360,6 +360,73 @@ const LOGIN_RESULT_SCHEMA: JsonSchema = {
   },
 };
 
+/** Spec 032b: the most colours one `POST /swatch-charts` library may have. */
+export const SWATCH_CHART_MAX_COLORS = 2000;
+/** Spec 032b: the longest library or colour name, in characters; the marks package also caps a colour name at 127 UTF-8 bytes. */
+export const SWATCH_NAME_MAX_CHARS = 127;
+
+const SWATCH_NAME: JsonSchema = { type: 'string', minLength: 1, maxLength: SWATCH_NAME_MAX_CHARS };
+const mmOption = (minimum: number, maximum: number, value: number): JsonSchema => ({ type: 'number', minimum, maximum, default: value });
+
+/**
+ * `POST /swatch-charts` (Spec 032b): the spot library and the Spec 032a chart options. The route
+ * checks the shape and limits; the marks package checks the ranges and the page fit.
+ */
+const SWATCH_CHART_REQUEST_SCHEMA: JsonSchema = {
+  type: 'object',
+  required: ['library'],
+  additionalProperties: false,
+  properties: {
+    library: {
+      type: 'object',
+      required: ['name', 'colors'],
+      properties: {
+        name: { ...SWATCH_NAME, description: 'Printed in the page title; no control characters, not blank' },
+        colors: {
+          type: 'array',
+          maxItems: SWATCH_CHART_MAX_COLORS,
+          items: {
+            type: 'object',
+            required: ['name', 'lab'],
+            properties: {
+              name: { ...SWATCH_NAME, description: 'The Separation colorant name; at most 127 UTF-8 bytes, no control characters, not blank' },
+              lab: {
+                type: 'object',
+                required: ['L', 'a', 'b'],
+                properties: {
+                  L: { type: 'number', minimum: 0, maximum: 100 },
+                  a: { type: 'number', minimum: -128, maximum: 127 },
+                  b: { type: 'number', minimum: -128, maximum: 127 },
+                },
+              },
+              cmykFallback: {
+                type: 'array',
+                minItems: 4,
+                maxItems: 4,
+                items: { type: 'number', minimum: 0, maximum: 100 },
+                description: 'C, M, Y and K percent of the DeviceCMYK alternate; all zero when absent',
+              },
+            },
+          },
+        },
+      },
+    },
+    options: {
+      type: 'object',
+      description: 'The swatch rows must fit between the margins and below the title',
+      properties: {
+        pageWidthMm: mmOption(20, 5000, 210),
+        pageHeightMm: mmOption(20, 5000, 297),
+        columns: { type: 'integer', minimum: 1, maximum: 100, default: 6 },
+        swatchSizeMm: mmOption(5, 1000, 25),
+        gapMm: mmOption(0, 100, 5),
+        marginMm: mmOption(0, 500, 10),
+        showLabels: { type: 'boolean', default: true },
+      },
+    },
+  },
+};
+
 const itemsOf = (name: string): JsonSchema => ({
   type: 'object',
   required: ['items'],
@@ -393,6 +460,7 @@ const COMPONENT_SCHEMAS: Readonly<Record<string, JsonSchema>> = {
   ApiTokenEnvelope: { type: 'object', required: ['token'], properties: { token: refTo('ApiToken') } },
   IssuedApiToken: ISSUED_API_TOKEN_SCHEMA,
   LoginResult: LOGIN_RESULT_SCHEMA,
+  SwatchChartRequest: SWATCH_CHART_REQUEST_SCHEMA,
 };
 
 function parameters(schema: JsonSchema | undefined, location: 'path' | 'query'): unknown[] {

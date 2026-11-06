@@ -71,6 +71,8 @@ export const ROUTE_PERMISSIONS: Readonly<Record<RouteKey, Permission>> = Object.
   'POST /jobs/:id/cut-job': 'jobs:write',
   'POST /jobs/:id/step-repeat': 'jobs:write',
   'POST /jobs/:id/proof': 'jobs:read',
+  // Spec 032b swatch charts: a read like the proof route; nothing is stored.
+  'POST /swatch-charts': 'jobs:read',
   // Spec 003x layout templates.
   'POST /layout-templates': 'layouts:write',
   'GET /layout-templates': 'layouts:read',

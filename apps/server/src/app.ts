@@ -19,6 +19,7 @@ import { guardRoutes, LOCAL_ADMIN } from './route-permissions.js';
 import { registerErrorHandler, registerPreflightRoutes, type RouteDeps } from './routes.js';
 import { scopeJobRoutes, type SiteScopeOptions } from './site-scope.js';
 import { registerStepRepeatRoutes, type StepRepeatRouteOptions } from './step-repeat-routes.js';
+import { registerSwatchChartRoutes } from './swatch-chart-routes.js';
 import { httpsServerFactory, type HttpsOptions } from './tls.js';
 import { registerWebhookRoutes, type WebhookOptions } from './webhook-routes.js';
 
@@ -68,6 +69,8 @@ export interface ServerDeps {
    * that recognizes the sessions, e.g. what `configureLogin` from `session-config.ts` returns.
    */
   readonly login?: LoginRouteOptions;
+  /** Spec 032b: `true` mounts `POST /swatch-charts`; `main.ts` sets it only with `BPS_SWATCH_CHARTS=1`. */
+  readonly swatchCharts?: boolean;
   /**
    * Spec 030c: scopes the `/jobs/:id` routes and the `GET /archive` and `GET /trash` lists to the
    * caller's site membership (`site-scope.ts`). Without it every caller sees every site's jobs.
@@ -192,6 +195,10 @@ export function buildServer(deps: ServerDeps): FastifyInstance {
 
   if (deps.apiTokens) {
     registerApiTokenRoutes(app, { ...deps.apiTokens, authenticate: actorOf });
+  }
+
+  if (deps.swatchCharts === true) {
+    registerSwatchChartRoutes(app);
   }
 
   app.get('/archive', async (request) => {
