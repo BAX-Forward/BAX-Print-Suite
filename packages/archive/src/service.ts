@@ -7,6 +7,7 @@ import {
   markRestored,
   markTrashed,
   markUntrashed,
+  normalizeJobWhiteInk,
   requireRole,
   SYSTEM_ACTOR,
   systemClock,
@@ -340,7 +341,8 @@ export class ArchiveService {
 
     const id = this.newId();
     const at = this.now();
-    const job: Job = {
+    // Spec 038d: job.json may come from another installation; an invalid whiteInk is dropped (white ink off).
+    const job: Job = normalizeJobWhiteInk<Job>({
       ...origin,
       id,
       deviceId,
@@ -355,7 +357,7 @@ export class ArchiveService {
       trashedAt: undefined,
       legalHold: false,
       reprintOf: undefined,
-    };
+    });
 
     const packed = pack({
       job,
