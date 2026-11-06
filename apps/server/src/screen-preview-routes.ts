@@ -1,6 +1,6 @@
 import type { FastifyInstance } from 'fastify';
 import type { Job } from '@bax-print/core';
-import { packPlane1bpp, type PackedPlane1bpp } from '@bax-print/marks';
+import { packPlane1bpp, writePbmP4, type PackedPlane1bpp } from '@bax-print/marks';
 import { composeScreening, pipelineOptionsFromJob } from '@bax-print/media';
 import { notFound, screeningNotSet, screenPreviewInvalid } from './errors.js';
 import { doc, SCREEN_PREVIEW_MAX_SIDE } from './openapi.js';
@@ -36,7 +36,11 @@ export interface ScreenPreviewRouteOptions {
 }
 
 type PlaneName = 'c' | 'm' | 'y' | 'k';
-const BODY_FIELDS: readonly string[] = ['width', 'height', 'c', 'm', 'y', 'k'];
+const BODY_FIELDS: readonly string[] = ['width', 'height', 'format', 'c', 'm', 'y', 'k'];
+
+/** Spec 043b: how each screened plane is answered; absent means `packed`. */
+export type ScreenPreviewFormat = 'packed' | 'pbm';
+const FORMATS: readonly ScreenPreviewFormat[] = ['packed', 'pbm'];
 const MAX_ECHOED_KEY_LENGTH = 64;
 const BASE64 = /^[A-Za-z0-9+/]*={0,2}$/;
 
@@ -59,6 +63,22 @@ export interface ScreenPreviewResult {
   readonly m: string;
   readonly y: string;
   readonly k: string;
+}
+
+/** Spec 043b: with `format: "pbm"`, each plane is base64 of a raw PBM (`P4`) file, which carries its own size. */
+export interface ScreenPreviewPbmResult {
+  readonly width: number;
+  readonly height: number;
+  readonly format: 'pbm';
+  readonly c: string;
+  readonly m: string;
+  readonly y: string;
+  readonly k: string;
+}
+
+/** A parsed preview request: the planes and the answer format. */
+export interface ScreenPreviewRequest extends ScreenPreviewInput {
+  readonly format: ScreenPreviewFormat;
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -85,21 +105,32 @@ function readPlane(name: PlaneName, value: unknown, pixels: number): Uint8Array 
   return new Uint8Array(bytes.buffer, bytes.byteOffset, bytes.byteLength);
 }
 
+/** Absent means `packed`; any other value than the two names, `null` included, is rejected. */
+function readFormat(body: Record<string, unknown>): ScreenPreviewFormat {
+  if (!('format' in body)) return 'packed';
+  const value = body.format;
+  const format = FORMATS.find((name) => name === value);
+  if (format === undefined) throw screenPreviewInvalid('format must be "packed" or "pbm"');
+  return format;
+}
+
 /**
- * Reads a `POST /jobs/:id/screen-preview` body strictly: unknown fields are rejected, and width
- * and height are checked before any plane is decoded.
+ * Reads a `POST /jobs/:id/screen-preview` body strictly: unknown fields are rejected, and width,
+ * height and format are checked before any plane is decoded.
  */
-export function parseScreenPreviewBody(body: unknown): ScreenPreviewInput {
+export function parseScreenPreviewBody(body: unknown): ScreenPreviewRequest {
   if (!isRecord(body)) throw screenPreviewInvalid('send an object with width, height, c, m, y and k');
   for (const key of Object.keys(body)) {
     if (!BODY_FIELDS.includes(key)) throw screenPreviewInvalid(`unknown field "${key.slice(0, MAX_ECHOED_KEY_LENGTH)}"`);
   }
   const width = readSide('width', body.width);
   const height = readSide('height', body.height);
+  const format = readFormat(body);
   const pixels = width * height;
   return {
     width,
     height,
+    format,
     c: readPlane('c', body.c, pixels),
     m: readPlane('m', body.m, pixels),
     y: readPlane('y', body.y, pixels),
@@ -121,13 +152,13 @@ export function registerScreenPreviewRoutes(app: FastifyInstance, deps: ScreenPr
       bodyLimit: SCREEN_PREVIEW_BODY_LIMIT,
       schema: doc({
         operationId: 'previewJobScreening',
-        summary: "Screen CMYK planes with the job's screening and ink-limit settings and answer 1-bit packed planes",
+        summary: "Screen CMYK planes with the job's screening and ink-limit settings and answer 1-bit packed or PBM planes",
         tags: ['jobs'],
         params: { type: 'object', required: ['id'], properties: { id: { type: 'string' } } },
         bodyDoc: { $ref: '#/components/schemas/ScreenPreviewRequest' },
         responses: {
-          200: 'The screened planes, packed 1 bit per pixel',
-          400: 'The body is not a valid preview request, e.g. an unknown field, a side out of range or a plane of the wrong length (`invalid_screen_preview`)',
+          200: 'The screened planes, packed 1 bit per pixel; with `format: "pbm"`, each plane is a raw PBM (`P4`) file',
+          400: 'The body is not a valid preview request, e.g. an unknown field, a side out of range, a format other than `packed` or `pbm`, or a plane of the wrong length (`invalid_screen_preview`)',
           404: 'No job has this id (`not_found`)',
           409: 'The job has no screening setting (`screening_not_set`)',
           413: `The body is larger than ${String(SCREEN_PREVIEW_BODY_LIMIT)} bytes (\`invalid_request\`)`,
@@ -135,16 +166,20 @@ export function registerScreenPreviewRoutes(app: FastifyInstance, deps: ScreenPr
         responseSchema: 'ScreenPreview',
       }),
     },
-    async (request): Promise<ScreenPreviewResult> => {
+    async (request): Promise<ScreenPreviewResult | ScreenPreviewPbmResult> => {
       const { id } = request.params;
       const job = await jobs.get(id);
       if (!job) throw notFound('Job', id);
       const options = pipelineOptionsFromJob({ screening: job.screening, inkLimit: job.inkLimit });
       if (options.screening === undefined) throw screeningNotSet(`Job ${id} has no screening setting`);
-      const input = parseScreenPreviewBody(request.body);
+      const { format, ...input } = parseScreenPreviewBody(request.body);
       const { width, height } = input;
       const planes = composeScreening({ ...input, ...options });
       const pack = (plane: Uint8Array): PackedPlane1bpp => packPlane1bpp({ width, height, plane });
+      if (format === 'pbm') {
+        const pbm = (plane: Uint8Array): string => toBase64(writePbmP4(pack(plane)));
+        return { width, height, format, c: pbm(planes.c), m: pbm(planes.m), y: pbm(planes.y), k: pbm(planes.k) };
+      }
       const c = pack(planes.c);
       return {
         width,

@@ -4,7 +4,7 @@ import { afterEach, describe, expect, it } from 'vitest';
 import { ArchiveService, StaticColorSetupResolver } from '@bax-print/archive';
 import type { Actor, InkLimitSetting, ScreeningSetting, SiteMembership } from '@bax-print/core';
 import { EventBus, MemoryOutbox } from '@bax-print/events';
-import { unpackPlane1bpp } from '@bax-print/marks';
+import { parsePbmP4, unpackPlane1bpp } from '@bax-print/marks';
 import { MemoryArchiveIndex, MemoryJobRepository, MemoryStorage } from '@bax-print/store';
 import { buildServer } from '../src/app.js';
 import { JobService } from '../src/jobs.js';
@@ -301,6 +301,112 @@ describe('POST /jobs/:id/screen-preview (Spec 043a)', () => {
 
     expect(response.statusCode).toBe(400);
     expect(response.json<{ error: { code: string } }>().error.code).toBe('invalid_screen_preview');
+  });
+
+  describe('the format field (Spec 043b)', () => {
+    interface PbmPreview {
+      readonly width: number;
+      readonly height: number;
+      readonly format: string;
+      readonly c: string;
+      readonly m: string;
+      readonly y: string;
+      readonly k: string;
+    }
+
+    it('answers the same packed planes with format absent and format "packed"', async () => {
+      const h = createHarness();
+      const jobId = await createJob(h, { screening: BAYER, inkLimit: INK_LIMIT });
+
+      const absent = await post(h, jobId, body());
+      const packed = await post(h, jobId, { ...body(), format: 'packed' });
+
+      expect(absent.statusCode).toBe(200);
+      expect(packed.statusCode).toBe(200);
+      expect(Object.keys(absent.json<Record<string, unknown>>()).sort()).toEqual(['c', 'height', 'k', 'm', 'rowBytes', 'width', 'y']);
+      expect(absent.headers['content-type']).toBe(packed.headers['content-type']);
+      expect(absent.payload).toBe(packed.payload);
+    });
+
+    it('answers each plane as a PBM that decodes to the packed planes', async () => {
+      const h = createHarness();
+      const jobId = await createJob(h, { screening: BAYER, inkLimit: INK_LIMIT });
+
+      const packedResponse = await post(h, jobId, body());
+      const pbmResponse = await post(h, jobId, { ...body(), format: 'pbm' });
+
+      expect(pbmResponse.statusCode).toBe(200);
+      const packed = packedResponse.json<Preview>();
+      const pbm = pbmResponse.json<PbmPreview>();
+      expect(Object.keys(pbm).sort()).toEqual(['c', 'format', 'height', 'k', 'm', 'width', 'y']);
+      expect(pbm).toMatchObject({ width: WIDTH, height: HEIGHT, format: 'pbm' });
+      const pairs: readonly [string, string][] = [
+        [pbm.c, packed.c],
+        [pbm.m, packed.m],
+        [pbm.y, packed.y],
+        [pbm.k, packed.k],
+      ];
+      for (const [pbmData, packedData] of pairs) {
+        const bytes = Buffer.from(pbmData, 'base64');
+        expect(bytes.subarray(0, 3).toString('latin1')).toBe('P4\n');
+        const parsed = parsePbmP4(new Uint8Array(bytes.buffer, bytes.byteOffset, bytes.byteLength));
+        expect(parsed.width).toBe(WIDTH);
+        expect(parsed.height).toBe(HEIGHT);
+        const unpacked = unpackPlane1bpp(parsed);
+        expect(unpacked).toHaveLength(PIXELS);
+        expect(unpacked.every((v) => v === 0 || v === 255)).toBe(true);
+        expect(unpacked).toEqual(unpack(packed, packedData));
+      }
+    });
+
+    it.each<[string, unknown]>([
+      ['a wrong string', 'png'],
+      ['an upper-case name', 'PBM'],
+      ['an empty string', ''],
+      ['a number', 1],
+      ['a boolean', true],
+      ['an array', ['pbm']],
+      ['an object', { kind: 'pbm' }],
+      ['null', null],
+    ])('answers 400 invalid_screen_preview for %s', async (_name, format) => {
+      const h = createHarness();
+      const jobId = await createJob(h, { screening: BAYER });
+
+      const response = await post(h, jobId, { ...body(), format });
+
+      expect(response.statusCode).toBe(400);
+      expect(response.json<{ error: { code: string } }>().error.code).toBe('invalid_screen_preview');
+    });
+
+    it('answers 409 screening_not_set for a pbm request of a job without screening', async () => {
+      const h = createHarness();
+      const jobId = await createJob(h, { inkLimit: INK_LIMIT });
+
+      const response = await post(h, jobId, { ...body(), format: 'pbm' });
+
+      expect(response.statusCode).toBe(409);
+      expect(response.json<{ error: { code: string } }>().error.code).toBe('screening_not_set');
+    });
+
+    it('documents the format field and both answer shapes', async () => {
+      const h = createHarness();
+
+      const response = await h.app.inject({ method: 'GET', url: '/openapi.json' });
+
+      interface Shape {
+        readonly required?: string[];
+        readonly properties?: Record<string, unknown>;
+      }
+      const schemas = response.json<{
+        components: { schemas: { ScreenPreviewRequest?: Shape; ScreenPreview?: { oneOf?: Shape[] } } };
+      }>().components.schemas;
+      expect(schemas.ScreenPreviewRequest?.properties?.format).toMatchObject({ enum: ['packed', 'pbm'] });
+      const [packedShape, pbmShape] = schemas.ScreenPreview?.oneOf ?? [];
+      expect(packedShape?.required).toContain('rowBytes');
+      expect(packedShape?.properties).not.toHaveProperty('format');
+      expect(pbmShape?.required).toContain('format');
+      expect(pbmShape?.properties?.format).toEqual({ const: 'pbm' });
+    });
   });
 
   it('answers 400 invalid_screen_preview without a body', async () => {
