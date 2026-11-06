@@ -89,4 +89,13 @@ export {
   type ImposedSheetsErrorCode,
   type ImposedSheetsOptions,
 } from "./imposition-output.js";
+export {
+  BitpackError,
+  MAX_BITPACK_PIXELS,
+  packPlane1bpp,
+  unpackPlane1bpp,
+  type BitpackErrorCode,
+  type PackedPlane1bpp,
+  type Plane8bpp,
+} from "./bitpack.js";
 export { labelPreviewSvg, labelPartSvg, type LabelPreview, type LabelPreviewInput } from "./label-preview.js";
