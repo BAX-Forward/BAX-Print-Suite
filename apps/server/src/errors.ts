@@ -21,9 +21,9 @@ import { InvalidCursorError, InvalidFinishingPlanError, InvalidLayoutTemplateErr
 export class HttpError extends Error {
   readonly statusCode: number;
   readonly code: string;
-  readonly details?: readonly string[];
+  readonly details?: ErrorDetails;
 
-  constructor(statusCode: number, code: string, message: string, details?: readonly string[]) {
+  constructor(statusCode: number, code: string, message: string, details?: ErrorDetails) {
     super(message);
     this.name = "HttpError";
     this.statusCode = statusCode;
@@ -50,6 +50,10 @@ export const reportGroupByInvalid = (message: string): HttpError => new HttpErro
 
 /** Spec 023b: `format` is not one of the report formats. */
 export const reportFormatInvalid = (message: string): HttpError => new HttpError(422, "report_format_invalid", message);
+
+/** Spec 017d: the body's accounting ID is missing, not a string or null, or rejected by core; `details.field` names it. */
+export const accountingIdInvalid = (message: string, field: string): HttpError =>
+  new HttpError(422, "accounting_id_invalid", message, { field });
 
 /** A list of problems (validation) or structured context (e.g. the ids an import must remap). */
 export type ErrorDetails = readonly string[] | Readonly<Record<string, unknown>>;

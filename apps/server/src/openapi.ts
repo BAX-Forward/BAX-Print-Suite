@@ -17,6 +17,8 @@ export interface RouteDoc {
   /** Query parameters the handler checks itself, so Fastify does not validate them; documented like `querystring`. */
   queryDoc?: JsonSchema;
   body?: JsonSchema;
+  /** A JSON body the handler checks itself, so Fastify does not validate it; documented like `body`. */
+  bodyDoc?: JsonSchema;
   /** Media types of a raw (non-JSON) request body. */
   consumes?: string[];
   /** Media type of a raw (non-JSON) response body. */
@@ -277,6 +279,40 @@ const PRODUCTION_REPORT_SCHEMA: JsonSchema = {
   },
 };
 
+/** One device quantity exactly as reported (Spec 017a); units are never converted. */
+const ACCOUNTING_QUANTITY_SCHEMA: JsonSchema = {
+  type: 'object',
+  required: ['kind', 'name', 'value', 'unit'],
+  properties: {
+    kind: { enum: ['ink', 'media', 'other'] },
+    name: { type: 'string', minLength: 1 },
+    value: { type: 'number' },
+    unit: { type: 'string', minLength: 1 },
+  },
+};
+
+/** Quantities summed for one accounting ID (Spec 017c); `null` collects jobs without one. */
+const ACCOUNTING_ID_GROUP_SCHEMA: JsonSchema = {
+  type: 'object',
+  required: ['accountingId', 'jobIds', 'quantities'],
+  properties: {
+    accountingId: { type: ['string', 'null'] },
+    jobIds: { type: 'array', items: { type: 'string' } },
+    quantities: { type: 'array', items: refTo('AccountingQuantity') },
+  },
+};
+
+/** `GET /reports/accounting` (Spec 017d): groups are sorted by accounting ID with `null` last. */
+const ACCOUNTING_REPORT_SCHEMA: JsonSchema = {
+  type: 'object',
+  required: ['from', 'to', 'groups'],
+  properties: {
+    from: DATE_TIME,
+    to: DATE_TIME,
+    groups: { type: 'array', items: refTo('AccountingIdGroup') },
+  },
+};
+
 const itemsOf = (name: string): JsonSchema => ({
   type: 'object',
   required: ['items'],
@@ -302,6 +338,9 @@ const COMPONENT_SCHEMAS: Readonly<Record<string, JsonSchema>> = {
   ProductionReportTotals: PRODUCTION_REPORT_TOTALS_SCHEMA,
   ProductionReportGroup: PRODUCTION_REPORT_GROUP_SCHEMA,
   ProductionReport: PRODUCTION_REPORT_SCHEMA,
+  AccountingQuantity: ACCOUNTING_QUANTITY_SCHEMA,
+  AccountingIdGroup: ACCOUNTING_ID_GROUP_SCHEMA,
+  AccountingReport: ACCOUNTING_REPORT_SCHEMA,
 };
 
 function parameters(schema: JsonSchema | undefined, location: 'path' | 'query'): unknown[] {
@@ -335,8 +374,9 @@ function operation(route: RouteDoc, permission?: Permission): Record<string, unk
     ...parameters(route.queryDoc, 'query'),
   ];
   if (params.length > 0) op.parameters = params;
-  if (route.body) {
-    op.requestBody = { required: true, content: { 'application/json': { schema: route.body } } };
+  const body = route.body ?? route.bodyDoc;
+  if (body) {
+    op.requestBody = { required: true, content: { 'application/json': { schema: body } } };
   } else if (route.consumes) {
     op.requestBody = {
       required: true,

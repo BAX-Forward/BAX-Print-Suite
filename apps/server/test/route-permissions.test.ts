@@ -87,6 +87,7 @@ function createHarness(actor?: Actor): Harness {
     layoutTemplates: new SqliteLayoutTemplateRepository(db),
     finishing: { plans: new SqliteFinishingPlanRepository(db, { now }), now },
     productionReport: { jobs },
+    accounting: { jobs, reports: { list: async () => [] }, clock: time.clock },
     ...(actor ? { authenticate: () => actor } : {}),
   });
   return { app, db };

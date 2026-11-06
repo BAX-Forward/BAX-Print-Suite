@@ -88,6 +88,9 @@ const serverDeps: ServerDeps = {
   ...(database ? { finishing: { plans: new SqliteFinishingPlanRepository(database) } } : {}),
   // Spec 023b: the production report is mounted with BPS_DATABASE too; it reads the job rows above.
   ...(database ? { productionReport: { jobs: jobRepository } } : {}),
+  // Spec 017d: the accounting ID is kept on the job rows above, so it needs no BPS_DATABASE. Device
+  // accounting reports are only published as history events, so `GET /reports/accounting` is not mounted.
+  accounting: { jobs: jobRepository },
   logger: true,
 };
 const app = buildServer(serverDeps);
