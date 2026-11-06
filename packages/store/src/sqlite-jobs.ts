@@ -1,4 +1,5 @@
 import {
+  DEFAULT_SITE_ID,
   normalizeJobInkLimit,
   normalizeJobPlaneCurves,
   normalizeJobScreening,
@@ -15,10 +16,48 @@ import {
   type JobQueuePage,
   type JobQueueQuery,
 } from './interfaces.js';
-import type { JobListFilter, JobRepository } from './job-repository.js';
+import {
+  assertPageLimit,
+  type ActiveJobPageQuery,
+  type ActiveJobPages,
+  type JobListFilter,
+  type JobRepository,
+} from './job-repository.js';
 
 interface DocRow {
   doc: string;
+}
+
+function docRow(row: unknown): DocRow {
+  if (typeof row === 'object' && row !== null && 'doc' in row && typeof row.doc === 'string') return { doc: row.doc };
+  throw new TypeError('jobs row has no doc text');
+}
+
+interface Statement {
+  readonly sql: string;
+  readonly params: Array<string | number>;
+}
+
+/**
+ * Spec 052c: one keyset page of active jobs, newest first. The site of a job is its ticket
+ * `siteId`, or `DEFAULT_SITE_ID` without one; every value is a bound parameter.
+ */
+export function sqliteActivePageStatement(query: ActiveJobPageQuery): Statement {
+  const where = ['lifecycle = ?'];
+  const params: Array<string | number> = ['active'];
+  if (query.siteIds !== undefined) {
+    where.push(`COALESCE(json_extract(doc, '$.ticket.siteId'), ?) IN (${query.siteIds.map(() => '?').join(', ')})`);
+    params.push(DEFAULT_SITE_ID, ...query.siteIds);
+  }
+  if (query.after !== undefined) {
+    where.push('(created_at, id) < (?, ?)');
+    params.push(query.after.createdAt, query.after.id);
+  }
+  params.push(query.limit);
+  return {
+    sql: `SELECT doc FROM jobs WHERE ${where.join(' AND ')} ORDER BY created_at DESC, id DESC LIMIT ?`,
+    params,
+  };
 }
 
 function clampLimit(limit: number | undefined): number {
@@ -50,7 +89,7 @@ function parse(row: DocRow): Job {
  * Spec 008 {@link JobRepository} on SQLite. Each job is a JSON document with the queried fields
  * mirrored into columns. node:sqlite is synchronous, so every method is one atomic step.
  */
-export class SqliteJobRepository implements JobRepository, JobQueueIndex {
+export class SqliteJobRepository implements JobRepository, JobQueueIndex, ActiveJobPages {
   constructor(private readonly db: Database) {}
 
   async get(id: string): Promise<Job | undefined> {
@@ -99,6 +138,17 @@ export class SqliteJobRepository implements JobRepository, JobQueueIndex {
             .all(filter.lifecycle)
     ) as unknown as DocRow[];
     return rows.map(parse);
+  }
+
+  async listActivePage(query: ActiveJobPageQuery): Promise<Job[]> {
+    assertPageLimit(query.limit);
+    // `IN ()` is not valid SQL; no granted site means no job.
+    if (query.siteIds?.length === 0) return [];
+    const { sql, params } = sqliteActivePageStatement(query);
+    return this.db
+      .prepare(sql)
+      .all(...params)
+      .map((row) => parse(docRow(row)));
   }
 
   async queue(query: JobQueueQuery = {}): Promise<JobQueuePage> {
