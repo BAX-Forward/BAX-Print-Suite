@@ -13,12 +13,13 @@ import type { ScreenPipelineInput } from './pipeline.js';
 /*
  * The bounds duplicate core's job setting constants; media does not import core.
  * screening-setting.ts: SCREENING_SETTING_KINDS, SCREENING_BAYER_SIZES, SCREENING_BLUE_NOISE_SIZE_MIN,
- * SCREENING_BLUE_NOISE_SIZE_MAX, SCREENING_SEED_MIN, SCREENING_SEED_MAX.
+ * SCREENING_BLUE_NOISE_SIZE_MAX, SCREENING_SEED_MIN, SCREENING_SEED_MAX, SCREENING_ERROR_DIFFUSION_KERNELS.
  * ink-limit-setting.ts: INK_LIMIT_METHODS, INK_LIMIT_PERCENT_MIN, INK_LIMIT_PERCENT_MAX.
  * The plane-curve bounds (spec 044b) are media's own spec 044a constants.
  */
-const JOB_SCREENING_KINDS = ['bayer', 'blue-noise'] as const;
+const JOB_SCREENING_KINDS = ['bayer', 'blue-noise', 'error-diffusion'] as const;
 const JOB_BAYER_SIZES = [2, 4, 8, 16] as const;
+const JOB_ERROR_DIFFUSION_KERNELS = ['floyd-steinberg', 'jarvis-judice-ninke'] as const;
 const JOB_BLUE_NOISE_SIZE_MIN = 2;
 const JOB_BLUE_NOISE_SIZE_MAX = 256;
 const JOB_SEED_MIN = 0;
@@ -30,6 +31,7 @@ const JOB_INK_LIMIT_PERCENT_MAX = 400;
 const JOB_SCREENING_FIELDS: Readonly<Record<JobScreeningKind, readonly string[]>> = {
   bayer: ['kind', 'size'],
   'blue-noise': ['kind', 'size', 'seed'],
+  'error-diffusion': ['kind', 'kernel', 'serpentine'],
 };
 const JOB_INK_LIMIT_FIELDS: readonly string[] = ['limitPercent', 'method'];
 const JOB_PLANE_CURVE_CHANNELS = ['c', 'm', 'y', 'k'] as const;
@@ -45,11 +47,14 @@ const JOB_PLANE_CURVE_METHODS: Readonly<Record<JobPlaneCurveMethod, PlaneCurveIn
 const MAX_ECHOED_KEY_LENGTH = 64;
 
 type JobScreeningKind = (typeof JOB_SCREENING_KINDS)[number];
+type JobErrorDiffusionKernel = (typeof JOB_ERROR_DIFFUSION_KERNELS)[number];
 
 /** Structural copy of core's ScreeningSetting. */
 export type JobScreeningInput =
   | { readonly kind: 'bayer'; readonly size: 2 | 4 | 8 | 16 }
-  | { readonly kind: 'blue-noise'; readonly size: number; readonly seed: number };
+  | { readonly kind: 'blue-noise'; readonly size: number; readonly seed: number }
+  /** Spec 045c: serpentine is kept absent when the job leaves it out. */
+  | { readonly kind: 'error-diffusion'; readonly kernel: JobErrorDiffusionKernel; readonly serpentine?: boolean };
 
 /** Structural copy of core's InkLimitSetting. */
 export interface JobInkLimitInput {
@@ -123,6 +128,21 @@ function readInteger(name: string, value: unknown, min: number, max: number): nu
   return fail(`${name} must be an integer in ${String(min)}..${String(max)} (got ${describeValue(value)})`);
 }
 
+function readErrorDiffusion(fields: ReadonlyMap<string, unknown>): JobScreeningInput {
+  const kernelValue = fields.get('kernel');
+  const kernel =
+    JOB_ERROR_DIFFUSION_KERNELS.find((name) => name === kernelValue) ??
+    fail(
+      `screening.kernel must be one of ${JOB_ERROR_DIFFUSION_KERNELS.join(', ')} for error-diffusion (got ${describeValue(kernelValue)})`,
+    );
+  if (fields.has('serpentine')) {
+    const serpentine = fields.get('serpentine');
+    if (typeof serpentine === 'boolean') return { kind: 'error-diffusion', kernel, serpentine };
+    return fail(`screening.serpentine must be a boolean for error-diffusion (got ${describeValue(serpentine)})`);
+  }
+  return { kind: 'error-diffusion', kernel };
+}
+
 function readScreening(value: unknown): JobScreeningInput {
   const fields = readFields('screening', value);
   const kindValue = fields.get('kind');
@@ -130,6 +150,7 @@ function readScreening(value: unknown): JobScreeningInput {
     JOB_SCREENING_KINDS.find((k) => k === kindValue) ??
     fail(`screening.kind must be one of ${JOB_SCREENING_KINDS.join(', ')} (got ${describeValue(kindValue)})`);
   rejectUnknownFields(`screening (${kind})`, fields, JOB_SCREENING_FIELDS[kind]);
+  if (kind === 'error-diffusion') return readErrorDiffusion(fields);
   const sizeValue = fields.get('size');
   if (kind === 'bayer') {
     const size =
@@ -239,7 +260,8 @@ function planeCurveLuts(curves: JobPlaneCurvesInput): PlaneCurveLuts {
 /**
  * Spec 041b: maps a job's screening (spec 039b) and ink-limit (spec 040b) settings to the matching
  * composeScreening options (spec 041a); spec 044c adds the plane curves (spec 044b), each built into
- * a 256-entry LUT with method monotone as monotone-cubic and linear as linear interpolation. An
+ * a 256-entry LUT with method monotone as monotone-cubic and linear as linear interpolation; spec
+ * 045c adds error-diffusion screening, mapped to composeScreening's error-diffusion option. An
  * absent or undefined setting leaves that option off and its key out of the result. A present
  * setting must match the job setting shape exactly: unknown fields, wrong types, non-integers,
  * out-of-range values and, for plane curves, an empty object, missing endpoints, inputs that do not

@@ -6,10 +6,7 @@ import {
   limitInk,
 } from '../color/ink-limit.js';
 import { MAX_PLANE_CURVE_PIXELS, type PlaneCurveLuts, applyPlaneCurves } from '../color/plane-curves.js';
-/*
- * error-diffusion.ts imports SCREEN_DOT_ON from this module. The cycle is safe because neither
- * module reads the other's bindings at evaluation time, only inside functions.
- */
+import { SCREEN_DOT_ON } from './dot.js';
 import { ERROR_DIFFUSION_KERNELS, type ErrorDiffusionKernel, applyErrorDiffusion } from './error-diffusion.js';
 import {
   BAYER_SIZES,
@@ -24,8 +21,8 @@ import {
 
 /** The pipeline runs every stage, so it accepts the smallest of their pixel caps. */
 export const MAX_SCREEN_PIPELINE_PIXELS = Math.min(MAX_INK_LIMIT_PIXELS, MAX_PLANE_CURVE_PIXELS, MAX_SCREEN_PIXELS);
-/** Plane value of a screened dot that is on. */
-export const SCREEN_DOT_ON = 255;
+/** Defined in dot.ts so error-diffusion.ts need not import this module; the media index exports it from here only. */
+export { SCREEN_DOT_ON };
 const MIN_BLUE_NOISE_SIZE = 2;
 const MAX_SEED = 0xffff_ffff;
 const ERROR_DIFFUSION_KEYS: readonly string[] = ['kind', 'kernel', 'serpentine'];

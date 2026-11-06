@@ -29,7 +29,7 @@
  * are kept, in one ring buffer padded by the kernel radius on both sides so taps need no bounds
  * checks. Every input is validated before the ring buffer or the output is allocated.
  */
-import { SCREEN_DOT_ON } from './pipeline.js';
+import { SCREEN_DOT_ON } from './dot.js';
 import { MAX_SCREEN_PIXELS } from './threshold.js';
 
 /** Corrected values at or above this are on. */
