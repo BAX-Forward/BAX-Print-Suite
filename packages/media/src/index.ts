@@ -7,6 +7,7 @@ export * from './color/tac.js';
 export * from './color/white-ink.js';
 export * from './color/white-ink-setting.js';
 export * from './color/ink-limit.js';
+export * from './color/plane-curves.js';
 export * from './screening/threshold.js';
 export * from './screening/pipeline.js';
 export * from './screening/job-adapter.js';
