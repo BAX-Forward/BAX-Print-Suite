@@ -8,8 +8,10 @@ import { InvalidArgumentError } from './errors.js';
  * The bounds duplicate the values of the media screening library; core does not import media.
  */
 
-export const SCREENING_SETTING_KINDS = ['bayer', 'blue-noise'] as const;
+export const SCREENING_SETTING_KINDS = ['bayer', 'blue-noise', 'error-diffusion'] as const;
 export const SCREENING_BAYER_SIZES = [2, 4, 8, 16] as const;
+/** Spec 045c: the error-diffusion kernels of the media screening library (spec 045a). */
+export const SCREENING_ERROR_DIFFUSION_KERNELS = ['floyd-steinberg', 'jarvis-judice-ninke'] as const;
 
 export const SCREENING_BLUE_NOISE_SIZE_MIN = 2;
 export const SCREENING_BLUE_NOISE_SIZE_MAX = 256;
@@ -18,6 +20,7 @@ export const SCREENING_SEED_MAX = 0xffff_ffff;
 
 export type ScreeningSettingKind = (typeof SCREENING_SETTING_KINDS)[number];
 export type ScreeningBayerSize = (typeof SCREENING_BAYER_SIZES)[number];
+export type ScreeningErrorDiffusionKernel = (typeof SCREENING_ERROR_DIFFUSION_KERNELS)[number];
 
 export interface BayerScreeningSetting {
   readonly kind: 'bayer';
@@ -33,11 +36,20 @@ export interface BlueNoiseScreeningSetting {
   readonly seed: number;
 }
 
-export type ScreeningSetting = BayerScreeningSetting | BlueNoiseScreeningSetting;
+/** Spec 045c: error diffusion has no tile, so no size or seed. */
+export interface ErrorDiffusionScreeningSetting {
+  readonly kind: 'error-diffusion';
+  readonly kernel: ScreeningErrorDiffusionKernel;
+  /** Optional; absent means raster order, as in the media library. Kept absent when absent. */
+  readonly serpentine?: boolean;
+}
+
+export type ScreeningSetting = BayerScreeningSetting | BlueNoiseScreeningSetting | ErrorDiffusionScreeningSetting;
 
 const SCREENING_SETTING_FIELDS: Readonly<Record<ScreeningSettingKind, readonly string[]>> = {
   bayer: ['kind', 'size'],
   'blue-noise': ['kind', 'size', 'seed'],
+  'error-diffusion': ['kind', 'kernel', 'serpentine'],
 };
 
 const MAX_ECHOED_KEY_LENGTH = 64;
@@ -80,6 +92,21 @@ function readBayerSize(value: unknown): ScreeningBayerSize {
   );
 }
 
+function readErrorDiffusion(fields: ReadonlyMap<string, unknown>): ErrorDiffusionScreeningSetting {
+  const kernelValue = fields.get('kernel');
+  const kernel =
+    SCREENING_ERROR_DIFFUSION_KERNELS.find((name) => name === kernelValue) ??
+    fail(
+      `kernel must be one of ${SCREENING_ERROR_DIFFUSION_KERNELS.join(', ')} for error-diffusion (got ${describeValue(kernelValue)})`,
+    );
+  if (fields.has('serpentine')) {
+    const serpentine = fields.get('serpentine');
+    if (typeof serpentine === 'boolean') return { kind: 'error-diffusion', kernel, serpentine };
+    return fail(`serpentine must be a boolean for error-diffusion (got ${describeValue(serpentine)})`);
+  }
+  return { kind: 'error-diffusion', kernel };
+}
+
 /**
  * Strictly parses a screening setting. `undefined` (absent) parses to `undefined`; anything else must
  * be a plain object with a valid `kind` and exactly that kind's valid fields, or this throws
@@ -95,6 +122,7 @@ export function parseScreeningSetting(value: unknown): ScreeningSetting | undefi
     fail(`unknown field "${key.slice(0, MAX_ECHOED_KEY_LENGTH)}" for ${kind}`);
   }
   if (kind === 'bayer') return { kind, size: readBayerSize(fields.get('size')) };
+  if (kind === 'error-diffusion') return readErrorDiffusion(fields);
   return {
     kind,
     size: readInteger('size', fields.get('size'), SCREENING_BLUE_NOISE_SIZE_MIN, SCREENING_BLUE_NOISE_SIZE_MAX),

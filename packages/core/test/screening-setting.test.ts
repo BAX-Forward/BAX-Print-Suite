@@ -5,6 +5,7 @@ import {
   SCREENING_BAYER_SIZES,
   SCREENING_BLUE_NOISE_SIZE_MAX,
   SCREENING_BLUE_NOISE_SIZE_MIN,
+  SCREENING_ERROR_DIFFUSION_KERNELS,
   SCREENING_SEED_MAX,
   SCREENING_SEED_MIN,
   normalizeJobScreening,
@@ -126,6 +127,83 @@ describe("parseScreeningSetting (spec 039b)", () => {
     expect(() => parseScreeningSetting({ kind: "blue-noise", size: 8, seed })).toThrow(
       /seed must be an integer in 0..4294967295/,
     );
+  });
+});
+
+describe("parseScreeningSetting: error diffusion (spec 045c)", () => {
+  it("exports the kernel list of the media library", () => {
+    expect(SCREENING_ERROR_DIFFUSION_KERNELS).toEqual(["floyd-steinberg", "jarvis-judice-ninke"]);
+  });
+
+  it.each(SCREENING_ERROR_DIFFUSION_KERNELS.map((kernel) => [kernel]))("accepts kernel %s", (kernel) => {
+    expect(parseScreeningSetting({ kind: "error-diffusion", kernel })).toStrictEqual({ kind: "error-diffusion", kernel });
+  });
+
+  it.each([true, false])("keeps serpentine %s", (serpentine) => {
+    const input = { kind: "error-diffusion", kernel: "jarvis-judice-ninke", serpentine };
+    const parsed = parseScreeningSetting(input);
+    expect(parsed).toStrictEqual(input);
+    expect(parsed).not.toBe(input);
+  });
+
+  it("does not default serpentine when it is absent", () => {
+    expect(parseScreeningSetting({ kind: "error-diffusion", kernel: "floyd-steinberg" })).not.toHaveProperty("serpentine");
+  });
+
+  it.each([
+    ["missing", undefined],
+    ["unknown", "atkinson"],
+    ["of the wrong case", "Floyd-Steinberg"],
+    ["a number", 1],
+    ["null", null],
+  ])("rejects a kernel that is %s", (_label, kernel) => {
+    expect(() => parseScreeningSetting({ kind: "error-diffusion", kernel })).toThrow(
+      /kernel must be one of floyd-steinberg, jarvis-judice-ninke for error-diffusion/,
+    );
+  });
+
+  it.each([
+    ["a string", "true"],
+    ["a number", 1],
+    ["null", null],
+    ["undefined", undefined],
+  ])("rejects a serpentine that is %s", (_label, serpentine) => {
+    expect(() => parseScreeningSetting({ kind: "error-diffusion", kernel: "floyd-steinberg", serpentine })).toThrow(
+      /serpentine must be a boolean for error-diffusion/,
+    );
+  });
+
+  it("rejects unknown fields, including a size or seed", () => {
+    const base = { kind: "error-diffusion", kernel: "floyd-steinberg" };
+    expect(() => parseScreeningSetting({ ...base, size: 4 })).toThrow(/unknown field "size" for error-diffusion/);
+    expect(() => parseScreeningSetting({ ...base, seed: 1 })).toThrow(/unknown field "seed" for error-diffusion/);
+    expect(() => parseScreeningSetting({ ...base, extra: 1 })).toThrow(/unknown field "extra" for error-diffusion/);
+  });
+
+  it("rejects error-diffusion fields on the threshold kinds", () => {
+    expect(() => parseScreeningSetting({ kind: "bayer", size: 4, kernel: "floyd-steinberg" })).toThrow(
+      /unknown field "kernel" for bayer/,
+    );
+    expect(() => parseScreeningSetting({ ...BLUE, serpentine: true })).toThrow(/unknown field "serpentine" for blue-noise/);
+  });
+});
+
+describe("stored screening values round-trip unchanged (spec 045c)", () => {
+  const STORED: readonly ScreeningSetting[] = [
+    ...SCREENING_BAYER_SIZES.map((size): ScreeningSetting => ({ kind: "bayer", size })),
+    { kind: "blue-noise", size: SCREENING_BLUE_NOISE_SIZE_MIN, seed: SCREENING_SEED_MIN },
+    { kind: "blue-noise", size: 64, seed: 42 },
+    { kind: "blue-noise", size: SCREENING_BLUE_NOISE_SIZE_MAX, seed: SCREENING_SEED_MAX },
+    { kind: "error-diffusion", kernel: "floyd-steinberg" },
+    { kind: "error-diffusion", kernel: "jarvis-judice-ninke", serpentine: false },
+    { kind: "error-diffusion", kernel: "jarvis-judice-ninke", serpentine: true },
+  ];
+
+  it.each(STORED.map((setting): [string, ScreeningSetting] => [JSON.stringify(setting), setting]))("%s", (_label, setting) => {
+    const stored: unknown = JSON.parse(JSON.stringify(setting));
+    expect(parseScreeningSetting(stored)).toStrictEqual(setting);
+    expect(JSON.stringify(parseScreeningSetting(stored))).toBe(JSON.stringify(setting));
+    expect(normalizeJobScreening({ ...BASE_JOB, screening: stored })).toStrictEqual({ ...BASE_JOB, screening: setting });
   });
 });
 
