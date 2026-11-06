@@ -1,12 +1,13 @@
 import { InvalidArgumentError } from './errors.js';
 
 /**
- * Spec 050a: the tiling a job carries. Model only: the setting names a panel grid by count and one seam
- * treatment for every seam; splitting the artwork into panels (Spec 009) happens in tile. Parsing is
- * strict: unknown fields are rejected at every level, and a missing setting means the job is not tiled.
+ * Spec 050a: the tiling a job carries. Model only: the setting names a panel grid by count, one seam
+ * treatment for every seam and, since Spec 050c, optional explicit seam positions per axis; splitting the
+ * artwork into panels (Spec 009) happens in tile. Parsing is strict: unknown fields are rejected at every
+ * level, and a missing setting means the job is not tiled.
  *
- * The shapes and bounds duplicate tile's `TileSpec` (`grid` in `count` mode, `seam`); core does not
- * import tile.
+ * The shapes and bounds duplicate tile's `TileSpec` (`grid` in `count` mode, `seam`, `seamsX`, `seamsY`);
+ * core does not import tile.
  */
 
 export const TILING_SEAM_KINDS = ['butt', 'overlap', 'gap'] as const;
@@ -19,6 +20,12 @@ export const TILING_MAX_OVERLAP_MM = 1000;
 
 /** Upper bound of `seam.gapMm`; tile itself only asks for a finite number > 0. */
 export const TILING_MAX_GAP_MM = 1000;
+
+/** Most explicit seams on one axis: one fewer than `MAX_TILING_PANELS_PER_AXIS`, as in tile's `seamsError`. */
+export const MAX_TILING_SEAMS_PER_AXIS = MAX_TILING_PANELS_PER_AXIS - 1;
+
+/** Exclusive lower bound of an explicit seam position: a seam lies inside the artwork, not on its origin edge. */
+export const TILING_MIN_SEAM_MM = 0;
 
 export type TilingSeamKind = (typeof TILING_SEAM_KINDS)[number];
 
@@ -40,9 +47,19 @@ export interface TilingSetting {
   readonly grid: TilingGrid;
   /** Without `seam`, tile uses its default seam (an overlap of 25 mm). */
   readonly seam?: TilingSeam;
+  /**
+   * Spec 050c: explicit vertical seam positions, as tile's `TileSpec.seamsX` (Spec 009 FR1): mm from the
+   * artwork's left edge, left to right, `grid.columns - 1` of them. Without it the seams are uniform.
+   */
+  readonly seamsX?: readonly number[];
+  /**
+   * Spec 050c: explicit horizontal seam positions, as tile's `TileSpec.seamsY` (Spec 009 FR1): mm from the
+   * artwork's bottom edge, bottom to top, `grid.rows - 1` of them. Without it the seams are uniform.
+   */
+  readonly seamsY?: readonly number[];
 }
 
-const TILING_FIELDS: readonly string[] = ['grid', 'seam'];
+const TILING_FIELDS: readonly string[] = ['grid', 'seam', 'seamsX', 'seamsY'];
 const TILING_GRID_FIELDS: readonly string[] = ['columns', 'rows'];
 const TILING_SEAM_FIELDS: Readonly<Record<TilingSeamKind, readonly string[]>> = {
   butt: ['kind'],
@@ -122,10 +139,47 @@ function readSeam(value: unknown): TilingSeam {
   return { kind, overlapMm: readLength('seam.overlapMm', fields.get('overlapMm'), TILING_MAX_OVERLAP_MM, false) };
 }
 
+function readArray(path: string, value: unknown): readonly unknown[] {
+  if (Array.isArray(value)) return value;
+  return fail(`${path} must be an array of numbers (got ${describeValue(value)})`);
+}
+
+/** Finite positions, each above the one before it; the first above `TILING_MIN_SEAM_MM`. */
+function readPositions(path: string, list: readonly unknown[]): readonly number[] {
+  const seams: number[] = [];
+  for (const [index, entry] of list.entries()) {
+    const previous = seams.at(-1);
+    const floor = previous ?? TILING_MIN_SEAM_MM;
+    if (typeof entry === 'number' && Number.isFinite(entry) && entry > floor) {
+      seams.push(entry);
+      continue;
+    }
+    const low =
+      previous === undefined
+        ? `greater than ${String(floor)}`
+        : `greater than ${path}[${String(index - 1)}] (${String(floor)})`;
+    fail(`${path}[${String(index)}] must be a finite number ${low} (got ${describeValue(entry)})`);
+  }
+  return seams;
+}
+
+/**
+ * Explicit seams on one axis: exactly `panels - 1` positions in mm from the artwork origin, strictly
+ * increasing and above 0. The setting names no artwork, so the upper bound (below the artwork's width or
+ * height) is checked later, when tile splits the page (`seamsError` in packages/tile/src/axis.ts).
+ */
+function readSeams(path: string, value: unknown, panels: number, countPath: string): readonly number[] {
+  const list = readArray(path, value);
+  const expected = panels - 1;
+  if (list.length === expected) return readPositions(path, list);
+  return fail(`${path} must hold ${countPath} - 1 = ${String(expected)} seams (got ${String(list.length)})`);
+}
+
 /**
  * Strictly parses a tiling setting. `undefined` (absent) parses to `undefined`; anything else must be a
- * plain object with a `grid` and an optional `seam`, or this throws InvalidArgumentError. Unknown fields
- * are rejected at every level, including the field of the other seam kind (`gapMm` on an overlap seam).
+ * plain object with a `grid`, an optional `seam` and optional `seamsX` and `seamsY` (Spec 050c), or this
+ * throws InvalidArgumentError. Unknown fields are rejected at every level, including the field of the other
+ * seam kind (`gapMm` on an overlap seam).
  *
  * An empty object `{}` is rejected: it names no grid, and the model keeps one spelling ("absent") for "not
  * tiled". A field that is present must hold a value; `{ grid, seam: undefined }` is rejected too.
@@ -135,7 +189,15 @@ export function parseTilingSetting(value: unknown): TilingSetting | undefined {
   const fields = readFields('', value, TILING_FIELDS);
   if (fields.size === 0) fail('must name a grid (got an empty object)');
   const grid = readGrid(fields.get('grid'));
-  return fields.has('seam') ? { grid, seam: readSeam(fields.get('seam')) } : { grid };
+  // Keys keep the order grid, seam, seamsX, seamsY, so a setting without seams serializes as before 050c.
+  const seam = fields.has('seam') ? { seam: readSeam(fields.get('seam')) } : {};
+  const seamsX = fields.has('seamsX')
+    ? { seamsX: readSeams('seamsX', fields.get('seamsX'), grid.columns, 'grid.columns') }
+    : {};
+  const seamsY = fields.has('seamsY')
+    ? { seamsY: readSeams('seamsY', fields.get('seamsY'), grid.rows, 'grid.rows') }
+    : {};
+  return { grid, ...seam, ...seamsX, ...seamsY };
 }
 
 /** Lenient read of a stored job's `tiling`: an invalid value reads as absent (`undefined`). */

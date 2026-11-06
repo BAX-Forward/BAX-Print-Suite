@@ -3,11 +3,13 @@ import { InvalidArgumentError } from "../src/errors.js";
 import type { Job } from "../src/job.js";
 import {
   MAX_TILING_PANELS_PER_AXIS,
+  MAX_TILING_SEAMS_PER_AXIS,
   normalizeJobTiling,
   parseTilingSetting,
   readJobTiling,
   TILING_MAX_GAP_MM,
   TILING_MAX_OVERLAP_MM,
+  TILING_MIN_SEAM_MM,
   TILING_SEAM_KINDS,
   type TilingSetting,
 } from "../src/index.js";
@@ -94,7 +96,7 @@ describe("parseTilingSetting (spec 050a)", () => {
 
   it.each<[string, unknown, string]>([
     ["an unknown top-level field", { ...TILED, bleedMm: 3 }, 'tiling: unknown field "bleedMm"'],
-    ["tile's seamsX", { ...TILED, seamsX: [100] }, 'tiling: unknown field "seamsX"'],
+    ["tile's seamTreatmentsX", { ...TILED, seamTreatmentsX: [] }, 'tiling: unknown field "seamTreatmentsX"'],
     ["tile's naming", { ...TILED, naming: { rows: "letters" } }, 'tiling: unknown field "naming"'],
     ["tile's grid mode", { grid: { ...GRID, mode: "count" } }, 'unknown field "mode" in grid'],
     ["a size grid", { grid: { maxWidthMm: 1000 } }, 'unknown field "maxWidthMm" in grid'],
@@ -242,5 +244,112 @@ describe("job read path for tiling (spec 050a)", () => {
     const job: Job = { ...BASE_JOB, tiling: { grid: GRID, seam: { kind: "gap", gapMm: 10 } } };
     const restored: unknown = JSON.parse(JSON.stringify(job));
     expect(restored).toEqual(job);
+  });
+});
+
+/** GRID is 3 × 2: two vertical seams, one horizontal. */
+const SEAMS_X = [800, 2100.5];
+const SEAMS_Y = [950];
+
+describe("explicit seam positions (spec 050c)", () => {
+  it("exports the seam bounds", () => {
+    expect(MAX_TILING_SEAMS_PER_AXIS).toBe(499);
+    expect(TILING_MIN_SEAM_MM).toBe(0);
+  });
+
+  it.each<[string, unknown]>([
+    ["seamsX alone", { grid: GRID, seamsX: SEAMS_X }],
+    ["seamsY alone", { grid: GRID, seamsY: SEAMS_Y }],
+    ["both axes with a seam", { grid: GRID, seam: { kind: "butt" }, seamsX: SEAMS_X, seamsY: SEAMS_Y }],
+    ["a tiny first seam", { grid: GRID, seamsX: [Number.MIN_VALUE, 1] }],
+    ["empty lists on a 1 × 1 grid", { grid: { columns: 1, rows: 1 }, seamsX: [], seamsY: [] }],
+    [
+      "the most seams",
+      { grid: { columns: 500, rows: 1 }, seamsX: Array.from({ length: 499 }, (_, i) => (i + 1) * 10) },
+    ],
+  ])("accepts %s", (_label, value) => {
+    expect(parseTilingSetting(value)).toEqual(value);
+  });
+
+  it("returns new seam arrays", () => {
+    const input = { grid: GRID, seamsX: [...SEAMS_X], seamsY: [...SEAMS_Y] };
+    const parsed = parseTilingSetting(input);
+    expect(parsed?.seamsX).toEqual(SEAMS_X);
+    expect(parsed?.seamsX).not.toBe(input.seamsX);
+    expect(parsed?.seamsY).not.toBe(input.seamsY);
+  });
+
+  it("orders the keys grid, seam, seamsX, seamsY", () => {
+    const parsed = parseTilingSetting({ seamsY: SEAMS_Y, seamsX: SEAMS_X, seam: { kind: "butt" }, grid: GRID });
+    expect(Object.keys(parsed ?? {})).toEqual(["grid", "seam", "seamsX", "seamsY"]);
+  });
+
+  it.each<[string, unknown, string]>([
+    ["too few x seams", { grid: GRID, seamsX: [800] }, "tiling: seamsX must hold grid.columns - 1 = 2 seams (got 1)"],
+    ["too many x seams", { grid: GRID, seamsX: [1, 2, 3] }, "tiling: seamsX must hold grid.columns - 1 = 2 seams (got 3)"],
+    ["too many y seams", { grid: GRID, seamsY: [1, 2] }, "tiling: seamsY must hold grid.rows - 1 = 1 seams (got 2)"],
+    ["no y seams", { grid: GRID, seamsY: [] }, "tiling: seamsY must hold grid.rows - 1 = 1 seams (got 0)"],
+    ["a seam on a 1-column grid", { grid: { columns: 1, rows: 1 }, seamsX: [5] }, "seamsX must hold grid.columns - 1 = 0 seams"],
+    ["equal seams", { grid: GRID, seamsX: [800, 800] }, "tiling: seamsX[1] must be a finite number greater than seamsX[0] (800)"],
+    ["decreasing seams", { grid: GRID, seamsX: [900, 800] }, "seamsX[1] must be a finite number greater than seamsX[0] (900) (got 800)"],
+    ["a zero seam", { grid: GRID, seamsY: [0] }, "tiling: seamsY[0] must be a finite number greater than 0 (got 0)"],
+    ["a negative zero seam", { grid: GRID, seamsY: [-0] }, "tiling: seamsY[0] must be a finite number greater than 0"],
+    ["a negative seam", { grid: GRID, seamsX: [-5, 10] }, "tiling: seamsX[0] must be a finite number greater than 0 (got -5)"],
+    ["a NaN seam", { grid: GRID, seamsX: [800, Number.NaN] }, "tiling: seamsX[1] must be a finite number"],
+    ["an infinite seam", { grid: GRID, seamsX: [800, Number.POSITIVE_INFINITY] }, "seamsX[1] must be a finite number"],
+    ["a string seam", { grid: GRID, seamsY: ["950"] }, "tiling: seamsY[0] must be a finite number greater than 0 (got string)"],
+    ["a null seam", { grid: GRID, seamsY: [null] }, "seamsY[0] must be a finite number greater than 0 (got null)"],
+    ["a hole", { grid: GRID, seamsY: new Array<number>(1) }, "seamsY[0] must be a finite number greater than 0 (got undefined)"],
+    ["a string list", { grid: GRID, seamsX: "800,2100" }, "tiling: seamsX must be an array of numbers (got string)"],
+    ["an object list", { grid: GRID, seamsX: { 0: 800, 1: 2100 } }, "tiling: seamsX must be an array of numbers (got object)"],
+    ["a null list", { grid: GRID, seamsY: null }, "tiling: seamsY must be an array of numbers (got null)"],
+    ["an undefined list", { grid: GRID, seamsY: undefined }, "tiling: seamsY must be an array of numbers (got undefined)"],
+    ["a number list", { grid: GRID, seamsY: 950 }, "tiling: seamsY must be an array of numbers (got 950)"],
+    ["a differently cased field", { grid: GRID, SeamsX: SEAMS_X }, 'tiling: unknown field "SeamsX"'],
+    ["seams inside the grid", { grid: { ...GRID, seamsX: SEAMS_X } }, 'unknown field "seamsX" in grid'],
+  ])("rejects %s", (_label, value, message) => {
+    expect(() => parseTilingSetting(value)).toThrow(message);
+    expect(() => parseTilingSetting(value)).toThrow(InvalidArgumentError);
+  });
+
+  it("keeps valid seams on the job read path", () => {
+    const setting: TilingSetting = { grid: GRID, seam: { kind: "overlap", overlapMm: 20 }, seamsX: SEAMS_X, seamsY: SEAMS_Y };
+    expect(normalizeJobTiling({ ...BASE_JOB, tiling: { ...setting } })).toEqual({ ...BASE_JOB, tiling: setting });
+    expect(readJobTiling(setting)).toEqual(setting);
+  });
+
+  it.each<[string, unknown]>([
+    ["a count mismatch", { grid: GRID, seamsX: [800] }],
+    ["non-increasing seams", { grid: GRID, seamsX: [800, 800] }],
+    ["a NaN seam", { grid: GRID, seamsY: [Number.NaN] }],
+    ["a negative seam", { grid: GRID, seamsY: [-1] }],
+    ["a string list", { grid: GRID, seamsY: "950" }],
+  ])("drops a tiling with %s exactly as other invalid tilings", (_label, tiling) => {
+    const read = normalizeJobTiling({ ...BASE_JOB, tiling });
+    expect(read).not.toHaveProperty("tiling");
+    expect(read).toEqual(BASE_JOB);
+    expect(JSON.stringify(read)).toBe(JSON.stringify(BASE_JOB));
+  });
+
+  it("survives a JSON round trip on a Job", () => {
+    const job: Job = { ...BASE_JOB, tiling: { grid: GRID, seam: { kind: "gap", gapMm: 10 }, seamsX: SEAMS_X, seamsY: SEAMS_Y } };
+    const restored: unknown = JSON.parse(JSON.stringify(job));
+    expect(restored).toEqual(job);
+    expect(normalizeJobTiling(job)).toEqual(job);
+    expect(JSON.stringify(normalizeJobTiling(job))).toBe(JSON.stringify(job));
+  });
+
+  it.each<[string, TilingSetting]>([
+    ["a grid alone", { grid: GRID }],
+    ["a grid and a seam", { grid: GRID, seam: { kind: "overlap", overlapMm: 30 } }],
+  ])("leaves %s without seams byte-identical", (_label, tiling) => {
+    const job: Job = { ...BASE_JOB, tiling };
+    const read = normalizeJobTiling(job);
+    expect(JSON.stringify(read)).toBe(JSON.stringify(job));
+    expect(read).toStrictEqual(job);
+    const parsed = parseTilingSetting(tiling);
+    expect(parsed).not.toHaveProperty("seamsX");
+    expect(parsed).not.toHaveProperty("seamsY");
+    expect(JSON.stringify(parsed)).toBe(JSON.stringify(tiling));
   });
 });
