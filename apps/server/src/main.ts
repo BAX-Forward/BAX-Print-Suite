@@ -22,6 +22,7 @@ import { configureRollCut } from './roll-cut-config.js';
 import { startArchiveScheduler } from './scheduler.js';
 import { configureLogin, parseSessionConfig } from './session-config.js';
 import { MemoryFindingsStore, MemoryProfileStore } from './stores.js';
+import { loadHttpsOptions } from './tls.js';
 import { openWebhookPersistence } from './webhook-persistence.js';
 import { ALLOW_LAN_TARGETS_ENV, parseAllowLanTargets } from './webhook-routes.js';
 
@@ -34,6 +35,8 @@ const archiveAfter = process.env.BPS_ARCHIVE_AFTER;
 const retention = process.env.BPS_TRASH_RETENTION;
 const blobsDir = join(dataDir, 'blobs');
 const allowLanTargets = parseAllowLanTargets(process.env[ALLOW_LAN_TARGETS_ENV]);
+// Spec 029d: BPS_TLS_CERT with BPS_TLS_KEY serves HTTPS; a lone one or an unreadable file stops startup.
+const https = loadHttpsOptions(process.env);
 // Spec 019c: a SQLite job database (BPS_DATABASE) keeps webhook subscriptions across restarts.
 // Spec 019d: the file is mode 0600 and secrets are sealed when a secrets key is configured.
 const { store: webhookStore, database, warnings: persistenceWarnings } = openWebhookPersistence(process.env);
@@ -107,6 +110,7 @@ const serverDeps: ServerDeps = {
   ...(apiTokens ? { apiTokens: apiTokens.apiTokens, authenticate: apiTokens.authenticate } : {}),
   ...login,
   logger: true,
+  ...(https === undefined ? {} : { https }),
 };
 const app = buildServer(serverDeps);
 const scheduler = startArchiveScheduler(archive, { onError: (error) => app.log.error(error) });
@@ -131,4 +135,9 @@ app.log.warn(
     ? 'job rows, archive index, history, findings, profiles and media are kept in memory in this build'
     : 'job rows, archive index, history, findings, profiles, media and webhook subscriptions are kept in memory in this build (set BPS_DATABASE to persist webhook subscriptions)',
 );
+if (https === undefined) {
+  app.log.info('TLS is off: serving plain HTTP (set BPS_TLS_CERT and BPS_TLS_KEY to serve HTTPS)');
+} else {
+  app.log.info(`TLS is on: serving HTTPS with minimum version ${https.minVersion}`);
+}
 await app.listen({ host, port });

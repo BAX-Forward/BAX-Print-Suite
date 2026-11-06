@@ -26,6 +26,7 @@ export * from './state-machine.js';
 export * from './status.js';
 export * from './ticket.js';
 export * from './time.js';
+export * from './tls-config.js';
 export * from './types.js';
 export * from './ulid.js';
 export * from './spot-name.js';

@@ -18,6 +18,7 @@ import { registerProofRoutes, type ProofRouteOptions } from './proof-routes.js';
 import { guardRoutes, LOCAL_ADMIN } from './route-permissions.js';
 import { registerErrorHandler, registerPreflightRoutes, type RouteDeps } from './routes.js';
 import { registerStepRepeatRoutes, type StepRepeatRouteOptions } from './step-repeat-routes.js';
+import { httpsServerFactory, type HttpsOptions } from './tls.js';
 import { registerWebhookRoutes, type WebhookOptions } from './webhook-routes.js';
 
 export const DEFAULT_IMPORT_BODY_LIMIT = 1024 ** 3;
@@ -79,6 +80,8 @@ export interface ServerDeps {
   readonly authenticate?: (request: FastifyRequest) => Actor | Promise<Actor>;
   readonly importBodyLimit?: number;
   readonly logger?: boolean;
+  /** Spec 029d: serve over HTTPS with these options (see `loadHttpsOptions`); without them the server speaks plain HTTP. */
+  readonly https?: HttpsOptions;
 }
 
 const LOOPBACK_IPV4 = /^127(\.\d{1,3}){3}$/;
@@ -105,7 +108,10 @@ export function localAdminWarning(deps: Pick<ServerDeps, 'authenticate'>, host: 
  * and every route but the OpenAPI document checks its permission first (Spec 024b).
  */
 export function buildServer(deps: ServerDeps): FastifyInstance {
-  const app = Fastify({ logger: deps.logger ?? false });
+  const app = Fastify({
+    logger: deps.logger ?? false,
+    ...(deps.https === undefined ? {} : { serverFactory: httpsServerFactory(deps.https) }),
+  });
   const authenticate = deps.authenticate ?? ((): Actor => LOCAL_ADMIN);
   // Spec 028c: the guard resolves the actor once, so handlers read it synchronously.
   const actors = new WeakMap<FastifyRequest, Actor>();
