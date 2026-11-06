@@ -296,6 +296,37 @@ describe('POST /jobs/:id/impose (Spec 036e)', () => {
     expect(response.json()).toEqual({ error: { code: 'invalid_imposition_input', message: 'planBooklet: pageCount must be at least 1, got 0' } });
   });
 
+  it.each([
+    ['n-up', { kind: 'n-up', options: N_UP_2X3 }, 12],
+    ['booklet', { kind: 'booklet', options: BOOKLET_8 }, 8],
+  ] as const)('answers 422 tiling_unsupported for a tiled job on a %s, and imposes it again once cleared (Spec 050b)', async (kind, body, pages) => {
+    const h = await createHarness();
+    const jobId = await createJob(h, await sourcePdf(pages));
+    const job = await h.repository.get(jobId);
+    if (job === undefined) throw new Error('job was not stored');
+    const before = await impose(h, jobId, body);
+    await h.repository.save({ ...job, tiling: { grid: { columns: 3, rows: 2 }, seam: { kind: 'butt' } } });
+
+    const tiled = await impose(h, jobId, body);
+    await h.repository.save(job);
+    const cleared = await impose(h, jobId, body);
+
+    expect(tiled.statusCode).toBe(422);
+    expect(tiled.json()).toEqual({
+      error: {
+        code: 'tiling_unsupported',
+        message: `Job ${jobId} is tiled; ${kind} imposition can not lay out tiling panels`,
+        details: [`${kind} imposition lays out the whole source page; clear the job's tiling (DELETE /jobs/${jobId}/tiling) to use it`],
+      },
+    });
+    expect(cleared.statusCode).toBe(200);
+    expect(cleared.headers['content-type']).toBe('application/pdf');
+    // The untiled answer keeps its sheets: the same pages with the same MediaBoxes as before tiling was set.
+    const sheetsOf = async (payload: Buffer) => (await PDFDocument.load(payload)).getPages().map((page) => page.getMediaBox());
+    expect(before.statusCode).toBe(200);
+    expect(await sheetsOf(cleared.rawPayload)).toEqual(await sheetsOf(before.rawPayload));
+  });
+
   it('allows a viewer, whose role holds jobs:read', async () => {
     const h = await createHarness({ actor: VIEWER });
     const jobId = await createJob(h, await sourcePdf(8));

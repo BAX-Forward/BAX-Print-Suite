@@ -110,6 +110,14 @@ export const planeCurvesInvalid = (message: string): HttpError => new HttpError(
 /** Spec 050a: the body of `PUT /jobs/:id/tiling` is not a tiling setting core `parseTilingSetting` accepts. */
 export const tilingInvalid = (message: string): HttpError => new HttpError(400, "invalid_tiling", message);
 
+/**
+ * Spec 050b: the job's tiling setting can not be applied: tile rejects it for the job's page, the job or
+ * its source has a shape tiling does not take, or the route lays out the job some other way. `details`
+ * are the issues, e.g. tile's issue messages.
+ */
+export const tilingUnsupported = (message: string, details: readonly string[]): HttpError =>
+  new HttpError(422, "tiling_unsupported", message, details);
+
 /** Spec 043a: the body of `POST /jobs/:id/screen-preview` is not a valid set of CMYK planes. */
 export const screenPreviewInvalid = (message: string): HttpError => new HttpError(400, "invalid_screen_preview", message);
 

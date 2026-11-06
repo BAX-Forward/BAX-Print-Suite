@@ -23,6 +23,7 @@ import {
 } from '@bax-print/nest';
 import { sanitizeKeySegment } from '@bax-print/store';
 import { conflict, HttpError, invalid, jobSourceNotPdf, notFound, sourcePdfTooLarge } from './errors.js';
+import { rejectTiledJob } from './job-tiling.js';
 import { doc } from './openapi.js';
 import { readSource } from './pdf-cut-extractor.js';
 import type { ProofRouteDeps } from './proof-routes.js';
@@ -253,7 +254,7 @@ function registerImposeRoute(app: FastifyInstance, deps: ProofRouteDeps): void {
           404: "Unknown job, or a job outside the caller's sites (the same answer)",
           409: 'The job has no source file (`conflict`) or its source is a raster or vector file (`job_source_not_pdf`)',
           413: `The body is larger than ${IMPOSE_BODY_LIMIT} bytes (\`invalid_request\`) or the stored source PDF is larger than ${MAX_SOURCE_PDF_BYTES} bytes (\`source_pdf_too_large\`)`,
-          422: `The source PDF is encrypted (\`source_pdf_encrypted\`), unreadable (\`source_pdf_invalid\`) or has more than ${MAX_SOURCE_PAGES} pages (\`source_pdf_too_many_pages\`), or the plan has more than ${MAX_PROOF_SIDES} sheet sides (\`imposition_too_many_sides\`)`,
+          422: `The source PDF is encrypted (\`source_pdf_encrypted\`), unreadable (\`source_pdf_invalid\`) or has more than ${MAX_SOURCE_PAGES} pages (\`source_pdf_too_many_pages\`), or the plan has more than ${MAX_PROOF_SIDES} sheet sides (\`imposition_too_many_sides\`), or the job has a tiling setting (\`tiling_unsupported\`)`,
         },
       }),
     },
@@ -263,6 +264,8 @@ function registerImposeRoute(app: FastifyInstance, deps: ProofRouteDeps): void {
       const job = await deps.jobs.get(id);
       if (job === undefined) throw notFound('Job', id);
       const impose = parseImposeRequest(request.body);
+      // Spec 050b: n-up and booklet place whole source pages, so they can not take tiling panels.
+      rejectTiledJob(job, impose.kind === 'n-up' ? 'n-up imposition' : 'booklet imposition');
       // Planned before the source is read, so a rejected plan costs no read.
       const plan = planOf(impose);
       const sourcePdf = await readSourcePdf(job, deps.blobPath);
