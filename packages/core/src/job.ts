@@ -1,4 +1,5 @@
 import type { Hold } from './hold.js';
+import type { ScreeningSetting } from './screening-setting.js';
 import type { SourceFormat } from './source-format.js';
 import type { JobStatus } from './status.js';
 import type { JobTicket } from './ticket.js';
@@ -64,4 +65,6 @@ export interface Job {
   readonly hold?: Hold;
   /** Spec 038b: requested white ink layer; absent means white ink is off. */
   readonly whiteInk?: WhiteInkSetting;
+  /** Spec 039b: requested screening threshold array; absent means no screening is requested. */
+  readonly screening?: ScreeningSetting;
 }

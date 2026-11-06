@@ -286,6 +286,41 @@ describe('PgJobRepository', () => {
     },
   );
 
+  it('round-trips a valid screening, keeps whiteInk, and leaves an absent one absent (spec 039b)', async () => {
+    const repo = new PgJobRepository(new FakeDbPort());
+    const bayer = job({ id: 'bayer', screening: { kind: 'bayer', size: 2 } });
+    const blue = job({
+      id: 'blue',
+      whiteInk: { mode: 'choke', chokePx: 2 },
+      screening: { kind: 'blue-noise', size: 2, seed: 0 },
+    });
+    await repo.save(bayer);
+    await repo.save(blue);
+    await repo.save(job({ id: 'plain' }));
+
+    expect(await repo.get('bayer')).toStrictEqual(bayer);
+    expect(await repo.get('blue')).toStrictEqual(blue);
+    const plain = await repo.get('plain');
+    expect(plain).toStrictEqual(job({ id: 'plain' }));
+    expect(plain !== undefined && 'screening' in plain).toBe(false);
+  });
+
+  it.each<unknown>([
+    'yes',
+    { kind: 'x' },
+    { kind: 'bayer', size: 3 },
+    { kind: 'blue-noise', size: 300, seed: 1 },
+    { kind: 'blue-noise', size: 64, seed: 1, extra: 1 },
+  ])('reads a stored invalid screening %j back with no screening (spec 039b)', async (screening) => {
+    const port = new FakeDbPort();
+    const repo = new PgJobRepository(port);
+    const expected = job({ whiteInk: { mode: 'flood' } });
+    port.rows.set('job-1', storedRow({ id: 'job-1', doc: JSON.stringify({ ...expected, screening }) }));
+
+    expect(await repo.get('job-1')).toStrictEqual(expected);
+    expect(await repo.list()).toStrictEqual([expected]);
+  });
+
   it('rolls back writes made inside a port transaction that throws', async () => {
     const port = new FakeDbPort();
     const repo = new PgJobRepository(port);

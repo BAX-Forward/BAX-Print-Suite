@@ -30,6 +30,13 @@ function storedWith(whiteInk: unknown): Job {
   return Object.assign(job(), doc);
 }
 
+/** A job document whose `screening` is not a setting (spec 039b). */
+function storedWithScreening(screening: unknown): Job {
+  const doc: unknown = JSON.parse(JSON.stringify({ ...job(), screening }));
+  if (typeof doc === 'object' && doc !== null && 'id' in doc) return Object.assign(job(), doc);
+  throw new TypeError('not a job document');
+}
+
 describe('MemoryJobRepository whiteInk (spec 038c)', () => {
   it('round-trips a valid setting and leaves an absent one absent', async () => {
     const repo = new MemoryJobRepository();
@@ -53,4 +60,39 @@ describe('MemoryJobRepository whiteInk (spec 038c)', () => {
       expect(await repo.list()).toStrictEqual([job()]);
     },
   );
+});
+
+describe('MemoryJobRepository screening (spec 039b)', () => {
+  it('round-trips valid settings, keeps whiteInk, and leaves an absent one absent', async () => {
+    const repo = new MemoryJobRepository();
+    const bayer = job({ id: 'bayer', screening: { kind: 'bayer', size: 16 } });
+    const blue = job({
+      id: 'blue',
+      whiteInk: { mode: 'flood', density: 100 },
+      screening: { kind: 'blue-noise', size: 128, seed: 7 },
+    });
+    await repo.save(bayer);
+    await repo.save(blue);
+    await repo.save(job({ id: 'plain' }));
+
+    expect(await repo.get('bayer')).toStrictEqual(bayer);
+    expect(await repo.get('blue')).toStrictEqual(blue);
+    const plain = await repo.get('plain');
+    expect(plain).toStrictEqual(job({ id: 'plain' }));
+    expect(plain !== undefined && 'screening' in plain).toBe(false);
+  });
+
+  it.each<unknown>([
+    'yes',
+    { kind: 'x' },
+    { kind: 'bayer', size: 3 },
+    { kind: 'blue-noise', size: 300, seed: 1 },
+    { kind: 'bayer', size: 4, extra: 1 },
+  ])('reads a stored invalid screening %j back with no screening', async (screening) => {
+    const repo = new MemoryJobRepository();
+    await repo.save(storedWithScreening(screening));
+
+    expect(await repo.get('job-1')).toStrictEqual(job());
+    expect(await repo.list()).toStrictEqual([job()]);
+  });
 });

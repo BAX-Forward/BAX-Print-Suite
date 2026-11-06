@@ -7,6 +7,7 @@ import {
   markRestored,
   markTrashed,
   markUntrashed,
+  normalizeJobScreening,
   normalizeJobWhiteInk,
   requireRole,
   SYSTEM_ACTOR,
@@ -342,7 +343,8 @@ export class ArchiveService {
     const id = this.newId();
     const at = this.now();
     // Spec 038d: job.json may come from another installation; an invalid whiteInk is dropped (white ink off).
-    const job: Job = normalizeJobWhiteInk<Job>({
+    // Spec 039b: an invalid screening is dropped the same way (no screening requested).
+    const job: Job = normalizeJobScreening<Job>(normalizeJobWhiteInk<Job>({
       ...origin,
       id,
       deviceId,
@@ -357,7 +359,7 @@ export class ArchiveService {
       trashedAt: undefined,
       legalHold: false,
       reprintOf: undefined,
-    });
+    }));
 
     const packed = pack({
       job,
