@@ -4,6 +4,7 @@ import { InvalidArgumentError, type Actor } from '@bax-print/core';
 import { toJsonl } from '@bax-print/events';
 import { sanitizeKeySegment, type LayoutTemplateRepository } from '@bax-print/store';
 import { registerAccountingRoutes, type AccountingRouteOptions } from './accounting-routes.js';
+import { registerApiTokenRoutes, type ApiTokenRouteOptions } from './api-token-routes.js';
 import { registerCutRoutes, type CutExtractor, type CutJobLookup } from './cut-routes.js';
 import { registerFinishingRoutes, type FinishingRouteOptions } from './finishing-routes.js';
 import { registerLayoutTemplateRoutes } from './layout-template-routes.js';
@@ -54,6 +55,11 @@ export interface ServerDeps {
    * when `reports` provides the device accounting reports; any job repository satisfies `jobs`.
    */
   readonly accounting?: AccountingRouteOptions;
+  /**
+   * Mounts the Spec 029c `/api-tokens` routes; the store package's `SqliteApiTokenRepository` satisfies
+   * `tokens`. Pair it with `createBearerTokenVerifier` in `authenticate` so the tokens are accepted.
+   */
+  readonly apiTokens?: ApiTokenRouteOptions;
   /** `info.version` of the OpenAPI document. */
   readonly version?: string;
   /**
@@ -158,6 +164,10 @@ export function buildServer(deps: ServerDeps): FastifyInstance {
 
   if (deps.accounting) {
     registerAccountingRoutes(app, deps.accounting);
+  }
+
+  if (deps.apiTokens) {
+    registerApiTokenRoutes(app, { ...deps.apiTokens, authenticate: actorOf });
   }
 
   app.get('/archive', async (request) => archive.search(parseSearchQuery(request.query as Record<string, unknown>)));

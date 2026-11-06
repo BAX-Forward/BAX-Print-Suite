@@ -6,10 +6,12 @@ import {
   LocalDirStorage,
   MemoryArchiveIndex,
   MemoryJobRepository,
+  SqliteApiTokenRepository,
   SqliteFinishingPlanRepository,
   SqliteLayoutTemplateRepository,
 } from '@bax-print/store';
-import { buildServer, localAdminWarning, type ServerDeps } from './app.js';
+import { configureApiTokens } from './api-token-config.js';
+import { buildServer, isLoopbackHost, localAdminWarning, type ServerDeps } from './app.js';
 import { JobService } from './jobs.js';
 import { MediaService } from './media-service.js';
 import { memoryMediaStores } from './media-stores.js';
@@ -69,8 +71,10 @@ const preflight = new PreflightService({
 // Spec 003y: with BPS_ROLL_CUT on, a stepped-and-repeated job's cut job is planned on the roll.
 const rollCut = configureRollCut(process.env, createPdfCutExtractor({ blobPath, cut: { spotNames: ['CutContour'] } }));
 const media = new MediaService({ stores: memoryMediaStores(), bus, jobs: jobRepository });
+// Spec 029c: bearer API tokens only with BPS_DATABASE and BPS_API_TOKENS=1; an invalid flag stops startup.
+const apiTokens = configureApiTokens(process.env, database ? new SqliteApiTokenRepository(database) : undefined).enabled;
 
-// No `authenticate`: every caller is the local admin, which is safe on loopback only (Spec 024b).
+// Without API tokens there is no `authenticate`: every caller is the local admin, which is safe on loopback only (Spec 024b).
 const serverDeps: ServerDeps = {
   archive,
   preflight: { preflight, profiles, registry },
@@ -91,6 +95,7 @@ const serverDeps: ServerDeps = {
   // Spec 017d: the accounting ID is kept on the job rows above, so it needs no BPS_DATABASE. Device
   // accounting reports are only published as history events, so `GET /reports/accounting` is not mounted.
   accounting: { jobs: jobRepository },
+  ...(apiTokens ? { apiTokens: apiTokens.apiTokens, authenticate: apiTokens.authenticate } : {}),
   logger: true,
 };
 const app = buildServer(serverDeps);
@@ -108,6 +113,9 @@ for (const warning of persistenceWarnings) {
 }
 const localAdmin = localAdminWarning(serverDeps, host);
 if (localAdmin !== undefined) app.log.warn(localAdmin);
+if (apiTokens?.fallback === 'local-admin' && !isLoopbackHost(host)) {
+  app.log.warn(`BPS_HOST ${host} is not a loopback address: callers without an API token are treated as the local admin (set BPS_AUTH_FALLBACK=deny)`);
+}
 app.log.warn(
   database
     ? 'job rows, archive index, history, findings, profiles and media are kept in memory in this build'

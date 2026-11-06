@@ -1,5 +1,12 @@
 import type { FastifyInstance, FastifyRequest } from 'fastify';
-import { requirePermission, type Actor, type Permission, type PermissionRole } from '@bax-print/core';
+import {
+  effectivePermissions,
+  ForbiddenError,
+  requirePermission,
+  type Actor,
+  type Permission,
+  type PermissionRole,
+} from '@bax-print/core';
 import { HttpError } from './errors.js';
 
 /**
@@ -53,6 +60,10 @@ export const ROUTE_PERMISSIONS: Readonly<Record<RouteKey, Permission>> = Object.
   'GET /webhooks': 'webhooks:read',
   'DELETE /webhooks/:id': 'webhooks:delete',
   'GET /webhooks/:id/deliveries': 'webhooks:read',
+  // Spec 029c API tokens. Core has no token permission, so they reuse the admin-only webhook permissions.
+  'POST /api-tokens': 'webhooks:write',
+  'GET /api-tokens': 'webhooks:read',
+  'DELETE /api-tokens/:id': 'webhooks:delete',
   // Spec 007g cut jobs, 003u step and repeat, 004a proofs.
   'POST /jobs/:id/cut-job': 'jobs:write',
   'POST /jobs/:id/step-repeat': 'jobs:write',
@@ -128,6 +139,39 @@ export function permissionRolesOf(actor: Actor): readonly PermissionRole[] {
   return role === undefined ? [] : [role];
 }
 
+/** Spec 029c: the explicit permissions of actors made by `scopedActor`, kept off the actor so they never reach history. */
+const SCOPES_BY_ACTOR = new WeakMap<Actor, readonly Permission[]>();
+
+/**
+ * Spec 029c: a copy of `actor` whose permissions are exactly `scopes`, e.g. an API token's. The
+ * guard checks the scopes instead of the role; a handler that checks the role itself still sees it.
+ */
+export function scopedActor(actor: Actor, scopes: readonly Permission[]): Actor {
+  const scoped: Actor = Object.freeze({ ...actor });
+  SCOPES_BY_ACTOR.set(scoped, Object.freeze([...scopes]));
+  return scoped;
+}
+
+/** The explicit scopes of an actor made by `scopedActor`, or `undefined` for a role-based actor. */
+export function scopesOf(actor: Actor): readonly Permission[] | undefined {
+  return SCOPES_BY_ACTOR.get(actor);
+}
+
+/** Every permission the actor holds: its scopes when it has them, else those of its role. */
+export function permissionsOf(actor: Actor): readonly Permission[] {
+  return scopesOf(actor) ?? effectivePermissions(permissionRolesOf(actor));
+}
+
+/** Like core `requirePermission`, but an actor with explicit scopes holds only those. */
+export function requireActorPermission(actor: Actor, permission: Permission, action: string): void {
+  const scopes = scopesOf(actor);
+  if (scopes === undefined) {
+    requirePermission(permissionRolesOf(actor), permission, action);
+  } else if (!scopes.includes(permission)) {
+    throw new ForbiddenError(action, { permission });
+  }
+}
+
 const registeredRoutes = new WeakMap<FastifyInstance, Set<RouteKey>>();
 
 /** Every route registered on an app guarded by `guardRoutes`, `HEAD` routes folded into `GET`. */
@@ -160,6 +204,6 @@ export function guardRoutes(app: FastifyInstance, actorOf: (request: FastifyRequ
     if (permission === undefined) {
       throw new HttpError(403, 'forbidden', `No permission is declared for ${key}`);
     }
-    requirePermission(permissionRolesOf(await actorOf(request)), permission, key);
+    requireActorPermission(await actorOf(request), permission, key);
   });
 }
