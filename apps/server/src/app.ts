@@ -17,6 +17,7 @@ import { registerProductionReportRoutes, type ProductionReportRouteOptions } fro
 import { registerProofRoutes, type ProofRouteOptions } from './proof-routes.js';
 import { guardRoutes, LOCAL_ADMIN } from './route-permissions.js';
 import { registerErrorHandler, registerPreflightRoutes, type RouteDeps } from './routes.js';
+import { scopeJobRoutes, type SiteScopeOptions } from './site-scope.js';
 import { registerStepRepeatRoutes, type StepRepeatRouteOptions } from './step-repeat-routes.js';
 import { registerWebhookRoutes, type WebhookOptions } from './webhook-routes.js';
 
@@ -66,6 +67,11 @@ export interface ServerDeps {
    * that recognizes the sessions, e.g. what `configureLogin` from `session-config.ts` returns.
    */
   readonly login?: LoginRouteOptions;
+  /**
+   * Spec 030c: scopes the `/jobs/:id` routes and the `GET /archive` and `GET /trash` lists to the
+   * caller's site membership (`site-scope.ts`). Without it every caller sees every site's jobs.
+   */
+  readonly siteScope?: SiteScopeOptions;
   /** `info.version` of the OpenAPI document. */
   readonly version?: string;
   /**
@@ -130,6 +136,8 @@ export function buildServer(deps: ServerDeps): FastifyInstance {
   registerErrorHandler(app);
   // Before any route, so every route is guarded.
   guardRoutes(app, resolveActor);
+  // Spec 030c: after the guard, which resolves the actor, and before any route.
+  const siteScope = deps.siteScope ? scopeJobRoutes(app, deps.siteScope, actorOf) : undefined;
 
   // Registered first so its `onRoute` hook documents the media routes.
   if (deps.media) {
@@ -180,7 +188,11 @@ export function buildServer(deps: ServerDeps): FastifyInstance {
     registerApiTokenRoutes(app, { ...deps.apiTokens, authenticate: actorOf });
   }
 
-  app.get('/archive', async (request) => archive.search(parseSearchQuery(request.query as Record<string, unknown>)));
+  app.get('/archive', async (request) => {
+    const page = await archive.search(parseSearchQuery(request.query as Record<string, unknown>));
+    if (siteScope === undefined) return page;
+    return { ...page, items: await siteScope.filterJobs(request, page.items, (row) => row.jobId) };
+  });
 
   app.get<{ Params: { id: string } }>('/archive/:id', async (request) => archive.getIndexRow(request.params.id));
 
@@ -219,7 +231,10 @@ export function buildServer(deps: ServerDeps): FastifyInstance {
   app.delete<{ Params: { id: string } }>('/jobs/:id', trash);
   app.delete<{ Params: { id: string } }>('/archive/:id', trash);
 
-  app.get('/trash', async () => ({ items: await archive.listTrash() }));
+  app.get('/trash', async (request) => {
+    const items = await archive.listTrash();
+    return { items: siteScope === undefined ? items : await siteScope.filterJobs(request, items, (job) => job.id) };
+  });
 
   app.post<{ Params: { id: string } }>('/trash/:id/restore', async (request) => ({
     job: await archive.restoreFromTrash(request.params.id, actorOf(request)),

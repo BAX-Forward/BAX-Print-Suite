@@ -94,8 +94,13 @@ export async function finishedJob(
     sources: [{ name: `${fields.name}.pdf`, bytes: Buffer.from(`%PDF-1.7 ${fields.name}`) }],
     ticket: TICKET,
   });
-  for (const status of ['inspecting', 'ready', 'queued', 'processing', 'sent_to_device', 'printed', 'done'] as const) {
-    await h.jobs.setStatus(job.id, status);
-  }
+  await finish(h.jobs, job.id);
   return job.id;
+}
+
+/** Walks a new job through every status to `done`, so it may be archived or trashed. */
+export async function finish(jobs: Pick<JobService, 'setStatus'>, jobId: string): Promise<void> {
+  for (const status of ['inspecting', 'ready', 'queued', 'processing', 'sent_to_device', 'printed', 'done'] as const) {
+    await jobs.setStatus(jobId, status);
+  }
 }

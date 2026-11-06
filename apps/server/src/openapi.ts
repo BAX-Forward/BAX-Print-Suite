@@ -1,6 +1,7 @@
 import type { FastifySchema, RouteOptions } from 'fastify';
 import { FINISHING_STEP_KINDS, PERMISSIONS, type Permission } from '@bax-print/core';
 import { routePermission } from './route-permissions.js';
+import { isJobRoute } from './site-scope.js';
 
 type JsonSchema = Record<string, unknown>;
 
@@ -426,7 +427,17 @@ function withForbidden(responses: Record<string, string> | undefined, permission
   };
 }
 
-function operation(route: RouteDoc, permission?: Permission): Record<string, unknown> {
+/** Spec 030c: the 404 a `/jobs/:id` route answers for another site's job when site scoping is enabled. */
+const SITE_SCOPE_NOT_FOUND_DESCRIPTION =
+  "With site scoping enabled, a job of a site the caller's membership does not grant answers like a missing job (`not_found`)";
+
+function withSiteScope(responses: Record<string, string>, url: string): Record<string, string> {
+  if (!isJobRoute(url)) return responses;
+  const declared = responses['404'];
+  return { ...responses, 404: declared === undefined ? SITE_SCOPE_NOT_FOUND_DESCRIPTION : `${declared}. ${SITE_SCOPE_NOT_FOUND_DESCRIPTION}` };
+}
+
+function operation(route: RouteDoc, url: string, permission?: Permission): Record<string, unknown> {
   const op: Record<string, unknown> = {
     operationId: route.operationId,
     summary: route.summary,
@@ -448,7 +459,7 @@ function operation(route: RouteDoc, permission?: Permission): Record<string, unk
     };
   }
   const responses: Record<string, unknown> = {};
-  for (const [status, description] of Object.entries(withForbidden(route.responses, permission))) {
+  for (const [status, description] of Object.entries(withSiteScope(withForbidden(route.responses, permission), url))) {
     const ok = Number(status) < 300 && Number(status) !== 204;
     if (!ok) {
       responses[status] = { description };
@@ -476,6 +487,9 @@ const API_DESCRIPTION = [
   'Spec 029c: when API tokens are enabled, `Authorization: Bearer bps_...` authenticates as the token, whose permissions are exactly its scopes;',
   'an unknown, revoked, expired or malformed token answers 401 `unauthenticated` and never falls back. Other credentials are ignored.',
   'Managing tokens needs the admin-only `webhooks:*` permissions, and a caller may only issue scopes it holds.',
+  "Spec 030c: when site scoping is enabled (`BPS_SITE_SCOPE=1`), every `/jobs/{id}` route answers 404 `not_found` for a job of a site the caller's membership does not grant,",
+  'and `GET /archive` and `GET /trash` list only the jobs of granted sites; a job without a `siteId` belongs to the `default` site, and a caller without a membership sees no jobs.',
+  'The site is read from the stored job, never from the request.',
   'Without a configured actor resolver every caller is treated as the local admin, which holds every permission.',
   'The server binds 127.0.0.1 by default; do not expose it beyond loopback without a resolver.',
   'With login on (`BPS_LOGIN=1`), `POST /login` starts a session and every guarded route needs its token, as the',
@@ -509,7 +523,7 @@ export class OpenApiCollector {
       const lower = String(method).toLowerCase();
       if (lower === 'head') continue;
       const entry = (this.document.paths[path] ??= {});
-      entry[lower] = operation(schema as RouteDoc, routePermission(lower, route.url));
+      entry[lower] = operation(schema as RouteDoc, route.url, routePermission(lower, route.url));
     }
   }
 }

@@ -9,6 +9,7 @@ import {
   SqliteApiTokenRepository,
   SqliteFinishingPlanRepository,
   SqliteLayoutTemplateRepository,
+  SqliteSiteRepository,
 } from '@bax-print/store';
 import { configureApiTokens } from './api-token-config.js';
 import { buildServer, isLoopbackHost, localAdminWarning, type ServerDeps } from './app.js';
@@ -21,6 +22,7 @@ import { ProfileService } from './profiles.js';
 import { configureRollCut } from './roll-cut-config.js';
 import { startArchiveScheduler } from './scheduler.js';
 import { configureLogin, parseSessionConfig } from './session-config.js';
+import { configureSiteScope } from './site-scope.js';
 import { MemoryFindingsStore, MemoryProfileStore } from './stores.js';
 import { openWebhookPersistence } from './webhook-persistence.js';
 import { ALLOW_LAN_TARGETS_ENV, parseAllowLanTargets } from './webhook-routes.js';
@@ -76,6 +78,8 @@ const rollCut = configureRollCut(process.env, createPdfCutExtractor({ blobPath, 
 const media = new MediaService({ stores: memoryMediaStores(), bus, jobs: jobRepository });
 // Spec 029c: bearer API tokens only with BPS_DATABASE and BPS_API_TOKENS=1; an invalid flag stops startup.
 const apiTokens = configureApiTokens(process.env, database ? new SqliteApiTokenRepository(database) : undefined).enabled;
+// Spec 030c: site scoping only with BPS_DATABASE and BPS_SITE_SCOPE=1; an invalid flag stops startup.
+const siteScope = configureSiteScope(process.env, database ? new SqliteSiteRepository(database) : undefined, jobRepository);
 
 // Without API tokens or BPS_LOGIN there is no `authenticate`: every caller is the local admin, which
 // is safe on loopback only (Spec 024b). With BPS_LOGIN=1 every guarded route needs a session (Spec 028d).
@@ -106,6 +110,7 @@ const serverDeps: ServerDeps = {
   accounting: { jobs: jobRepository },
   ...(apiTokens ? { apiTokens: apiTokens.apiTokens, authenticate: apiTokens.authenticate } : {}),
   ...login,
+  ...(siteScope ? { siteScope } : {}),
   logger: true,
 };
 const app = buildServer(serverDeps);
