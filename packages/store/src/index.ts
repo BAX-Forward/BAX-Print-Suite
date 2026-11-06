@@ -1,6 +1,7 @@
 export * from './archive-index.js';
 export * from './sqlite-api-tokens.js';
 export * from './database.js';
+export * from './db-port.js';
 export * from './interfaces.js';
 export * from './job-repository.js';
 export * from './keys.js';
@@ -12,6 +13,7 @@ export * from './sqlite-finishing.js';
 export * from './sqlite-hotfolders.js';
 export * from './sqlite-jobs.js';
 export * from './sqlite-layouts.js';
+export * from './sqlite-port.js';
 export * from './sqlite-sites.js';
 export * from './sqlite-users.js';
 export * from './sqlite-webhooks.js';
