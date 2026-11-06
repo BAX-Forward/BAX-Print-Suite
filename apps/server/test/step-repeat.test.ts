@@ -4,6 +4,7 @@ import { join, resolve } from 'node:path';
 import type { FastifyInstance } from 'fastify';
 import { afterEach, describe, expect, it } from 'vitest';
 import { ArchiveService, StaticColorSetupResolver } from '@bax-print/archive';
+import type { TilingSetting } from '@bax-print/core';
 import { EventBus, MemoryOutbox } from '@bax-print/events';
 import { stepAndRepeat, stepAndRepeatJob, type Contour, type Layout } from '@bax-print/nest';
 import { LocalDirStorage, MemoryArchiveIndex, MemoryJobRepository, MemoryStorage } from '@bax-print/store';
@@ -69,6 +70,7 @@ const cappedRun: StepRepeatRunner = async (opts) => {
 
 interface InjectResponse {
   readonly statusCode: number;
+  readonly body: string;
   json<T = unknown>(): T;
 }
 
@@ -83,6 +85,24 @@ interface StepRepeatResult {
   cutContours: Contour[];
   warnings: unknown[];
   imposedPdfBase64: string;
+}
+
+/** Spec 050b: tiling settings with each seam, two rows of three panels. */
+const TILINGS: readonly (readonly [string, TilingSetting])[] = [
+  ['overlap', { grid: { columns: 3, rows: 2 }, seam: { kind: 'overlap', overlapMm: 20 } }],
+  ['gap', { grid: { columns: 3, rows: 2 }, seam: { kind: 'gap', gapMm: 10 } }],
+  ['butt', { grid: { columns: 3, rows: 2 }, seam: { kind: 'butt' } }],
+];
+
+/**
+ * A step-repeat answer with only its clock-dependent parts blanked: the layout's `elapsedMs` and the
+ * imposed PDF's Info dates (it is written without object streams, so the dates are plain text).
+ */
+function stableResult(body: StepRepeatResult): unknown {
+  const pdf = Buffer.from(body.imposedPdfBase64, 'base64')
+    .toString('latin1')
+    .replace(/\/(CreationDate|ModDate)\s*\([^)]*\)/g, '/$1 ()');
+  return { ...body, layout: { ...body.layout, elapsedMs: 0 }, imposedPdfBase64: pdf };
 }
 
 describe('POST /jobs/:id/step-repeat (Spec 003u)', () => {
@@ -209,6 +229,81 @@ describe('POST /jobs/:id/step-repeat (Spec 003u)', () => {
 
     expect(response.statusCode).toBe(409);
     expect(response.json()).toEqual({ error: { code: 'conflict', message: `Job ${jobId} has no source file to step and repeat` } });
+  });
+
+  it('answers an untiled job the same after a tiling setting is set and cleared (Spec 050b)', async () => {
+    h = await createHarness();
+    const jobId = await createJob(h);
+    const job = await h.repository.get(jobId);
+    if (!job) throw new Error('job was not stored');
+
+    const before = await postStepRepeat(h, jobId);
+    await h.repository.save({ ...job, tiling: { grid: { columns: 3, rows: 2 } } });
+    const tiled = await postStepRepeat(h, jobId);
+    await h.repository.save(job);
+    const after = await postStepRepeat(h, jobId);
+
+    expect(tiled.statusCode).toBe(422);
+    expect(before.statusCode).toBe(200);
+    expect(after.statusCode).toBe(200);
+    expect(stableResult(after.json<StepRepeatResult>())).toEqual(stableResult(before.json<StepRepeatResult>()));
+  });
+
+  it('pins the untiled layout of six 200 x 100 pt copies on a 300 mm roll (Spec 050b)', async () => {
+    h = await createHarness();
+    const jobId = await createJob(h);
+
+    const { layout } = (await postStepRepeat(h, jobId)).json<StepRepeatResult>();
+
+    expect(layout.mediaWidthPt).toBeCloseTo((300 * 72) / 25.4, 6);
+    expect(layout.lengthUsedPt).toBeCloseTo(200, 6);
+    expect(layout.unplaced).toEqual([]);
+    // Four columns across the roll, then two copies on the second row.
+    const corners = layout.placements
+      .map((p) => ({ x: Math.round(p.xPt * 1000) / 1000, y: Math.round(p.yPt * 1000) / 1000 }))
+      .sort((a, b) => a.x - b.x || a.y - b.y);
+    expect(corners).toEqual([
+      { x: 0, y: 0 },
+      { x: 0, y: 100 },
+      { x: 200, y: 0 },
+      { x: 200, y: 100 },
+      { x: 400, y: 0 },
+      { x: 600, y: 0 },
+    ]);
+  });
+
+  it.each(TILINGS)('answers 422 tiling_unsupported for a job with a %s seam tiling (Spec 050b)', async (_name, tiling) => {
+    h = await createHarness();
+    const jobId = await createJob(h);
+    const job = await h.repository.get(jobId);
+    if (!job) throw new Error('job was not stored');
+    await h.repository.save({ ...job, tiling });
+
+    const first = await postStepRepeat(h, jobId);
+    const second = await postStepRepeat(h, jobId);
+
+    expect(first.statusCode).toBe(422);
+    expect(first.json()).toEqual({
+      error: {
+        code: 'tiling_unsupported',
+        message: `Job ${jobId} is tiled; step and repeat can not lay out tiling panels`,
+        details: [`step and repeat lays out the whole source page; clear the job's tiling (DELETE /jobs/${jobId}/tiling) to use it`],
+      },
+    });
+    expect(second.body).toBe(first.body);
+  });
+
+  it('rejects a tiled job before its source is read (Spec 050b)', async () => {
+    h = await createHarness();
+    const jobId = await createJob(h);
+    const job = await h.repository.get(jobId);
+    if (!job) throw new Error('job was not stored');
+    await h.repository.save({ ...job, sourceFiles: [], tiling: { grid: { columns: 2, rows: 1 } } });
+
+    const response = await postStepRepeat(h, jobId);
+
+    expect(response.statusCode).toBe(422);
+    expect(response.json()).toMatchObject({ error: { code: 'tiling_unsupported' } });
   });
 
   it('documents the route in /openapi.json', async () => {

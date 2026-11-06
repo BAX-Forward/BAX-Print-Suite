@@ -13,6 +13,7 @@ import {
 } from '@bax-print/nest';
 import type { CutJobLookup } from './cut-routes.js';
 import { conflict, HttpError, notFound } from './errors.js';
+import { rejectTiledJob } from './job-tiling.js';
 import { doc } from './openapi.js';
 import { readSource } from './pdf-cut-extractor.js';
 
@@ -113,7 +114,7 @@ export function registerStepRepeatRoutes(app: FastifyInstance, deps: StepRepeatR
           400: 'The body does not match the schema (`invalid_request`)',
           404: 'Unknown job',
           409: 'The job has no source file',
-          422: 'The options can not be laid out (`invalid_step_repeat`) or the source is not a readable PDF (`unreadable_pdf`)',
+          422: 'The options can not be laid out (`invalid_step_repeat`), the source is not a readable PDF (`unreadable_pdf`), or the job has a tiling setting (`tiling_unsupported`)',
         },
         responseSchema: 'StepRepeatResult',
       }),
@@ -122,6 +123,8 @@ export function registerStepRepeatRoutes(app: FastifyInstance, deps: StepRepeatR
       const { id } = request.params;
       const job = await deps.jobs.get(id);
       if (!job) throw notFound('Job', id);
+      // Spec 050b: stepAndRepeatJob builds one item from the whole page, so it can not take tiling panels.
+      rejectTiledJob(job, 'step and repeat');
       const sourcePdf = await readSource(job, deps.blobPath);
       if (!sourcePdf) throw conflict(`Job ${id} has no source file to step and repeat`);
       const { body } = request;

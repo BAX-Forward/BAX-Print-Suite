@@ -28,6 +28,7 @@
     "@bax-print/nest": "workspace:*",
     "@bax-print/plugin-sdk": "workspace:*",
     "@bax-print/store": "workspace:*",
+    "@bax-print/tile": "workspace:*",
     "fastify": "5.2.1",
     "tsx": "4.19.2"
   },
