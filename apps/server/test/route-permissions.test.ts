@@ -9,6 +9,7 @@ import {
   MemoryJobRepository,
   MemoryStorage,
   openDatabase,
+  SqliteApiTokenRepository,
   SqliteFinishingPlanRepository,
   SqliteLayoutTemplateRepository,
   type Database,
@@ -88,6 +89,7 @@ function createHarness(actor?: Actor): Harness {
     finishing: { plans: new SqliteFinishingPlanRepository(db, { now }), now },
     productionReport: { jobs },
     accounting: { jobs, reports: { list: async () => [] }, clock: time.clock },
+    apiTokens: { tokens: new SqliteApiTokenRepository(db), now },
     ...(actor ? { authenticate: () => actor } : {}),
   });
   return { app, db };

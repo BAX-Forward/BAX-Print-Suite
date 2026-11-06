@@ -1,5 +1,5 @@
 import type { FastifySchema, RouteOptions } from 'fastify';
-import { FINISHING_STEP_KINDS, type Permission } from '@bax-print/core';
+import { FINISHING_STEP_KINDS, PERMISSIONS, type Permission } from '@bax-print/core';
 import { routePermission } from './route-permissions.js';
 
 type JsonSchema = Record<string, unknown>;
@@ -313,6 +313,31 @@ const ACCOUNTING_REPORT_SCHEMA: JsonSchema = {
   },
 };
 
+/** An API token as the Spec 029c routes answer it: never the secret or its hash. */
+const API_TOKEN_SCHEMA: JsonSchema = {
+  type: 'object',
+  required: ['id', 'name', 'prefix', 'scopes', 'createdAt'],
+  properties: {
+    id: { type: 'string' },
+    name: { type: 'string', minLength: 1, maxLength: 100 },
+    prefix: { type: 'string', description: 'The first 8 characters of the secret after `bps_`, for display' },
+    scopes: { type: 'array', minItems: 1, uniqueItems: true, items: { enum: [...PERMISSIONS] } },
+    createdAt: DATE_TIME,
+    expiresAt: DATE_TIME,
+    revokedAt: DATE_TIME,
+  },
+};
+
+/** `POST /api-tokens` (Spec 029c): the only answer that carries the secret. */
+const ISSUED_API_TOKEN_SCHEMA: JsonSchema = {
+  type: 'object',
+  required: ['token', 'secret'],
+  properties: {
+    token: refTo('ApiToken'),
+    secret: { type: 'string', pattern: '^bps_[A-Za-z0-9_-]{43}$', description: 'Send as `Authorization: Bearer <secret>`' },
+  },
+};
+
 const itemsOf = (name: string): JsonSchema => ({
   type: 'object',
   required: ['items'],
@@ -341,6 +366,10 @@ const COMPONENT_SCHEMAS: Readonly<Record<string, JsonSchema>> = {
   AccountingQuantity: ACCOUNTING_QUANTITY_SCHEMA,
   AccountingIdGroup: ACCOUNTING_ID_GROUP_SCHEMA,
   AccountingReport: ACCOUNTING_REPORT_SCHEMA,
+  ApiToken: API_TOKEN_SCHEMA,
+  ApiTokenList: itemsOf('ApiToken'),
+  ApiTokenEnvelope: { type: 'object', required: ['token'], properties: { token: refTo('ApiToken') } },
+  IssuedApiToken: ISSUED_API_TOKEN_SCHEMA,
 };
 
 function parameters(schema: JsonSchema | undefined, location: 'path' | 'query'): unknown[] {
@@ -369,7 +398,7 @@ function withForbidden(responses: Record<string, string> | undefined, permission
   return {
     ...(declared['401'] === undefined ? { 401: UNAUTHENTICATED_DESCRIPTION } : {}),
     ...(declared['403'] === undefined
-      ? { 403: `The caller's role lacks the \`${permission}\` permission (\`forbidden\`, \`details.permission\` names it)` }
+      ? { 403: `The caller's role, or an API token's scopes, lack the \`${permission}\` permission (\`forbidden\`, \`details.permission\` names it)` }
       : {}),
     ...declared,
   };
@@ -422,6 +451,9 @@ const API_DESCRIPTION = [
   "Every route except `GET /openapi.json` needs a permission of the caller's role and answers 403 `forbidden`",
   'without it; `details.permission` names the missing permission.',
   'An actor resolver configured to deny anonymous callers answers 401 `unauthenticated` when no credential verifier recognizes the caller.',
+  'Spec 029c: when API tokens are enabled, `Authorization: Bearer bps_...` authenticates as the token, whose permissions are exactly its scopes;',
+  'an unknown, revoked, expired or malformed token answers 401 `unauthenticated` and never falls back. Other credentials are ignored.',
+  'Managing tokens needs the admin-only `webhooks:*` permissions, and a caller may only issue scopes it holds.',
   'Without a configured actor resolver every caller is treated as the local admin, which holds every permission.',
   'The server binds 127.0.0.1 by default; do not expose it beyond loopback without a resolver.',
 ].join(' ');
