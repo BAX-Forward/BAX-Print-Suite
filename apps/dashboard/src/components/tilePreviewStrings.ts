@@ -7,4 +7,10 @@ export const tilePreviewStrings = {
   empty: 'No panels to preview.',
   dimensions: (width: string, height: string) => `${width} × ${height} mm`,
   panel: (label: string, dimensions: string) => `Panel ${label}, ${dimensions}`,
+  // Job page section (049c).
+  heading: 'Tiling',
+  loading: 'Loading tile preview…',
+  noTiling: 'No tiling set for this job.',
+  noPages: 'This job has no pages to tile.',
+  issuesHeading: 'The tiling cannot be laid out:',
 };
