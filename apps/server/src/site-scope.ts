@@ -98,6 +98,8 @@ export interface SiteScope {
   filterJobs<T>(request: FastifyRequest, items: readonly T[], jobIdOf: (item: T) => string): Promise<T[]>;
   /** Spec 052a: true when the caller's membership grants `siteId`, e.g. the site a new job is created in. */
   grants(request: FastifyRequest, siteId: string): Promise<boolean>;
+  /** Spec 052c: the sites the caller's membership grants, for a store query; `undefined` for every site. */
+  grantedSiteIds(request: FastifyRequest): Promise<readonly string[] | undefined>;
 }
 
 /**
@@ -143,6 +145,12 @@ export function scopeJobRoutes(
     async grants(request: FastifyRequest, siteId: string): Promise<boolean> {
       const membership = await membershipOf(request);
       return membership !== undefined && canAccessSite(membership, siteId);
+    },
+    async grantedSiteIds(request: FastifyRequest): Promise<readonly string[] | undefined> {
+      const membership = await membershipOf(request);
+      if (membership === undefined) return [];
+      if (hasAllSites(membership)) return undefined;
+      return 'siteIds' in membership ? membership.siteIds : [];
     },
   };
 }

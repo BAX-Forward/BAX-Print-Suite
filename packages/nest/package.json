@@ -15,9 +15,10 @@
     }
   },
   "bin": {
-    "bps-nest": "./dist/bin.js"
+    "bps-nest": "./bin/bps-nest.js"
   },
   "files": [
+    "bin",
     "dist"
   ],
   "engines": {

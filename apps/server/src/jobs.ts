@@ -1,3 +1,4 @@
+import { open } from 'node:fs/promises';
 import {
   InvalidArgumentError,
   SYSTEM_ACTOR,
@@ -15,9 +16,10 @@ import {
   type JobStatus,
   type JobTicket,
   type SourceFile,
+  type SourceFormat,
 } from '@bax-print/core';
 import { applyEdits, type NestItem } from '@bax-print/edits';
-import { sniffJobSourceFormat } from '@bax-print/inspect';
+import { sniffJobSourceFormat, VECTOR_HEADER_MAX_BYTES } from '@bax-print/inspect';
 import { EventTypes, type CloudEvent, type EventBus } from '@bax-print/events';
 import { artifactKey, sourceKey, type JobRepository, type Storage } from '@bax-print/store';
 import { JobNotFoundError } from '@bax-print/archive';
@@ -34,10 +36,30 @@ const STEP_TYPES: Readonly<Record<StepPhase, string>> = {
   failed: EventTypes.stepFailed,
 };
 
+/**
+ * A source file of a new job: its bytes, or (Spec 052c) a whole local file the blob store adopts
+ * without the bytes passing through memory. The caller must not use an adopted `path` afterwards.
+ */
+export type CreateJobSource =
+  | { readonly name: string; readonly bytes: Uint8Array }
+  | { readonly name: string; readonly path: string };
+
+/** The first bytes of a file, enough for every format sniff (one past the vector header window). */
+async function readHead(path: string): Promise<Uint8Array> {
+  const handle = await open(path, 'r');
+  try {
+    const head = Buffer.alloc(VECTOR_HEADER_MAX_BYTES + 1);
+    const { bytesRead } = await handle.read(head, 0, head.byteLength, 0);
+    return head.subarray(0, bytesRead);
+  } finally {
+    await handle.close();
+  }
+}
+
 export interface CreateJobInput {
   readonly name: string;
   readonly customerRef?: string;
-  readonly sources: readonly { readonly name: string; readonly bytes: Uint8Array }[];
+  readonly sources: readonly CreateJobSource[];
   readonly ticket: JobTicket;
   readonly priority?: number;
   readonly hotFolderId?: string;
@@ -90,16 +112,20 @@ export class JobService {
 
     const id = this.newId();
     const at = this.clock().toISOString();
+    // Spec 031c: submission takes any bytes; the detected format of the first source is recorded.
+    // Spec 035b: SVG and DXF are detected from their header, never from the file name.
+    // Spec 052c: an adopted file is sniffed from its head, before the store takes it.
+    const first = input.sources[0];
+    let sourceFormat: SourceFormat | undefined;
+    if (first !== undefined) sourceFormat = sniffJobSourceFormat('bytes' in first ? first.bytes : await readHead(first.path));
+
     const sourceFiles: SourceFile[] = [];
     for (const [index, source] of input.sources.entries()) {
       const key = sourceKey(id, index, source.name);
-      const stat = await this.deps.blobs.put(key, source.bytes);
+      const stat =
+        'bytes' in source ? await this.deps.blobs.put(key, source.bytes) : await this.deps.blobs.adoptFile(key, source.path);
       sourceFiles.push({ name: source.name, sha256: stat.sha256, sizeBytes: stat.size, storageKey: key });
     }
-
-    // Spec 031c: submission takes any bytes; the detected format of the first source is recorded.
-    // Spec 035b: SVG and DXF are detected from their header, never from the file name.
-    const sourceFormat = input.sources[0] === undefined ? undefined : sniffJobSourceFormat(input.sources[0].bytes);
     const job: Job = {
       id,
       name: input.name,

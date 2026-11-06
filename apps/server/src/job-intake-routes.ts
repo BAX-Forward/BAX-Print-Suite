@@ -1,12 +1,26 @@
-import { open, mkdir, rename, rm } from 'node:fs/promises';
+import { open, mkdir, rename, rm, type FileHandle } from 'node:fs/promises';
 import { join } from 'node:path';
+import { Readable } from 'node:stream';
 import type { FastifyInstance, FastifyRequest } from 'fastify';
 import { DEFAULT_SITE_ID, parseSiteId, ulid, type Actor, type Job, type JobTicket } from '@bax-print/core';
-import { InvalidCursorError, type JobRepository } from '@bax-print/store';
-import { notFound, siteNotGranted, uploadMediaTypeUnsupported, uploadNotPdf, uploadTooLarge } from './errors.js';
+import {
+  InvalidCursorError,
+  syncDirectory,
+  type ActiveJobPages,
+  type JobPageKey,
+  type JobRepository,
+} from '@bax-print/store';
+import {
+  HttpError,
+  notFound,
+  siteNotGranted,
+  uploadMediaTypeUnsupported,
+  uploadNotPdf,
+  uploadTooLarge,
+} from './errors.js';
 import type { JobService } from './jobs.js';
 import { doc } from './openapi.js';
-import { siteOfJob, type SiteScope } from './site-scope.js';
+import type { SiteScope } from './site-scope.js';
 
 /** Spec 052a: `1` mounts `POST /jobs`, `GET /jobs` and `GET /jobs/:id`; unset leaves them off; any other value stops startup. */
 export const JOB_INTAKE_ENV = 'BPS_JOB_INTAKE';
@@ -76,7 +90,7 @@ export function sanitizeJobName(raw: unknown): string | undefined {
 }
 
 /** The jobs listed and read; the store package's job repositories satisfy it. */
-export type JobIntakeJobs = Pick<JobRepository, 'get' | 'list'>;
+export type JobIntakeJobs = Pick<JobRepository, 'get'> & ActiveJobPages;
 
 export interface JobIntakeRouteOptions {
   /** The repository `service` saves into, and the one site scoping reads. */
@@ -91,15 +105,69 @@ export interface JobIntakeRouteOptions {
   readonly newFileId?: () => string;
 }
 
-/** Writes `bytes` to `dir/name` through `name.part`, synced before the rename, so the file is whole or absent. */
-export async function writeFileAtomic(dir: string, name: string, bytes: Uint8Array): Promise<string> {
+/** The chunks of a request body, read one at a time. */
+type BodyChunks = AsyncIterator<unknown>;
+
+function chunkBytes(chunk: unknown): Buffer {
+  if (Buffer.isBuffer(chunk)) return chunk;
+  if (chunk instanceof Uint8Array) return Buffer.from(chunk.buffer, chunk.byteOffset, chunk.byteLength);
+  throw new TypeError('the upload body yielded a chunk that is not bytes');
+}
+
+/** Spec 052c: the body ran past the cap without a content-length; the same answer Fastify gave in 052a. */
+function bodyTooLarge(): HttpError {
+  return new HttpError(413, 'invalid_request', 'Request body is too large');
+}
+
+/** Reads chunks until at least `size` bytes arrived or the body ended; the rest stays unread. */
+async function readHead(chunks: BodyChunks, size: number): Promise<Buffer> {
+  const parts: Buffer[] = [];
+  let length = 0;
+  while (length < size) {
+    const next = await chunks.next();
+    if (next.done === true) break;
+    const chunk = chunkBytes(next.value);
+    parts.push(chunk);
+    length += chunk.byteLength;
+  }
+  return Buffer.concat(parts, length);
+}
+
+async function writeAll(handle: FileHandle, bytes: Buffer): Promise<void> {
+  let offset = 0;
+  while (offset < bytes.byteLength) {
+    const { bytesWritten } = await handle.write(bytes, offset);
+    offset += bytesWritten;
+  }
+}
+
+/**
+ * Spec 052c: streams `head` and then the rest of `chunks` to `dir/name` through `name.part`, counting
+ * bytes against `maxBytes` (past it the part file is deleted and 413 thrown). The file is synced before
+ * the rename and the directory after it, so the upload is whole or absent and the rename survives a crash.
+ */
+export async function streamFileAtomic(
+  dir: string,
+  name: string,
+  head: Buffer,
+  chunks: BodyChunks,
+  maxBytes: number,
+): Promise<string> {
   await mkdir(dir, { recursive: true });
   const path = join(dir, name);
   const part = `${path}.part`;
   try {
     const handle = await open(part, 'wx', 0o600);
     try {
-      await handle.writeFile(bytes);
+      let size = 0;
+      let next: IteratorResult<unknown> = { done: false, value: head };
+      while (next.done !== true) {
+        const chunk = chunkBytes(next.value);
+        size += chunk.byteLength;
+        if (size > maxBytes) throw bodyTooLarge();
+        await writeAll(handle, chunk);
+        next = await chunks.next();
+      }
       await handle.sync();
     } finally {
       await handle.close();
@@ -109,29 +177,15 @@ export async function writeFileAtomic(dir: string, name: string, bytes: Uint8Arr
     await rm(part, { force: true });
     throw error;
   }
+  await syncDirectory(dir);
   return path;
 }
 
-interface JobKey {
-  readonly createdAt: string;
-  readonly id: string;
-}
-
-function compareText(a: string, b: string): number {
-  if (a === b) return 0;
-  return a < b ? -1 : 1;
-}
-
-/** Newest first; jobs created in the same millisecond by id, highest first. */
-function newestFirst(a: JobKey, b: JobKey): number {
-  return a.createdAt === b.createdAt ? compareText(b.id, a.id) : compareText(b.createdAt, a.createdAt);
-}
-
-function encodeCursor(key: JobKey): string {
+function encodeCursor(key: JobPageKey): string {
   return Buffer.from(JSON.stringify([key.createdAt, key.id]), 'utf8').toString('base64url');
 }
 
-function decodeCursor(text: string): JobKey {
+function decodeCursor(text: string): JobPageKey {
   let parsed: unknown;
   try {
     parsed = JSON.parse(Buffer.from(text, 'base64url').toString('utf8'));
@@ -183,19 +237,27 @@ interface ListQuery {
 
 /**
  * Spec 052a: opt-in job intake. `POST /jobs` takes a raw `application/pdf` body: the declared size is
- * checked against the cap before the body is read, the parser's `bodyLimit` stops a longer stream, and
- * the bytes must start with `%PDF-`. Only then is the upload written under a server-generated name and
- * the job created through the job service. `GET /jobs` pages the active jobs newest first and
- * `GET /jobs/:id` reads one; both see only the caller's sites when site scoping is on.
+ * checked against the cap before the body is read and the bytes must start with `%PDF-`. Only then is
+ * the upload written under a server-generated name and the job created through the job service.
+ * `GET /jobs` pages the active jobs newest first and `GET /jobs/:id` reads one; both see only the
+ * caller's sites when site scoping is on.
+ *
+ * Spec 052c: the body is streamed to one intake file (counted against the cap, synced, renamed, its
+ * directory synced) which the blob store adopts as the job's source; `GET /jobs` is a keyset query
+ * with the site filter inside it.
  */
 export function registerJobIntakeRoutes(app: FastifyInstance, deps: JobIntakeRouteOptions): void {
   const { jobs, service, intakeDir, maxBytes, authenticate, siteScope } = deps;
   const newFileId = deps.newFileId ?? (() => ulid(Date.now()));
 
   const upload = async (request: FastifyRequest<{ Querystring: { siteId?: string } }>): Promise<Job> => {
-    const bytes = request.body;
-    if (!Buffer.isBuffer(bytes)) throw uploadMediaTypeUnsupported();
-    if (!startsWithPdfMagic(bytes)) throw uploadNotPdf();
+    const body = request.body;
+    if (!(body instanceof Readable)) throw uploadMediaTypeUnsupported();
+    const chunks: BodyChunks = body[Symbol.asyncIterator]();
+    // Spec 052c: only the first bytes are read before the checks; nothing is written until they pass.
+    const head = await readHead(chunks, PDF_MAGIC.byteLength);
+    if (head.byteLength > maxBytes) throw bodyTooLarge();
+    if (!startsWithPdfMagic(head)) throw uploadNotPdf();
     const siteId = request.query.siteId === undefined ? undefined : parseSiteId(request.query.siteId);
     if (siteScope !== undefined) {
       const target = siteId ?? DEFAULT_SITE_ID;
@@ -203,14 +265,15 @@ export function registerJobIntakeRoutes(app: FastifyInstance, deps: JobIntakeRou
     }
 
     const fileName = `${newFileId()}.pdf`;
-    const path = await writeFileAtomic(intakeDir, fileName, bytes);
+    const path = await streamFileAtomic(intakeDir, fileName, head, chunks, maxBytes);
     const displayName = sanitizeJobName(request.headers[JOB_NAME_HEADER]);
     const ticket: JobTicket = { intent: { quantity: 1 }, process: {}, ...(siteId === undefined ? {} : { siteId }) };
     try {
       return await service.create(
         {
           name: displayName ?? fileName,
-          sources: [{ name: fileName, bytes }],
+          // Spec 052c: the blob store adopts the intake file, so the upload is stored once.
+          sources: [{ name: fileName, path }],
           ticket,
           metadata: { intakeFile: fileName, ...(displayName === undefined ? {} : { displayName }) },
         },
@@ -224,8 +287,9 @@ export function registerJobIntakeRoutes(app: FastifyInstance, deps: JobIntakeRou
 
   // Encapsulated, so the `application/pdf` parser and its cap apply to `POST /jobs` only.
   void app.register((scope, _options, done) => {
-    scope.addContentTypeParser('application/pdf', { parseAs: 'buffer', bodyLimit: maxBytes }, (_request, body, parsed) => {
-      parsed(null, body);
+    // Spec 052c: the body is handed on as a stream; `upload` counts its bytes against the cap.
+    scope.addContentTypeParser('application/pdf', (_request, payload, parsed) => {
+      parsed(null, payload);
     });
     scope.post<{ Querystring: { siteId?: string } }>(
       '/jobs',
@@ -274,12 +338,16 @@ export function registerJobIntakeRoutes(app: FastifyInstance, deps: JobIntakeRou
     async (request) => {
       const limit = Math.min(request.query.limit ?? JOB_LIST_DEFAULT_LIMIT, JOB_LIST_MAX_LIMIT);
       const after = request.query.cursor === undefined ? undefined : decodeCursor(request.query.cursor);
-      const sorted = (await jobs.list({ lifecycle: 'active' })).sort(newestFirst);
-      const remaining = after === undefined ? sorted : sorted.filter((job) => newestFirst(job, after) > 0);
-      const visible = siteScope === undefined ? remaining : await grantedJobs(request, siteScope, remaining);
-      const items = visible.slice(0, limit);
+      const siteIds = siteScope === undefined ? undefined : await siteScope.grantedSiteIds(request);
+      // Spec 052c: one row past the page tells whether another page follows.
+      const page = await jobs.listActivePage({
+        limit: limit + 1,
+        ...(after === undefined ? {} : { after }),
+        ...(siteIds === undefined ? {} : { siteIds }),
+      });
+      const items = page.slice(0, limit);
       const last = items.at(-1);
-      return { items, nextCursor: visible.length > limit && last !== undefined ? encodeCursor(last) : null };
+      return { items, nextCursor: page.length > limit && last !== undefined ? encodeCursor(last) : null };
     },
   );
 
@@ -304,20 +372,4 @@ export function registerJobIntakeRoutes(app: FastifyInstance, deps: JobIntakeRou
       return { job };
     },
   );
-}
-
-/** The jobs of sites the caller's membership grants; each site is checked once. */
-async function grantedJobs(request: FastifyRequest, siteScope: SiteScope, items: readonly Job[]): Promise<Job[]> {
-  const granted = new Map<string, boolean>();
-  const visible: Job[] = [];
-  for (const job of items) {
-    const site = siteOfJob(job);
-    let allowed = granted.get(site);
-    if (allowed === undefined) {
-      allowed = await siteScope.grants(request, site);
-      granted.set(site, allowed);
-    }
-    if (allowed) visible.push(job);
-  }
-  return visible;
 }

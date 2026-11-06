@@ -1,3 +1,4 @@
+import { readFile } from 'node:fs/promises';
 import { assertValidKey, BlobNotFoundError, sha256Hex, type BlobStat, type Storage } from './storage.js';
 
 /** In-memory `Storage/1` backend for tests and ephemeral runs. Stores copies. */
@@ -9,6 +10,12 @@ export class MemoryStorage implements Storage {
     const copy = new Uint8Array(bytes);
     this.blobs.set(key, copy);
     return { key, size: copy.byteLength, sha256: sha256Hex(copy) };
+  }
+
+  /** Spec 052c: memory has no file to move into, so the bytes are read in and the file is left where it is. */
+  async adoptFile(key: string, path: string): Promise<BlobStat> {
+    assertValidKey(key);
+    return this.put(key, await readFile(path));
   }
 
   async get(key: string): Promise<Uint8Array> {
