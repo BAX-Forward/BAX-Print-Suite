@@ -29,6 +29,7 @@ import { configureLogin, parseSessionConfig } from './session-config.js';
 import { configureSiteScope } from './site-scope.js';
 import { MemoryFindingsStore, MemoryProfileStore } from './stores.js';
 import { INK_LIMIT_ENV, parseInkLimitFlag } from './ink-limit-routes.js';
+import { parseScreenPreviewFlag, SCREEN_PREVIEW_ENV } from './screen-preview-routes.js';
 import { parseScreeningFlag, SCREENING_ENV } from './screening-routes.js';
 import { parseSwatchChartsFlag } from './swatch-chart-routes.js';
 import { loadHttpsOptions } from './tls.js';
@@ -59,6 +60,8 @@ const whiteInk = parseWhiteInkFlag(process.env);
 const screening = parseScreeningFlag(process.env);
 // Spec 040c: PUT and DELETE /jobs/:id/ink-limit only with BPS_INK_LIMIT=1; any other value stops startup.
 const inkLimit = parseInkLimitFlag(process.env);
+// Spec 043a: POST /jobs/:id/screen-preview only with BPS_SCREEN_PREVIEW=1; any other value stops startup.
+const screenPreview = parseScreenPreviewFlag(process.env);
 // Spec 034a: print output only with BPS_PRINT_OUTPUT=1 and BPS_PRINTER_PLUGIN; any other flag value, a missing,
 // relative or absent manifest or a bad BPS_PRINTER_SETTINGS stops startup. The plugin is started on first use, never here.
 const printOutput = configurePrintOutput(process.env, { spoolDir: join(dataDir, 'spool', 'print-output') });
@@ -157,6 +160,7 @@ const serverDeps: ServerDeps = {
   ...(whiteInk ? { whiteInk: { jobs: jobRepository } } : {}),
   ...(screening ? { screening: { jobs: jobRepository } } : {}),
   ...(inkLimit ? { inkLimit: { jobs: jobRepository } } : {}),
+  ...(screenPreview ? { screenPreview: { jobs: jobRepository } } : {}),
   logger: true,
   ...(https === undefined ? {} : { https }),
 };
@@ -217,6 +221,11 @@ app.log.info(
   inkLimit
     ? `ink-limit settings are on (${INK_LIMIT_ENV}=1): PUT and DELETE /jobs/:id/ink-limit`
     : `ink-limit settings are off (set ${INK_LIMIT_ENV}=1 to set a job's ink-limit setting)`,
+);
+app.log.info(
+  screenPreview
+    ? `screen previews are on (${SCREEN_PREVIEW_ENV}=1): POST /jobs/:id/screen-preview`
+    : `screen previews are off (set ${SCREEN_PREVIEW_ENV}=1 to preview a job's screening)`,
 );
 if (https === undefined) {
   app.log.info('TLS is off: serving plain HTTP (set BPS_TLS_CERT and BPS_TLS_KEY to serve HTTPS)');

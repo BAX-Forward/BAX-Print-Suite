@@ -24,6 +24,7 @@
     "@bax-print/events": "workspace:*",
     "@bax-print/inspect": "workspace:*",
     "@bax-print/marks": "workspace:*",
+    "@bax-print/media": "workspace:*",
     "@bax-print/nest": "workspace:*",
     "@bax-print/plugin-sdk": "workspace:*",
     "@bax-print/store": "workspace:*",

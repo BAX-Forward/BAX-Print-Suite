@@ -20,6 +20,7 @@ import { registerPrintOutputRoutes, type PrintOutputRouteOptions } from './print
 import { registerProofRoutes, type ProofRouteOptions } from './proof-routes.js';
 import { guardRoutes, LOCAL_ADMIN } from './route-permissions.js';
 import { registerErrorHandler, registerPreflightRoutes, type RouteDeps } from './routes.js';
+import { registerScreenPreviewRoutes, type ScreenPreviewRouteOptions } from './screen-preview-routes.js';
 import { registerScreeningRoutes, type ScreeningRouteOptions } from './screening-routes.js';
 import { scopeJobRoutes, type SiteScopeOptions } from './site-scope.js';
 import { registerStepRepeatRoutes, type StepRepeatRouteOptions } from './step-repeat-routes.js';
@@ -101,6 +102,11 @@ export interface ServerDeps {
    * `jobs`. `main.ts` sets it only with `BPS_INK_LIMIT=1`.
    */
   readonly inkLimit?: InkLimitRouteOptions;
+  /**
+   * Spec 043a: mounts `POST /jobs/:id/screen-preview` over these jobs; any job repository satisfies
+   * `jobs`. `main.ts` sets it only with `BPS_SCREEN_PREVIEW=1`.
+   */
+  readonly screenPreview?: ScreenPreviewRouteOptions;
   /**
    * Spec 030c: scopes the `/jobs/:id` routes and the `GET /archive` and `GET /trash` lists to the
    * caller's site membership (`site-scope.ts`). Without it every caller sees every site's jobs.
@@ -250,6 +256,10 @@ export function buildServer(deps: ServerDeps): FastifyInstance {
 
   if (deps.inkLimit) {
     registerInkLimitRoutes(app, deps.inkLimit);
+  }
+
+  if (deps.screenPreview) {
+    registerScreenPreviewRoutes(app, deps.screenPreview);
   }
 
   app.get('/archive', async (request) => {

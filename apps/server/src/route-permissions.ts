@@ -110,6 +110,8 @@ export const ROUTE_PERMISSIONS: Readonly<Record<RouteKey, Permission>> = Object.
   // Spec 040c ink-limit setting: a job change like the screening setting.
   'PUT /jobs/:id/ink-limit': 'jobs:write',
   'DELETE /jobs/:id/ink-limit': 'jobs:write',
+  // Spec 043a screen preview: a read like the proof route; the planes are answered, not stored.
+  'POST /jobs/:id/screen-preview': 'jobs:read',
   // Archive, trash, legal hold and job history.
   'GET /archive': 'archive:read',
   'GET /archive/:id': 'archive:read',

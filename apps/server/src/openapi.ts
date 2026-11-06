@@ -706,6 +706,44 @@ const INK_LIMIT_JOB_SCHEMA: JsonSchema = {
   },
 };
 
+/** Spec 043a: the longest side of a `POST /jobs/:id/screen-preview` image, in pixels. */
+export const SCREEN_PREVIEW_MAX_SIDE = 1024;
+
+const PREVIEW_SIDE: JsonSchema = { type: 'integer', minimum: 1, maximum: SCREEN_PREVIEW_MAX_SIDE };
+
+/** One 8-bit plane, one byte per pixel row by row; 255 = 100 %. */
+const PREVIEW_PLANE: JsonSchema = {
+  type: 'string',
+  contentEncoding: 'base64',
+  description: 'Padded base64 of exactly width * height bytes, so 4 * ceil(width * height / 3) characters',
+};
+
+/** `POST /jobs/:id/screen-preview` (Spec 043a): CMYK planes, checked strictly by the route; width and height before any plane is decoded. */
+const SCREEN_PREVIEW_REQUEST_SCHEMA: JsonSchema = {
+  type: 'object',
+  required: ['width', 'height', 'c', 'm', 'y', 'k'],
+  additionalProperties: false,
+  properties: { width: PREVIEW_SIDE, height: PREVIEW_SIDE, c: PREVIEW_PLANE, m: PREVIEW_PLANE, y: PREVIEW_PLANE, k: PREVIEW_PLANE },
+};
+
+/** One screened plane packed 1 bit per pixel: most significant bit first, bit 1 = ink, unused low bits of a row's last byte 0. */
+const PACKED_PLANE: JsonSchema = { type: 'string', contentEncoding: 'base64', description: 'Base64 of rowBytes * height bytes' };
+
+/** Spec 043a: the job's screening (and ink limit, if set) applied to the request planes. */
+const SCREEN_PREVIEW_SCHEMA: JsonSchema = {
+  type: 'object',
+  required: ['width', 'height', 'rowBytes', 'c', 'm', 'y', 'k'],
+  properties: {
+    width: PREVIEW_SIDE,
+    height: PREVIEW_SIDE,
+    rowBytes: { type: 'integer', minimum: 1, description: 'ceil(width / 8)' },
+    c: PACKED_PLANE,
+    m: PACKED_PLANE,
+    y: PACKED_PLANE,
+    k: PACKED_PLANE,
+  },
+};
+
 const itemsOf = (name: string): JsonSchema => ({
   type: 'object',
   required: ['items'],
@@ -753,6 +791,8 @@ const COMPONENT_SCHEMAS: Readonly<Record<string, JsonSchema>> = {
   ScreeningJob: SCREENING_JOB_SCHEMA,
   InkLimitSetting: INK_LIMIT_SETTING_SCHEMA,
   InkLimitJob: INK_LIMIT_JOB_SCHEMA,
+  ScreenPreviewRequest: SCREEN_PREVIEW_REQUEST_SCHEMA,
+  ScreenPreview: SCREEN_PREVIEW_SCHEMA,
 };
 
 function parameters(schema: JsonSchema | undefined, location: 'path' | 'query'): unknown[] {
@@ -870,6 +910,8 @@ const API_DESCRIPTION = [
   'that is not a valid setting reads back absent. `PUT` and `DELETE /jobs/{id}/screening` set and clear it, and exist only with `BPS_SCREENING=1`.',
   'Spec 040c: a job may carry an optional `inkLimit` setting (`InkLimitSetting`); absent means no ink limit is requested, and a stored value',
   'that is not a valid setting reads back absent. `PUT` and `DELETE /jobs/{id}/ink-limit` set and clear it, and exist only with `BPS_INK_LIMIT=1`.',
+  "Spec 043a: `POST /jobs/{id}/screen-preview` screens CMYK planes with the job's `screening` and `inkLimit` settings and answers them packed",
+'1 bit per pixel; nothing is stored. A job without `screening` answers 409 `screening_not_set`. It exists only with `BPS_SCREEN_PREVIEW=1`.',
 ].join(' ');
 
 /** Collects documented routes through Fastify's `onRoute` hook. */

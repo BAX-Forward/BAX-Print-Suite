@@ -104,6 +104,12 @@ export const screeningInvalid = (message: string): HttpError => new HttpError(40
 /** Spec 040c: the body of `PUT /jobs/:id/ink-limit` is not an ink-limit setting core `parseInkLimitSetting` accepts. */
 export const inkLimitInvalid = (message: string): HttpError => new HttpError(400, "invalid_ink_limit", message);
 
+/** Spec 043a: the body of `POST /jobs/:id/screen-preview` is not a valid set of CMYK planes. */
+export const screenPreviewInvalid = (message: string): HttpError => new HttpError(400, "invalid_screen_preview", message);
+
+/** Spec 043a: the job has no screening setting, so there is nothing to preview. */
+export const screeningNotSet = (message: string): HttpError => new HttpError(409, "screening_not_set", message);
+
 /** Spec 036e: the status and lowercase code of each Spec 036d imposed sheet error. */
 const IMPOSED_SHEETS_ERRORS: Readonly<Record<ImposedSheetsErrorCode, readonly [number, string]>> = {
   SOURCE_PDF_TOO_LARGE: [413, "source_pdf_too_large"],
