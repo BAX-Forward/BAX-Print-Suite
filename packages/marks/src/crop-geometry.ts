@@ -8,8 +8,13 @@ import { MarkSpecError } from "./errors.js";
 import type { Segment } from "./geometry.js";
 import { cropSegments } from "./marks-local.js";
 
-/** Largest trim side, and largest trim x / y, in points (200 in). */
-export const MAX_MARK_SHEET_SIDE_PT = 14_400;
+/**
+ * Largest trim side, and largest trim x / y, in points: 100 m of roll, so a
+ * roll item of any length a job edit may express can carry corner marks.
+ * Mirrors MAX_EDIT_LENGTH_MM (100_000 mm) in packages/core/src/edits.ts,
+ * rounded up from 283_464.57 pt; marks takes no workspace dependency.
+ */
+export const MAX_MARK_SHEET_SIDE_PT = 283_465;
 /** Largest bleed, offset or mark length, in points (10 in). */
 export const MAX_MARK_DISTANCE_PT = 720;
 /** Largest stroke weight, in points. */

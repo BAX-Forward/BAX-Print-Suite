@@ -5,6 +5,7 @@ import { describe, expect, it } from "vitest";
 import {
   CropMarkSchema,
   FinishingSpecSchema,
+  MAX_MARK_SHEET_SIDE_PT,
   MarkSpecError,
   bleedMarkSegments,
   draw,
@@ -291,13 +292,53 @@ describe("bleed marks: geometry in plans", () => {
     }
   });
 
-  it("rejects items over the 046a size limit only when bleed marks are on", async () => {
-    const huge: ItemInfo = { itemId: "huge", widthMm: 6_000, heightMm: 100, bleedMm: 3 };
+  it("rejects items over the 046c size limit only when bleed marks are on", async () => {
+    const huge: ItemInfo = { itemId: "huge", widthMm: 100_100, heightMm: 100, bleedMm: 3 };
+    expect(mmToPt(huge.widthMm)).toBeGreaterThan(MAX_MARK_SHEET_SIDE_PT);
     const input = { layout: { placements: [placeMm(huge, 0, 0)] }, items: [huge], job: JOB };
     await expect(planFinishing({ ...input, finishing: { marks: [{ kind: "crop" }] } })).resolves.toBeDefined();
     await expect(planFinishing({ ...input, finishing: { marks: [{ kind: "crop", bleedMarks: true }] } })).rejects.toThrow(
       MarkSpecError,
     );
+  });
+
+  it("accepts an item at the 100 m roll maximum with bleed marks on", async () => {
+    const longest: ItemInfo = { itemId: "longest", widthMm: 1_000, heightMm: 100_000, bleedMm: 3 };
+    const plan = await planFinishing({
+      layout: { placements: [placeMm(longest, 0, 0)] },
+      items: [longest],
+      job: JOB,
+      finishing: { marks: [{ kind: "crop", bleedMarks: true }] },
+    });
+    expect(linesPart(at(plan.elements, 0), 1).segments).toHaveLength(8);
+  });
+});
+
+describe("bleed marks: 30 m roll item", () => {
+  const ROLL: ItemInfo = { itemId: "roll", widthMm: 1_200, heightMm: 30_000, bleedMm: 5 };
+  const placement = placeMm(ROLL, 10, 10);
+  const finishing: FinishingSpecInput = { marks: [{ kind: "crop", bleedMarks: true }] };
+
+  it("plans bleed marks along the full roll length", async () => {
+    expect(mmToPt(ROLL.heightMm)).toBeCloseTo(85_039.37, 2);
+    const plan = await planFinishing({ layout: { placements: [placement] }, items: [ROLL], job: JOB, finishing });
+    const bleed = linesPart(at(plan.elements, 0), 1).segments;
+    expect(bleed).toHaveLength(8);
+    // Bleed box 10..1220 x 10..30020 mm; the top marks start 3 mm above it and run 6 mm.
+    const top = Math.max(...bleed.map((s) => Math.max(s.y1, s.y2)));
+    expect(top).toBeCloseTo(30_029, 6);
+  });
+
+  it("renders the bleed marks on a roll-length page", async () => {
+    const doc = await PDFDocument.create({ updateMetadata: false });
+    const page = doc.addPage([mmToPt(1_240), mmToPt(30_040)]);
+    await draw({ page, layout: { placements: [placement] }, frame: FRAME }, { items: [ROLL], job: JOB, finishing });
+    const stream = await marksStream(await doc.save());
+    // Crop marks start max(offset, bleed) = 5 mm past the trim (15..1215 x 15..30015).
+    expect(stream).toContain("1215 30020 m 1215 30026 l");
+    // Bleed marks start 3 mm past the bleed box (10..1220 x 10..30020).
+    expect(stream).toContain("1220 30023 m 1220 30029 l");
+    expect(stream).toContain("1223 30020 m 1229 30020 l");
   });
 
   it("property: bleed marks never intersect the bleed box, for random boxes and rotations", async () => {
