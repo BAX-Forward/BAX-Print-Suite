@@ -6,6 +6,7 @@ export * from './color/linearization.js';
 export * from './color/tac.js';
 export * from './color/white-ink.js';
 export * from './color/white-ink-setting.js';
+export * from './screening/threshold.js';
 export * from './cgats.js';
 export * from './cxf.js';
 export * from './spot-library.js';
