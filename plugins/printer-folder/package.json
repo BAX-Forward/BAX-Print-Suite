@@ -1,0 +1,35 @@
+{
+  "name": "@bax-print/printer-folder",
+  "version": "0.1.0",
+  "description": "Generic file-drop PrinterDriver/1 plugin for BAX Print Suite: writes finished output into a watched folder",
+  "license": "Apache-2.0",
+  "type": "module",
+  "main": "./dist/main.js",
+  "bin": {
+    "bps-printer-folder": "./dist/main.js"
+  },
+  "exports": {
+    ".": {
+      "types": "./dist/driver.d.ts",
+      "default": "./dist/driver.js"
+    },
+    "./bps-plugin.json": "./bps-plugin.json"
+  },
+  "files": [
+    "dist",
+    "bps-plugin.json",
+    "README.md"
+  ],
+  "scripts": {
+    "build": "tsc -p tsconfig.build.json",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "test": "vitest run"
+  },
+  "dependencies": {
+    "@bax-print/plugin-sdk": "workspace:*"
+  },
+  "devDependencies": {
+    "typescript": "5.9.3",
+    "vitest": "3.2.4"
+  }
+}
