@@ -18,8 +18,11 @@ import { HttpError } from './errors.js';
 /** `METHOD /url` as Fastify registers the route, e.g. `GET /jobs/:id/history`. */
 export type RouteKey = string;
 
-/** Routes anyone may call: the health check (when mounted) and the OpenAPI document. */
-export const PUBLIC_ROUTES: ReadonlySet<RouteKey> = new Set(['GET /health', 'GET /openapi.json']);
+/**
+ * Routes anyone may call: the health check (when mounted), the OpenAPI document and the Spec 028d
+ * login routes, which check the credentials they are sent themselves.
+ */
+export const PUBLIC_ROUTES: ReadonlySet<RouteKey> = new Set(['GET /health', 'GET /openapi.json', 'POST /login', 'POST /logout']);
 
 /** The permission each route needs. `HEAD` routes need what their `GET` route needs. */
 export const ROUTE_PERMISSIONS: Readonly<Record<RouteKey, Permission>> = Object.freeze({

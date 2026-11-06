@@ -20,10 +20,13 @@ import { PreflightService } from './preflight-service.js';
 import { ProfileService } from './profiles.js';
 import { configureRollCut } from './roll-cut-config.js';
 import { startArchiveScheduler } from './scheduler.js';
+import { configureLogin, parseSessionConfig } from './session-config.js';
 import { MemoryFindingsStore, MemoryProfileStore } from './stores.js';
 import { openWebhookPersistence } from './webhook-persistence.js';
 import { ALLOW_LAN_TARGETS_ENV, parseAllowLanTargets } from './webhook-routes.js';
 
+// Spec 028d: parsed first, so a bad BPS_LOGIN or BPS_COOKIE stops the server before it opens anything.
+const sessionConfig = parseSessionConfig(process.env);
 const dataDir = resolve(process.env.BPS_DATA_DIR ?? 'data');
 const host = process.env.BPS_HOST ?? '127.0.0.1';
 const port = Number(process.env.BPS_PORT ?? 8080);
@@ -74,7 +77,13 @@ const media = new MediaService({ stores: memoryMediaStores(), bus, jobs: jobRepo
 // Spec 029c: bearer API tokens only with BPS_DATABASE and BPS_API_TOKENS=1; an invalid flag stops startup.
 const apiTokens = configureApiTokens(process.env, database ? new SqliteApiTokenRepository(database) : undefined).enabled;
 
-// Without API tokens there is no `authenticate`: every caller is the local admin, which is safe on loopback only (Spec 024b).
+// Without API tokens or BPS_LOGIN there is no `authenticate`: every caller is the local admin, which
+// is safe on loopback only (Spec 024b). With BPS_LOGIN=1 every guarded route needs a session (Spec 028d).
+const login = configureLogin(sessionConfig, database);
+// Spec 028d: API tokens and login each bring their own actor resolver; combining them is a follow-up.
+if (apiTokens && login.authenticate) {
+  throw new Error('BPS_API_TOKENS=1 and BPS_LOGIN=1 cannot be combined yet; enable one of them');
+}
 const serverDeps: ServerDeps = {
   archive,
   preflight: { preflight, profiles, registry },
@@ -96,6 +105,7 @@ const serverDeps: ServerDeps = {
   // accounting reports are only published as history events, so `GET /reports/accounting` is not mounted.
   accounting: { jobs: jobRepository },
   ...(apiTokens ? { apiTokens: apiTokens.apiTokens, authenticate: apiTokens.authenticate } : {}),
+  ...login,
   logger: true,
 };
 const app = buildServer(serverDeps);
