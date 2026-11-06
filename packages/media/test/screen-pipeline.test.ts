@@ -3,12 +3,17 @@ import {
   BAYER_SIZES,
   type InkLimitMethod,
   MAX_SCREEN_PIPELINE_PIXELS,
+  PlaneCurveError,
+  type PlaneCurveLuts,
   SCREEN_DOT_ON,
+  type ScreenPipelineInkLimit,
   type ScreenPipelineInput,
   type ScreenPipelinePlanes,
   type ScreenPipelineScreening,
   type ScreenPlaneOffset,
+  type ScreenPlaneOffsets,
   type ThresholdArray,
+  applyPlaneCurves,
   bayerArray,
   blueNoiseArray,
   composeScreening,
@@ -209,6 +214,177 @@ describe('composeScreening ink limit + screening on flat grey', () => {
     expect(Math.abs(coverage(out.k) - 218 / 255)).toBeLessThanOrEqual(0.01);
     const total = planesOf(out).reduce((sum, plane) => sum + coverage(plane), 0);
     expect(total).toBeLessThanOrEqual(3.0 + 0.01);
+  });
+});
+
+describe('composeScreening plane curves (spec 044c, seeded)', () => {
+  const identity = Uint8Array.from({ length: 256 }, (_, i) => i);
+
+  function randomInt(rng: () => number, lo: number, hi: number): number {
+    return lo + Math.floor(rng() * (hi - lo + 1));
+  }
+
+  function randomInkLimit(rng: () => number): ScreenPipelineInkLimit {
+    return { limitPercent: randomInt(rng, 100, 400), method: rng() < 0.5 ? 'proportional' : 'gcr' };
+  }
+
+  /** Any 256 bytes; a LUT need not be monotone to be applied. A channel is left out with probability 1/4. */
+  function randomCurves(rng: () => number): PlaneCurveLuts {
+    const lut = (): Uint8Array | undefined =>
+      rng() < 0.25 ? undefined : Uint8Array.from({ length: 256 }, () => randomInt(rng, 0, 255));
+    const c = lut();
+    const m = lut();
+    const y = lut();
+    const k = lut();
+    return {
+      ...(c === undefined ? {} : { c }),
+      ...(m === undefined ? {} : { m }),
+      ...(y === undefined ? {} : { y }),
+      ...(k === undefined ? {} : { k }),
+    };
+  }
+
+  function randomOffsets(rng: () => number, size: number): ScreenPlaneOffsets {
+    const offset = (): ScreenPlaneOffset => ({ x: randomInt(rng, 0, size - 1), y: randomInt(rng, 0, size - 1) });
+    return { c: offset(), m: offset(), y: offset(), k: offset() };
+  }
+
+  /** Random ink limit, screening and offsets, each present half of the time. */
+  function randomOptions(rng: () => number): Pick<ScreenPipelineInput, 'inkLimit' | 'screening' | 'planeOffsets'> {
+    const inkLimit = rng() < 0.5 ? randomInkLimit(rng) : undefined;
+    const screening = rng() < 0.5 ? randomScreening(rng) : undefined;
+    const planeOffsets = screening && rng() < 0.5 ? randomOffsets(rng, screening.size) : undefined;
+    return {
+      ...(inkLimit === undefined ? {} : { inkLimit }),
+      ...(screening === undefined ? {} : { screening }),
+      ...(planeOffsets === undefined ? {} : { planeOffsets }),
+    };
+  }
+
+  it('is byte-identical to the call without planeCurves when the field is absent or undefined', () => {
+    const rng = seededRng(0x044c);
+    for (let trial = 0; trial < 200; trial++) {
+      const input = { ...randomImage(rng), ...randomOptions(rng) };
+      const without = composeScreening(input);
+      expect(planesOf(composeScreening({ ...input, planeCurves: undefined }))).toEqual(planesOf(without));
+      expect(planesOf(composeScreening({ ...input }))).toEqual(planesOf(without));
+    }
+  });
+
+  it('treats identity curves on every plane as a no-op', () => {
+    const rng = seededRng(0x044d);
+    const planeCurves = { c: identity, m: identity, y: identity, k: identity };
+    for (let trial = 0; trial < 200; trial++) {
+      const input = { ...randomImage(rng), ...randomOptions(rng) };
+      const before = planesOf(input).map((p) => p.slice());
+      expect(planesOf(composeScreening({ ...input, planeCurves }))).toEqual(planesOf(composeScreening(input)));
+      expect(planesOf(input)).toEqual(before);
+    }
+  });
+
+  it('equals applyPlaneCurves with only curves (no ink limit, no screening)', () => {
+    const rng = seededRng(0x044e);
+    for (let trial = 0; trial < 200; trial++) {
+      const image = randomImage(rng);
+      const planeCurves = randomCurves(rng);
+      const before = planesOf(image).map((p) => p.slice());
+      const out = composeScreening({ ...image, planeCurves });
+      expect(planesOf(out)).toEqual(planesOf(applyPlaneCurves(image, planeCurves)));
+      expect(planesOf(image)).toEqual(before);
+    }
+  });
+
+  it('runs the ink limit, then the curves, then screening, matching a manual composition', () => {
+    const rng = seededRng(0x044f);
+    let swappedDiffers = 0;
+    for (let trial = 0; trial < 200; trial++) {
+      const image = randomImage(rng);
+      const inkLimit = randomInkLimit(rng);
+      const planeCurves = randomCurves(rng);
+      const screening = randomScreening(rng);
+      const planeOffsets = randomOffsets(rng, screening.size);
+
+      const out = composeScreening({ ...image, inkLimit, planeCurves, screening, planeOffsets });
+
+      const limited = limitInk({ ...image, ...inkLimit });
+      const curved = applyPlaneCurves({ width: image.width, height: image.height, ...limited }, planeCurves);
+      const manual = composeScreening({ ...curved, screening, planeOffsets });
+      expect(planesOf(out)).toEqual(planesOf(manual));
+
+      const curvedFirst = applyPlaneCurves(image, planeCurves);
+      const swapped = composeScreening({ ...curvedFirst, inkLimit, screening, planeOffsets });
+      const a = planesOf(swapped).flatMap((p) => Array.from(p));
+      const b = planesOf(out).flatMap((p) => Array.from(p));
+      if (a.every((v, i) => v === b[i])) continue;
+      swappedDiffers++;
+    }
+    expect(swappedDiffers).toBeGreaterThan(0);
+  });
+
+  it('runs the ink limit, then the curves, without screening', () => {
+    const rng = seededRng(0x0450);
+    for (let trial = 0; trial < 100; trial++) {
+      const image = randomImage(rng);
+      const inkLimit = randomInkLimit(rng);
+      const planeCurves = randomCurves(rng);
+      const limited = limitInk({ ...image, ...inkLimit });
+      const expected = applyPlaneCurves({ width: image.width, height: image.height, ...limited }, planeCurves);
+      expect(planesOf(composeScreening({ ...image, inkLimit, planeCurves }))).toEqual(planesOf(expected));
+    }
+  });
+
+  it('is deterministic for the same input', () => {
+    const rng = seededRng(0x0451);
+    for (let trial = 0; trial < 50; trial++) {
+      const input = { ...randomImage(rng), ...randomOptions(rng), planeCurves: randomCurves(rng) };
+      expect(planesOf(composeScreening(input))).toEqual(planesOf(composeScreening(input)));
+    }
+  });
+
+  it('returns new planes, copying the planes without a LUT', () => {
+    const image = randomImage(seededRng(0x0452));
+    const out = composeScreening({ ...image, planeCurves: { c: identity } });
+    for (const name of PLANES) expect(out[name]).not.toBe(image[name]);
+  });
+});
+
+describe('composeScreening plane curves validation', () => {
+  const plane = (): Uint8Array => new Uint8Array(4);
+  const ok = { width: 2, height: 2, c: plane(), m: plane(), y: plane(), k: plane() };
+
+  it.each([
+    ['null', null, /INVALID_CURVES/],
+    ['a number', 3, /INVALID_CURVES/],
+    ['an unknown channel', { w: new Uint8Array(256) }, /INVALID_CURVES: unknown curve channel w/],
+    ['a short LUT', { c: new Uint8Array(255) }, /INVALID_LUT: curve c/],
+    ['a long LUT', { m: new Uint8Array(257) }, /INVALID_LUT: curve m/],
+    ['a plain array', { k: Array.from({ length: 256 }, () => 0) }, /INVALID_LUT: curve k/],
+  ])('rejects curves that are %s with the applyPlaneCurves error', (_name, planeCurves, message) => {
+    expect(() => callUntyped({ ...ok, planeCurves })).toThrow(PlaneCurveError);
+    expect(() => callUntyped({ ...ok, planeCurves })).toThrow(message);
+  });
+
+  it('checks the curves before the ink limit or screening runs', () => {
+    const tiny = new Uint8Array(1);
+    const huge = new Uint8Array(1_000_000);
+    const input = {
+      width: 1000,
+      height: 1000,
+      c: huge,
+      m: huge,
+      y: huge,
+      k: huge,
+      inkLimit: { limitPercent: 300, method: 'gcr' },
+      planeCurves: { y: tiny },
+      screening: { kind: 'blue-noise', size: 256, seed: 1 },
+    };
+    const started = performance.now();
+    expect(() => callUntyped(input)).toThrow(/INVALID_LUT: curve y/);
+    expect(performance.now() - started).toBeLessThan(100);
+  });
+
+  it('reports a bad plane before bad curves', () => {
+    expect(() => callUntyped({ ...ok, c: new Uint8Array(3), planeCurves: null })).toThrow(/plane c has 3 bytes/);
   });
 });
 

@@ -5,6 +5,7 @@ import {
   MIN_INK_LIMIT_PERCENT,
   limitInk,
 } from '../color/ink-limit.js';
+import { MAX_PLANE_CURVE_PIXELS, type PlaneCurveLuts, applyPlaneCurves } from '../color/plane-curves.js';
 import {
   BAYER_SIZES,
   type BayerSize,
@@ -16,8 +17,8 @@ import {
   blueNoiseArray,
 } from './threshold.js';
 
-/** The pipeline runs both stages, so it accepts the smaller of their pixel caps. */
-export const MAX_SCREEN_PIPELINE_PIXELS = Math.min(MAX_INK_LIMIT_PIXELS, MAX_SCREEN_PIXELS);
+/** The pipeline runs every stage, so it accepts the smallest of their pixel caps. */
+export const MAX_SCREEN_PIPELINE_PIXELS = Math.min(MAX_INK_LIMIT_PIXELS, MAX_PLANE_CURVE_PIXELS, MAX_SCREEN_PIXELS);
 /** Plane value of a screened dot that is on. */
 export const SCREEN_DOT_ON = 255;
 const MIN_BLUE_NOISE_SIZE = 2;
@@ -55,6 +56,8 @@ export interface ScreenPipelineInput {
   y: Uint8Array;
   k: Uint8Array;
   inkLimit?: ScreenPipelineInkLimit;
+  /** Spec 044c: one 256-entry LUT per plane (spec 044a), applied after the ink limit; a missing plane is unchanged. */
+  planeCurves?: PlaneCurveLuts;
   screening?: ScreenPipelineScreening;
   /** Only valid together with `screening`; a missing plane entry means no shift. */
   planeOffsets?: ScreenPlaneOffsets;
@@ -110,6 +113,18 @@ function requireInkLimit(value: unknown): ScreenPipelineInkLimit | undefined {
     return fail(`inkLimit.method must be proportional or gcr (got ${String(method)})`);
   }
   return fail('inkLimit must be an object');
+}
+
+const CURVE_PROBE = new Uint8Array(1);
+
+/**
+ * Runs applyPlaneCurves' own LUT checks on a 1 x 1 probe image, so bad curves throw its
+ * PlaneCurveError before any full-size stage allocates.
+ */
+function requirePlaneCurves(value: PlaneCurveLuts | undefined): PlaneCurveLuts | undefined {
+  if (value === undefined) return undefined;
+  applyPlaneCurves({ width: 1, height: 1, c: CURVE_PROBE, m: CURVE_PROBE, y: CURVE_PROBE, k: CURVE_PROBE }, value);
+  return value;
 }
 
 function requireBayerSize(size: unknown): BayerSize {
@@ -180,10 +195,12 @@ function screenPlane(width: number, height: number, plane: Uint8Array, array: Th
 
 /**
  * Spec 041a: composes the optional ink limit (spec 040a) and threshold screening (spec 039a) of a
- * CMYK image. Every input is validated before any stage runs or allocates. The ink limit, if set,
- * runs first; screening then builds one threshold array and screens each plane with it, where the
- * plane's pixel (x, y) uses the tile threshold at ((x + offset.x) mod size, (y + offset.y) mod size).
- * Screened planes hold only 0 and 255. Without options the result is a copy of the input planes.
+ * CMYK image; spec 044c adds the optional plane curves (spec 044a) between them. Every input is
+ * validated before any stage runs or allocates. The ink limit, if set, runs first; the plane
+ * curves, if set, map its result; screening then builds one threshold array and screens each plane
+ * with it, where the plane's pixel (x, y) uses the tile threshold at ((x + offset.x) mod size,
+ * (y + offset.y) mod size). Screened planes hold only 0 and 255. Without options the result is a
+ * copy of the input planes.
  */
 export function composeScreening(input: ScreenPipelineInput): ScreenPipelinePlanes {
   const { width, height } = requirePixelCount(input.width, input.height);
@@ -193,16 +210,20 @@ export function composeScreening(input: ScreenPipelineInput): ScreenPipelinePlan
   const y = requirePlane('y', input.y, pixelCount);
   const k = requirePlane('k', input.k, pixelCount);
   const inkLimit = requireInkLimit(input.inkLimit);
+  const planeCurves = requirePlaneCurves(input.planeCurves);
   const screening = requireScreening(input.screening);
   const offsets = requireOffsets(input.planeOffsets, screening?.size);
 
   const limited = inkLimit ? limitInk({ width, height, c, m, y, k, ...inkLimit }) : undefined;
+  const curved = planeCurves
+    ? applyPlaneCurves({ width, height, ...(limited ?? { c, m, y, k }) }, planeCurves)
+    : limited;
   if (screening === undefined) {
-    if (limited) return { c: limited.c, m: limited.m, y: limited.y, k: limited.k };
+    if (curved) return { c: curved.c, m: curved.m, y: curved.y, k: curved.k };
     return { c: c.slice(), m: m.slice(), y: y.slice(), k: k.slice() };
   }
 
-  const source = limited ?? { c, m, y, k };
+  const source = curved ?? { c, m, y, k };
   const array =
     screening.kind === 'bayer' ? bayerArray(screening.size) : blueNoiseArray(screening.size, screening.seed);
   return {
