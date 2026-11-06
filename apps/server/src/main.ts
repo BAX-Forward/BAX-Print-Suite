@@ -25,6 +25,7 @@ import { startArchiveScheduler } from './scheduler.js';
 import { configureLogin, parseSessionConfig } from './session-config.js';
 import { configureSiteScope } from './site-scope.js';
 import { MemoryFindingsStore, MemoryProfileStore } from './stores.js';
+import { parseSwatchChartsFlag } from './swatch-chart-routes.js';
 import { loadHttpsOptions } from './tls.js';
 import { openWebhookPersistence } from './webhook-persistence.js';
 import { ALLOW_LAN_TARGETS_ENV, parseAllowLanTargets } from './webhook-routes.js';
@@ -42,6 +43,8 @@ const blobsDir = join(dataDir, 'blobs');
 const allowLanTargets = parseAllowLanTargets(process.env[ALLOW_LAN_TARGETS_ENV]);
 // Spec 029d: BPS_TLS_CERT with BPS_TLS_KEY serves HTTPS; a lone one or an unreadable file stops startup.
 const https = loadHttpsOptions(process.env);
+// Spec 032b: POST /swatch-charts only with BPS_SWATCH_CHARTS=1; any other value stops startup.
+const swatchCharts = parseSwatchChartsFlag(process.env);
 // Spec 019c: a SQLite job database (BPS_DATABASE) keeps webhook subscriptions across restarts.
 // Spec 019d: the file is mode 0600 and secrets are sealed when a secrets key is configured.
 const { store: webhookStore, database, warnings: persistenceWarnings } = openWebhookPersistence(process.env);
@@ -117,6 +120,7 @@ const serverDeps: ServerDeps = {
   ...(apiTokens ? { apiTokens: apiTokens.apiTokens, authenticate: apiTokens.authenticate } : {}),
   ...login,
   ...(siteScope ? { siteScope } : {}),
+  ...(swatchCharts ? { swatchCharts } : {}),
   logger: true,
   ...(https === undefined ? {} : { https }),
 };
