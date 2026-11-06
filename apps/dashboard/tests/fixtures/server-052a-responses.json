@@ -1,0 +1,223 @@
+{
+  "capturedFrom": "052a 9ebaab0 via app.inject",
+  "createJob": {
+    "status": 201,
+    "body": {
+      "job": {
+        "id": "job-0001",
+        "name": "Poster A",
+        "status": "received",
+        "sourceFormat": "pdf",
+        "priority": 50,
+        "sourceFiles": [
+          {
+            "name": "upload-0001.pdf",
+            "sha256": "5a841916167ce4041a80730821b3a9678c6714192d32602a32bf101daee0b8c9",
+            "sizeBytes": 23,
+            "storageKey": "jobs/job-0001/source/0-upload-0001.pdf"
+          }
+        ],
+        "artifacts": [],
+        "ticket": {
+          "intent": {
+            "quantity": 1
+          },
+          "process": {}
+        },
+        "tags": [],
+        "metadata": {
+          "intakeFile": "upload-0001.pdf",
+          "displayName": "Poster A"
+        },
+        "createdAt": "2026-03-01T08:00:00.000Z",
+        "updatedAt": "2026-03-01T08:00:00.000Z",
+        "lifecycle": "active",
+        "legalHold": false
+      }
+    }
+  },
+  "listPage1": {
+    "status": 200,
+    "body": {
+      "items": [
+        {
+          "id": "job-0003",
+          "name": "Card C",
+          "status": "received",
+          "sourceFormat": "pdf",
+          "priority": 50,
+          "sourceFiles": [
+            {
+              "name": "upload-0003.pdf",
+              "sha256": "5a841916167ce4041a80730821b3a9678c6714192d32602a32bf101daee0b8c9",
+              "sizeBytes": 23,
+              "storageKey": "jobs/job-0003/source/0-upload-0003.pdf"
+            }
+          ],
+          "artifacts": [],
+          "ticket": {
+            "intent": {
+              "quantity": 1
+            },
+            "process": {}
+          },
+          "tags": [],
+          "metadata": {
+            "intakeFile": "upload-0003.pdf",
+            "displayName": "Card C"
+          },
+          "createdAt": "2026-03-01T08:00:00.000Z",
+          "updatedAt": "2026-03-01T08:00:00.000Z",
+          "lifecycle": "active",
+          "legalHold": false
+        },
+        {
+          "id": "job-0002",
+          "name": "Banner B",
+          "status": "received",
+          "sourceFormat": "pdf",
+          "priority": 50,
+          "sourceFiles": [
+            {
+              "name": "upload-0002.pdf",
+              "sha256": "5a841916167ce4041a80730821b3a9678c6714192d32602a32bf101daee0b8c9",
+              "sizeBytes": 23,
+              "storageKey": "jobs/job-0002/source/0-upload-0002.pdf"
+            }
+          ],
+          "artifacts": [],
+          "ticket": {
+            "intent": {
+              "quantity": 1
+            },
+            "process": {}
+          },
+          "tags": [],
+          "metadata": {
+            "intakeFile": "upload-0002.pdf",
+            "displayName": "Banner B"
+          },
+          "createdAt": "2026-03-01T08:00:00.000Z",
+          "updatedAt": "2026-03-01T08:00:00.000Z",
+          "lifecycle": "active",
+          "legalHold": false
+        }
+      ],
+      "nextCursor": "WyIyMDI2LTAzLTAxVDA4OjAwOjAwLjAwMFoiLCJqb2ItMDAwMiJd"
+    }
+  },
+  "listPage2": {
+    "status": 200,
+    "body": {
+      "items": [
+        {
+          "id": "job-0001",
+          "name": "Poster A",
+          "status": "received",
+          "sourceFormat": "pdf",
+          "priority": 50,
+          "sourceFiles": [
+            {
+              "name": "upload-0001.pdf",
+              "sha256": "5a841916167ce4041a80730821b3a9678c6714192d32602a32bf101daee0b8c9",
+              "sizeBytes": 23,
+              "storageKey": "jobs/job-0001/source/0-upload-0001.pdf"
+            }
+          ],
+          "artifacts": [],
+          "ticket": {
+            "intent": {
+              "quantity": 1
+            },
+            "process": {}
+          },
+          "tags": [],
+          "metadata": {
+            "intakeFile": "upload-0001.pdf",
+            "displayName": "Poster A"
+          },
+          "createdAt": "2026-03-01T08:00:00.000Z",
+          "updatedAt": "2026-03-01T08:00:00.000Z",
+          "lifecycle": "active",
+          "legalHold": false
+        }
+      ],
+      "nextCursor": null
+    }
+  },
+  "getJob": {
+    "status": 200,
+    "body": {
+      "job": {
+        "id": "job-0001",
+        "name": "Poster A",
+        "status": "received",
+        "sourceFormat": "pdf",
+        "priority": 50,
+        "sourceFiles": [
+          {
+            "name": "upload-0001.pdf",
+            "sha256": "5a841916167ce4041a80730821b3a9678c6714192d32602a32bf101daee0b8c9",
+            "sizeBytes": 23,
+            "storageKey": "jobs/job-0001/source/0-upload-0001.pdf"
+          }
+        ],
+        "artifacts": [],
+        "ticket": {
+          "intent": {
+            "quantity": 1
+          },
+          "process": {}
+        },
+        "tags": [],
+        "metadata": {
+          "intakeFile": "upload-0001.pdf",
+          "displayName": "Poster A"
+        },
+        "createdAt": "2026-03-01T08:00:00.000Z",
+        "updatedAt": "2026-03-01T08:00:00.000Z",
+        "lifecycle": "active",
+        "legalHold": false
+      }
+    }
+  },
+  "getJobNotFound": {
+    "status": 404,
+    "body": {
+      "error": {
+        "code": "not_found",
+        "message": "Job job-9999 not found"
+      }
+    }
+  },
+  "uploadTooLarge": {
+    "status": 413,
+    "body": {
+      "error": {
+        "code": "upload_too_large",
+        "message": "The upload is larger than 64 bytes",
+        "details": {
+          "maxBytes": 64
+        }
+      }
+    }
+  },
+  "uploadWrongType": {
+    "status": 415,
+    "body": {
+      "error": {
+        "code": "upload_media_type_unsupported",
+        "message": "Send the PDF as a raw application/pdf body"
+      }
+    }
+  },
+  "uploadNotPdf": {
+    "status": 400,
+    "body": {
+      "error": {
+        "code": "upload_not_pdf",
+        "message": "The upload does not start with %PDF-"
+      }
+    }
+  }
+}

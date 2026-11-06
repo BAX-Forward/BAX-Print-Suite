@@ -151,7 +151,7 @@ function JobTileEditor({ page, tiling, base }: JobTileEditorProps) {
 
 function JobTileBody({ job }: JobTileSectionProps) {
   if (job.tiling === undefined) return <p className={ui.muted}>{t.noTiling}</p>;
-  const first = job.pages.at(0);
+  const first = job.pages?.at(0);
   if (first === undefined) return <p className={ui.muted}>{t.noPages}</p>;
   const page = artworkPage(first);
   const result = tile(page, tileSpec(job.tiling));

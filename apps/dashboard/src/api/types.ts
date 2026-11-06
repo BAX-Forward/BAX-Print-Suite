@@ -2,10 +2,14 @@ import type { components } from './schema';
 
 type Schemas = components['schemas'];
 
+/** A job as GET /jobs and GET /jobs/:id answer it (Spec 052a). */
 export type Job = Schemas['Job'];
+export type JobSourceFile = Job['sourceFiles'][number];
+/** Mock-only control-plane record (PATCH, print, job events); not served by the 052a server. */
+export type JobRecord = Schemas['JobRecord'];
 export type JobStatus = Schemas['JobStatus'];
-export type JobSort = Schemas['JobSort'];
 export type JobPage = Schemas['JobPage'];
+export type JobEnvelope = Schemas['JobEnvelope'];
 export type JobPatch = Schemas['JobPatch'];
 export type JobStep = Schemas['JobStep'];
 export type JobError = Schemas['JobError'];
@@ -27,9 +31,7 @@ export type Problem = Schemas['Problem'];
 export type Health = Schemas['Health'];
 export type CloudEvent = Schemas['CloudEvent'];
 
-export type SortField = 'createdAt' | 'priority' | 'name';
-
-/** Display order for filters. Mirrors the JobStatus enum in /openapi.json (checked by a contract test). */
+/** Display order of the statuses. Mirrors the JobStatus enum in mock/openapi.json (checked by a contract test). */
 export const JOB_STATUSES: readonly JobStatus[] = [
   'received',
   'inspecting',
@@ -44,14 +46,10 @@ export const JOB_STATUSES: readonly JobStatus[] = [
   'cancelled',
 ];
 
-export const JOB_SORTS: readonly JobSort[] = [
-  'createdAt',
-  '-createdAt',
-  'priority',
-  '-priority',
-  'name',
-  '-name',
-];
+/** The 052a Job carries its status as a plain string; this narrows it to a status the UI knows. */
+export function isJobStatus(value: unknown): value is JobStatus {
+  return typeof value === 'string' && (JOB_STATUSES as readonly string[]).includes(value);
+}
 
 /** Interface name a plugin must provide to be offered as a printer driver. */
 export const PRINTER_DRIVER_INTERFACE = 'PrinterDriver';

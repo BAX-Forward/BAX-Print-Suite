@@ -1,4 +1,4 @@
-import type { DeviceState, JobStatus, StepStatus } from '../api/types';
+import { isJobStatus, type DeviceState, type JobStatus, type StepStatus } from '../api/types';
 import { strings } from '../strings';
 import ui from './ui.module.css';
 
@@ -42,7 +42,9 @@ function Badge({ tone, label, value }: { tone: Tone; label: string; value: strin
   );
 }
 
-export function StatusBadge({ status }: { status: JobStatus }) {
+/** The 052a Job carries its status as a plain string; one the UI does not know is shown as sent. */
+export function StatusBadge({ status }: { status: string }) {
+  if (!isJobStatus(status)) return <Badge tone="neutral" label={status} value={status} />;
   return <Badge tone={JOB_TONE[status]} label={strings.status[status]} value={status} />;
 }
 

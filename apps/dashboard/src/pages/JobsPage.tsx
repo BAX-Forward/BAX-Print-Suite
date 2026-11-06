@@ -1,5 +1,5 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
-import { Link, useSearchParams } from 'react-router-dom';
+import { useMemo, useRef, useState } from 'react';
+import { Link } from 'react-router-dom';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import {
   createColumnHelper,
@@ -12,16 +12,13 @@ import {
 import { useVirtualizer } from '@tanstack/react-virtual';
 import { useApi } from '../api/ApiContext';
 import { errorMessage } from '../api/client';
-import { INLINE_ERRORS, queryKeys, useDevices, useHotFolders, useJobList } from '../api/queries';
-import { JOB_STATUSES, type Job, type JobPatch, type SortField } from '../api/types';
+import { INLINE_ERRORS, queryKeys, useJobList } from '../api/queries';
+import type { Job, JobPatch } from '../api/types';
 import { clampPriority } from '../components/PriorityControl';
 import { StatusBadge } from '../components/StatusBadge';
 import { useToast } from '../components/Toasts';
 import ui from '../components/ui.module.css';
-import { UnitToggle } from '../components/UnitToggle';
-import { formatDateTime, formatPageSize, type LengthUnit } from '../lib/format';
-import { nextSort, parseSort, readJobFilters, toListFilters, writeJobFilters, type JobFilters } from '../lib/jobFilters';
-import { useUnitPreference } from '../lib/useUnitPreference';
+import { formatBytes, formatDateTime } from '../lib/format';
 import { strings } from '../strings';
 import styles from './JobsPage.module.css';
 
@@ -29,20 +26,21 @@ import styles from './JobsPage.module.css';
 export const VIRTUALIZE_THRESHOLD = 200;
 const ROW_HEIGHT_PX = 41;
 const VIRTUAL_OVERSCAN_ROWS = 10;
-const SEARCH_DEBOUNCE_MS = 300;
 const DEFAULT_BULK_PRIORITY = 50;
-
-/** Columns the API can sort by (`sort` query parameter). */
-const SORTABLE: Record<string, SortField> = { name: 'name', priority: 'priority', createdAt: 'createdAt' };
 
 const t = strings.jobs;
 const column = createColumnHelper<Job>();
 
-function buildColumns(
-  unit: LengthUnit,
-  hotFolderNames: Map<string, string>,
-  deviceNames: Map<string, string>,
-) {
+/** Total bytes of a job's source files. */
+export function sourceBytes(job: Job): number {
+  return job.sourceFiles.reduce((total, file) => total + file.sizeBytes, 0);
+}
+
+/**
+ * Only columns the 052a Job carries. GET /jobs takes no filter or sort parameters (Spec 052a), so the
+ * list has no filter controls and no sortable headers: it is always the server's newest-first order.
+ */
+function buildColumns() {
   // Mixed accessor/display columns need `any` for the value type (TanStack Table's documented pattern).
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const columns: ColumnDef<Job, any>[] = [
@@ -74,30 +72,15 @@ function buildColumns(
     }),
     column.accessor('status', { header: t.columns.status, cell: ({ getValue }) => <StatusBadge status={getValue()} /> }),
     column.accessor('priority', { header: t.columns.priority }),
-    column.accessor('pageCount', { header: t.columns.pages }),
     column.display({
-      id: 'size',
-      header: t.columns.size,
-      cell: ({ row }) => {
-        const first = row.original.pages[0];
-        return first ? formatPageSize(first.widthPt, first.heightPt, unit) : strings.common.none;
-      },
+      id: 'sourceFile',
+      header: t.columns.sourceFile,
+      cell: ({ row }) => row.original.sourceFiles[0]?.name ?? strings.common.none,
     }),
     column.display({
-      id: 'hotFolder',
-      header: t.columns.hotFolder,
-      cell: ({ row }) => {
-        const hotFolderId = row.original.hotFolderId;
-        return hotFolderId ? (hotFolderNames.get(hotFolderId) ?? hotFolderId) : strings.common.none;
-      },
-    }),
-    column.display({
-      id: 'device',
-      header: t.columns.device,
-      cell: ({ row }) => {
-        const deviceId = row.original.deviceId;
-        return deviceId ? (deviceNames.get(deviceId) ?? deviceId) : strings.common.none;
-      },
+      id: 'fileSize',
+      header: t.columns.fileSize,
+      cell: ({ row }) => (row.original.sourceFiles.length ? formatBytes(sourceBytes(row.original)) : strings.common.none),
     }),
     column.accessor('createdAt', { header: t.columns.created, cell: ({ getValue }) => formatDateTime(getValue()) }),
     column.accessor('updatedAt', { header: t.columns.updated, cell: ({ getValue }) => formatDateTime(getValue()) }),
@@ -109,40 +92,13 @@ export function JobsPage() {
   const api = useApi();
   const queryClient = useQueryClient();
   const toast = useToast();
-  const [searchParams, setSearchParams] = useSearchParams();
-  const filters = useMemo(() => readJobFilters(searchParams), [searchParams]);
-  const listFilters = useMemo(() => toListFilters(filters), [filters]);
-  const jobsQuery = useJobList(listFilters);
-  const hotFolders = useHotFolders();
-  const devices = useDevices();
-  const [unit, setUnit] = useUnitPreference();
+  const jobsQuery = useJobList();
   const [rowSelection, setRowSelection] = useState<RowSelectionState>({});
-  const [searchText, setSearchText] = useState(filters.q);
   const [bulkPriority, setBulkPriority] = useState(DEFAULT_BULK_PRIORITY);
   const scrollRef = useRef<HTMLDivElement>(null);
 
-  const updateFilters = (patch: Partial<JobFilters>) => {
-    setSearchParams((prev) => writeJobFilters({ ...readJobFilters(prev), ...patch }), { replace: true });
-  };
-
-  useEffect(() => {
-    if (searchText === filters.q) return;
-    const timer = setTimeout(() => {
-      setSearchParams((prev) => writeJobFilters({ ...readJobFilters(prev), q: searchText }), { replace: true });
-    }, SEARCH_DEBOUNCE_MS);
-    return () => clearTimeout(timer);
-  }, [searchText, filters.q, setSearchParams]);
-
   const jobs = useMemo(() => jobsQuery.data?.pages.flatMap((page) => page.items) ?? [], [jobsQuery.data]);
-  const hotFolderNames = useMemo(
-    () => new Map((hotFolders.data ?? []).map((folder) => [folder.id, folder.name])),
-    [hotFolders.data],
-  );
-  const deviceNames = useMemo(
-    () => new Map((devices.data ?? []).map((device) => [device.id, device.name])),
-    [devices.data],
-  );
-  const columns = useMemo(() => buildColumns(unit, hotFolderNames, deviceNames), [unit, hotFolderNames, deviceNames]);
+  const columns = useMemo(() => buildColumns(), []);
 
   const table = useReactTable({
     data: jobs,
@@ -187,89 +143,9 @@ export function JobsPage() {
   });
   const runBulk = (patch: JobPatch) => bulk.mutate({ ids: selectedIds, patch });
 
-  const toggleStatus = (status: (typeof JOB_STATUSES)[number], checked: boolean) => {
-    const next = checked ? [...filters.status, status] : filters.status.filter((s) => s !== status);
-    updateFilters({ status: next });
-  };
-
-  const sort = parseSort(filters.sort);
-  const hasFilters = Boolean(filters.status.length || filters.q || filters.hotFolderId || filters.deviceId);
-
   return (
     <>
       <h1>{t.title}</h1>
-
-      <section aria-label={t.filters} className={ui.toolbar}>
-        <fieldset className={ui.fieldset}>
-          <legend>{t.statusFilter}</legend>
-          <div className={ui.inlineGroup}>
-            {JOB_STATUSES.map((status) => (
-              <label key={status}>
-                <input
-                  type="checkbox"
-                  checked={filters.status.includes(status)}
-                  onChange={(event) => toggleStatus(status, event.target.checked)}
-                />{' '}
-                {strings.status[status]}
-              </label>
-            ))}
-          </div>
-        </fieldset>
-        <div className={ui.field}>
-          <label htmlFor="jobs-hotfolder">{t.hotFolderFilter}</label>
-          <select
-            id="jobs-hotfolder"
-            value={filters.hotFolderId}
-            onChange={(event) => updateFilters({ hotFolderId: event.target.value })}
-          >
-            <option value="">{t.any}</option>
-            {(hotFolders.data ?? []).map((folder) => (
-              <option key={folder.id} value={folder.id}>
-                {folder.name}
-              </option>
-            ))}
-          </select>
-        </div>
-        <div className={ui.field}>
-          <label htmlFor="jobs-device">{t.deviceFilter}</label>
-          <select
-            id="jobs-device"
-            value={filters.deviceId}
-            onChange={(event) => updateFilters({ deviceId: event.target.value })}
-          >
-            <option value="">{t.any}</option>
-            {(devices.data ?? []).map((device) => (
-              <option key={device.id} value={device.id}>
-                {device.name}
-              </option>
-            ))}
-          </select>
-        </div>
-        <div className={ui.field}>
-          <label htmlFor="jobs-search">{t.search}</label>
-          <input
-            id="jobs-search"
-            type="search"
-            value={searchText}
-            onChange={(event) => setSearchText(event.target.value)}
-          />
-        </div>
-        <UnitToggle unit={unit} onChange={setUnit} />
-        {hasFilters && (
-          <button
-            type="button"
-            className="secondary"
-            onClick={() => {
-              setSearchText('');
-              setSearchParams(writeJobFilters({ ...filters, status: [], q: '', hotFolderId: '', deviceId: '' }), {
-                replace: true,
-              });
-            }}
-          >
-            {t.clearFilters}
-          </button>
-        )}
-      </section>
 
       <section aria-label={t.bulk.label} className={ui.toolbar}>
         <span aria-live="polite">{t.bulk.selected(selectedIds.length)}</span>
@@ -320,27 +196,11 @@ export function JobsPage() {
               <thead>
                 {table.getHeaderGroups().map((group) => (
                   <tr key={group.id}>
-                    {group.headers.map((header) => {
-                      const sortField = SORTABLE[header.column.id];
-                      const content = flexRender(header.column.columnDef.header, header.getContext());
-                      const ariaSort = sortField && sort.field === sortField ? (sort.desc ? 'descending' : 'ascending') : undefined;
-                      return (
-                        <th key={header.id} scope="col" aria-sort={ariaSort}>
-                          {sortField ? (
-                            <button
-                              type="button"
-                              className={ui.sortButton}
-                              onClick={() => updateFilters({ sort: nextSort(filters.sort, sortField) })}
-                            >
-                              {content}
-                              <span aria-hidden="true">{ariaSort ? (sort.desc ? ' ▼' : ' ▲') : ''}</span>
-                            </button>
-                          ) : (
-                            content
-                          )}
-                        </th>
-                      );
-                    })}
+                    {group.headers.map((header) => (
+                      <th key={header.id} scope="col">
+                        {flexRender(header.column.columnDef.header, header.getContext())}
+                      </th>
+                    ))}
                   </tr>
                 ))}
               </thead>

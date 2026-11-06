@@ -2,101 +2,45 @@ import { screen, waitFor, within } from '@testing-library/react';
 import { describe, expect, it } from 'vitest';
 import { DEVICE_IDS, fixtureId } from '../mock/fixtures';
 import type { MockDb } from '../mock/db';
-import { MAX_THUMBNAIL_PX } from '../src/preview/types';
+import { formatBytes } from '../src/lib/format';
 import { strings } from '../src/strings';
-import { createFakeRenderer, installMockServer, renderApp, useMockDb, waitForLive } from './helpers';
+import { installMockServer, renderApp, useMockDb, waitForLive } from './helpers';
 
-/** Spec 002 Part B, screens 2–3 (Job detail and actions) against the MSW mock API. */
+/**
+ * Spec 002 Part B, screens 2–3 (Job detail and actions) against the MSW mock API. The details are
+ * the 052a Job's fields (GET /jobs/:id); the actions use the mock-only PATCH, print and transitions.
+ */
 
 const t = strings.jobDetail;
-const READY_JOB = fixtureId(7); // brochure-a4-3pages: 3 trimmed A4 pages
-const DELIVERED_JOB = fixtureId(3); // banner-3000x1000-sale, sent_to_device
-const FAILED_JOB = fixtureId(5); // trade-show-backwall, failed in output
+const READY_JOB = fixtureId(7); // brochure-a4-3pages
 const HELD_JOB = fixtureId(10);
 
 installMockServer();
 
-async function renderJob(jobId: string, db: MockDb = useMockDb(), renderer = createFakeRenderer()) {
-  const view = renderApp(`/jobs/${jobId}`, db, renderer.renderer);
-  await screen.findByRole('heading', { level: 1, name: db.getJob(jobId).name });
-  return { db, calls: renderer.calls, ...view };
+async function renderJob(jobId: string, db: MockDb = useMockDb()) {
+  const view = renderApp(`/jobs/${jobId}`, db);
+  await screen.findByRole('heading', { level: 1, name: db.readJob(jobId).name });
+  return { db, ...view };
 }
 
 const region = (name: string) => within(screen.getByRole('region', { name }));
 const statusButton = (name: string | undefined) =>
   within(screen.getByRole('group', { name: t.statusActions })).getByRole('button', { name });
 
-describe('Metadata, pages and preview', () => {
-  it('shows the job metadata', async () => {
+describe('Metadata', () => {
+  it('shows the fields of the 052a job', async () => {
     const { db } = await renderJob(READY_JOB);
-    const job = db.getJob(READY_JOB);
+    const job = db.readJob(READY_JOB);
+    const source = job.sourceFiles[0];
+    if (!source) throw new Error('The fixture job has no source file');
     const details = region(t.detailsHeading);
     expect(details.getByText(job.id)).toBeInTheDocument();
-    expect(details.getByText(job.sha256)).toBeInTheDocument();
     expect(details.getByText(strings.status.ready)).toBeInTheDocument();
-    // The hot folder name comes from a separate query; the raw ID is shown until it resolves.
-    expect(await details.findByText('Posters')).toBeInTheDocument();
-    expect(details.getByText('4.3 MB')).toBeInTheDocument();
-    expect(details.getByText(job.sourcePath ?? '')).toBeInTheDocument();
-  });
-
-  it('lists pages with size and trim box, in inches or millimetres', async () => {
-    const { user } = await renderJob(READY_JOB);
-    const pages = within(screen.getByRole('table', { name: t.pagesCaption }));
-    expect(pages.getAllByRole('row')).toHaveLength(4); // header + 3 pages
-    expect(pages.getAllByText('8.5 × 11.93 in')).toHaveLength(3);
-    expect(pages.getAllByText('8.27 × 11.69 in at 0.12, 0.12')).toHaveLength(3);
-
-    await user.click(screen.getByRole('radio', { name: strings.common.millimetres }));
-    expect(pages.getAllByText('216 × 303 mm')).toHaveLength(3);
-    expect(pages.getAllByText('210 × 297 mm at 3, 3')).toHaveLength(3);
-  });
-
-  it('renders one labeled screen-preview thumbnail per page, capped at 320 px', async () => {
-    const { calls } = await renderJob(READY_JOB);
-    const thumbnails = await screen.findAllByRole('img', { name: /^Screen preview of page \d$/ });
-    expect(thumbnails.map((canvas) => canvas.getAttribute('aria-label'))).toEqual([1, 2, 3].map((n) => t.screenPreviewOf(n)));
-    expect(calls.map((call) => call.pageIndex).sort()).toEqual([0, 1, 2]);
-    expect(calls.every((call) => call.jobId === READY_JOB && call.maxPx === MAX_THUMBNAIL_PX)).toBe(true);
-    expect(screen.getByText(`${t.screenPreview} · ${t.page} 1`)).toBeInTheDocument();
-    expect(screen.getByText(t.previewNote)).toBeInTheDocument();
-  });
-
-  it('shows "Preview unavailable" when rendering fails', async () => {
-    const failing = { renderer: { render: () => Promise.reject(new Error('broken PDF')) }, calls: [] };
-    await renderJob(READY_JOB, useMockDb(), failing);
-    expect(await screen.findAllByText(t.previewFailed)).toHaveLength(3);
-  });
-});
-
-describe('Timeline and errors', () => {
-  it('merges steps and audit entries, oldest first, with the delivery result', async () => {
-    const { db } = await renderJob(DELIVERED_JOB);
-    const items = within(screen.getByRole('region', { name: t.timelineHeading })).getAllByRole('listitem');
-    expect(items[0]).toHaveTextContent(t.step('intake'));
-    expect(items.some((item) => item.dataset.kind === 'audit')).toBe(true);
-
-    const output = items.find((item) => item.textContent?.includes(t.step('output')));
-    const path = `/srv/rip/in/roll-a/banner-3000x1000-sale_${DELIVERED_JOB}.pdf`;
-    expect(output).toHaveTextContent(path);
-    expect(output).toHaveTextContent(db.getJob(DELIVERED_JOB).sha256);
-    expect(region(t.detailsHeading).getByText(path)).toBeInTheDocument();
-  });
-
-  it('shows the error panel for failed jobs and disables every action', async () => {
-    await renderJob(FAILED_JOB);
-    const panel = region(t.errorHeading);
-    expect(panel.getByText('The target folder is not writable.')).toBeInTheDocument();
-    expect(panel.getByText('DELIVERY_FAILED')).toBeInTheDocument();
-    expect(panel.getByText('Permission denied after 3 attempts.')).toBeInTheDocument();
-
-    await waitFor(() => expect(within(screen.getByRole('group', { name: t.statusActions })).getAllByRole('button').every((b) => b.hasAttribute('disabled'))).toBe(true));
-    expect(screen.getByRole('button', { name: t.sendToDevice })).toBeDisabled();
-  });
-
-  it('shows no error panel for healthy jobs', async () => {
-    await renderJob(READY_JOB);
-    expect(screen.queryByRole('region', { name: t.errorHeading })).not.toBeInTheDocument();
+    expect(details.getByText(source.name)).toBeInTheDocument();
+    expect(details.getByText(source.sha256)).toBeInTheDocument();
+    expect(details.getByText(formatBytes(source.sizeBytes))).toBeInTheDocument();
+    expect(details.getByText('pdf')).toBeInTheDocument();
+    expect(details.getByText('active')).toBeInTheDocument();
   });
 
   it('reports unknown jobs', async () => {
@@ -148,7 +92,7 @@ describe('Actions', () => {
     expect(db.getJob(READY_JOB).priority).toBe(90);
   });
 
-  it('sends a job to a device, shows the delivered path and marks it done', async () => {
+  it('sends a job to a device and marks it done', async () => {
     const { user, db } = await renderJob(READY_JOB);
     await waitForLive();
     const actions = region(t.actionsHeading);
@@ -164,8 +108,6 @@ describe('Actions', () => {
     expect(db.getJob(READY_JOB).deviceId).toBe(DEVICE_IDS.rollA);
     const details = region(t.detailsHeading);
     await waitFor(() => expect(details.getByText(strings.status.sent_to_device)).toBeInTheDocument());
-    const path = `/srv/rip/in/roll-a/brochure-a4-3pages_${READY_JOB}.pdf`;
-    await waitFor(() => expect(details.getByText(path)).toBeInTheDocument());
 
     await waitFor(() => expect(statusButton(t.actions.done)).toBeEnabled());
     await user.click(statusButton(t.actions.done));

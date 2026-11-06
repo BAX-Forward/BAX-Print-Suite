@@ -1,14 +1,13 @@
 import {
+  isJobStatus,
   isPrinterDriver,
-  JOB_SORTS,
-  JOB_STATUSES,
   type AuditEntry,
   type Device,
   type HotFolder,
   type Job,
   type JobError,
   type JobPage,
-  type JobSort,
+  type JobRecord,
   type JobStatus,
   type JobStep,
   type Page,
@@ -16,6 +15,7 @@ import {
   type Problem,
   type Transitions,
 } from '../src/api/types';
+import type { components } from '../src/api/schema';
 import { createEventBus } from './events';
 import {
   DEFAULT_INGEST_PAGE,
@@ -65,6 +65,39 @@ export class MockProblem extends Error {
   }
 }
 
+/**
+ * The server's Error schema with the object form of `details` kept open: openapi-typescript renders
+ * a bare `type: object` as Record<string, never>, which no real details value fits.
+ */
+interface ErrorEnvelope {
+  error: Omit<components['schemas']['Error']['error'], 'details'> & { details?: Record<string, unknown> };
+}
+
+/** A failure the job intake endpoints report as `{error: {code, message, details?}}` (Spec 052a). */
+export class MockJobError extends Error {
+  readonly status: number;
+  readonly code: string;
+  readonly details: Record<string, unknown> | undefined;
+
+  constructor(status: number, code: string, message: string, details?: Record<string, unknown>) {
+    super(message);
+    this.name = 'MockJobError';
+    this.status = status;
+    this.code = code;
+    this.details = details;
+  }
+
+  toBody(): ErrorEnvelope {
+    return { error: { code: this.code, message: this.message, ...(this.details ? { details: this.details } : {}) } };
+  }
+}
+
+const PDF_MAGIC = '%PDF-';
+
+function isPdf(bytes: Uint8Array): boolean {
+  return [...PDF_MAGIC].every((ch, i) => bytes[i] === ch.charCodeAt(0));
+}
+
 const notFound = (what: string) => new MockProblem(404, 'Not Found', `${what} was not found.`);
 const invalid = (detail: string, errors: FieldError[] = []) => new MockProblem(400, 'Bad Request', detail, errors);
 const conflict = (detail: string) => new MockProblem(409, 'Conflict', detail);
@@ -77,6 +110,25 @@ export interface MockDbOptions {
   now?: () => Date;
   /** Start with the fixture data (default true). */
   seed?: boolean;
+  /** Largest body POST /jobs accepts before answering 413 (Spec 052a). */
+  uploadMaxBytes?: number;
+}
+
+export interface UploadInput {
+  bytes: Uint8Array;
+  /** The x-bps-job-name header; the mock picks a name when absent or blank. */
+  name?: string | null;
+}
+
+/** What differs between a hot-folder job and an uploaded one when it is first received. */
+interface ReceivedFields {
+  name: string;
+  sourcePath: string | null;
+  sizeBytes: number;
+  priority: number;
+  hotFolderId: string | null;
+  deviceId: string | null;
+  createdMessage: string;
 }
 
 export interface IngestInput {
@@ -87,10 +139,10 @@ export interface IngestInput {
 
 const DEFAULT_LIMIT = 50;
 const MAX_LIMIT = 200;
-const DEFAULT_SORT: JobSort = '-createdAt';
 const DEFAULT_FILE_NAME_PATTERN = '{jobName}_{jobId}.pdf';
 const MAX_FILE_NAME_LENGTH = 150;
 const INGEST_BYTES_PER_PAGE = 2_400_000;
+const DEFAULT_UPLOAD_MAX_BYTES = 256 * 1024 * 1024;
 const SENDABLE: readonly JobStatus[] = ['ready', 'held', 'queued'];
 const ABSOLUTE_PATH = /^(\/|[A-Za-z]:[\\/]|\\\\)/;
 const FORBIDDEN_FILE_NAME_CHARS = '<>:"/\\|?*';
@@ -119,10 +171,6 @@ export function newUlid(timeMs: number): string {
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null && !Array.isArray(value);
-}
-
-function isJobStatus(value: unknown): value is JobStatus {
-  return typeof value === 'string' && (JOB_STATUSES as readonly string[]).includes(value);
 }
 
 function isPriority(value: unknown): value is number {
@@ -162,21 +210,42 @@ function decodeCursor(cursor: string): number {
   } catch {
     // Not base64: fall through to the validation error.
   }
-  throw invalid('Invalid cursor.', [{ field: 'cursor', message: 'Use the nextCursor value from a previous page.' }]);
+  throw new MockJobError(400, 'invalid_request', '`cursor` is not one this route issued');
 }
 
-function compareJobs(sort: JobSort): (a: Job, b: Job) => number {
-  const desc = sort.startsWith('-');
-  const field = desc ? sort.slice(1) : sort;
-  return (a, b) => {
-    let result =
-      field === 'name'
-        ? a.name.localeCompare(b.name, 'en', { sensitivity: 'base' })
-        : field === 'priority'
-          ? a.priority - b.priority
-          : a.createdAt.localeCompare(b.createdAt);
-    if (result === 0) result = a.createdAt.localeCompare(b.createdAt) || a.id.localeCompare(b.id);
-    return desc ? -result : result;
+/** The 052a list order: newest first, ties by id descending. */
+function newestFirst(a: JobRecord, b: JobRecord): number {
+  return b.createdAt.localeCompare(a.createdAt) || b.id.localeCompare(a.id);
+}
+
+/** Name of the stored source file, as the server derives `intakeFile` (never the client's path). */
+function sourceFileName(record: JobRecord): string {
+  return record.sourcePath ? baseName(record.sourcePath) : `upload-${record.id.slice(-6).toLowerCase()}.pdf`;
+}
+
+/**
+ * Projects the mock's internal record onto the job GET /jobs and GET /jobs/:id answer (Spec 052a),
+ * in the shape of tests/fixtures/server-052a-responses.json.
+ */
+export function toJob(record: JobRecord, displayName?: string): Job {
+  const fileName = sourceFileName(record);
+  return {
+    id: record.id,
+    name: record.name,
+    status: record.status,
+    sourceFormat: 'pdf',
+    priority: record.priority,
+    sourceFiles: [
+      { name: fileName, sha256: record.sha256, sizeBytes: record.sizeBytes, storageKey: `jobs/${record.id}/source/0-${fileName}` },
+    ],
+    artifacts: [],
+    ticket: {},
+    tags: [],
+    metadata: { intakeFile: fileName, ...(displayName === undefined ? {} : { displayName }) },
+    createdAt: record.createdAt,
+    updatedAt: record.updatedAt,
+    lifecycle: 'active',
+    legalHold: false,
   };
 }
 
@@ -241,9 +310,12 @@ export function createMockDb(options: MockDbOptions = {}) {
   const pipelineDelayMs = options.pipelineDelayMs ?? 1_000;
   const now = options.now ?? (() => new Date());
   const seed = options.seed ?? true;
+  const uploadMaxBytes = options.uploadMaxBytes ?? DEFAULT_UPLOAD_MAX_BYTES;
 
   const events = createEventBus();
-  const jobs = new Map<string, Job>(seed ? seedJobs().map((job) => [job.id, job]) : []);
+  const jobs = new Map<string, JobRecord>(seed ? seedJobs().map((job) => [job.id, job]) : []);
+  /** The sanitized x-bps-job-name of an upload that sent one (Spec 052a `metadata.displayName`). */
+  const displayNames = new Map<string, string>();
   const hotFolders = new Map<string, HotFolder>(seed ? seedHotFolders().map((f) => [f.id, f]) : []);
   const devices = new Map<string, Device>(seed ? seedDevices().map((d) => [d.id, d]) : []);
   const plugins: Plugin[] = seedPlugins();
@@ -270,22 +342,26 @@ export function createMockDb(options: MockDbOptions = {}) {
     return { id: `${jobId}-m${auditSequence}`, time, type, message, data };
   }
 
-  function save(job: Job): Job {
+  function save(job: JobRecord): JobRecord {
     jobs.set(job.id, job);
     return job;
   }
 
-  function requireJob(id: string): Job {
+  function requireJob(id: string): JobRecord {
     const job = jobs.get(id);
     if (!job) throw notFound(`Job ${id}`);
     return job;
   }
 
-  function withStep(job: Job, stepId: string, patch: Partial<JobStep>): Job {
+  function view(record: JobRecord): Job {
+    return toJob(record, displayNames.get(record.id));
+  }
+
+  function withStep(job: JobRecord, stepId: string, patch: Partial<JobStep>): JobRecord {
     return { ...job, steps: job.steps.map((s) => (s.id === stepId ? { ...s, ...patch } : s)) };
   }
 
-  function addStep(job: Job, stage: string, pluginId: string | null): { job: Job; step: JobStep } {
+  function addStep(job: JobRecord, stage: string, pluginId: string | null): { job: JobRecord; step: JobStep } {
     const step: JobStep = {
       id: `${job.id}-${stage}-${job.steps.filter((s) => s.stage === stage).length + 1}`,
       stage,
@@ -300,7 +376,7 @@ export function createMockDb(options: MockDbOptions = {}) {
   }
 
   /** Moves a job along the state machine, records it in the audit and emits the event. */
-  function transition(job: Job, to: JobStatus, extra: Partial<Job> = {}): Job {
+  function transition(job: JobRecord, to: JobStatus, extra: Partial<JobRecord> = {}): JobRecord {
     if (!canTransition(job.status, to)) throw conflict(`A ${job.status} job cannot move to ${to}.`);
     const time = iso();
     const entry = auditEntry(job.id, time, 'status.changed', `Status changed from ${job.status} to ${to}.`, { from: job.status, to });
@@ -309,7 +385,7 @@ export function createMockDb(options: MockDbOptions = {}) {
     return next;
   }
 
-  function startOutput(job: Job, device: Device): Job {
+  function startOutput(job: JobRecord, device: Device): JobRecord {
     const { job: withOutput, step } = addStep(job, 'output', device.pluginId);
     const next = transition(withOutput, 'processing');
     events.publish('step.started', job.id, { jobId: job.id, stepId: step.id, stage: 'output' }, next.updatedAt);
@@ -367,6 +443,34 @@ export function createMockDb(options: MockDbOptions = {}) {
     // Hot-folder → device routing with auto-dispatch (Spec 002 "Auto-dispatch").
     const device = ready.deviceId ? devices.get(ready.deviceId) : undefined;
     if (device?.autoDispatch) startOutput(transition(ready, 'queued'), device);
+  }
+
+  /** Stores a new `received` job, emits job.created and starts the simulated pipeline. */
+  function receive(pages: Page[], fields: (id: string) => ReceivedFields): JobRecord {
+    const time = iso();
+    const id = newUlid(now().getTime());
+    const { createdMessage, ...rest } = fields(id);
+    const job: JobRecord = {
+      id,
+      ...rest,
+      storedPath: `spool/${id}.pdf`,
+      sha256: fakeSha256(id),
+      pageCount: 0,
+      pages: [],
+      status: 'received',
+      ticketId: null,
+      steps: [
+        { id: `${id}-intake-1`, stage: 'intake', status: 'completed', pluginId: null, startedAt: time, finishedAt: time, error: null, result: null },
+      ],
+      audit: [auditEntry(id, time, 'job.created', createdMessage)],
+      createdAt: time,
+      updatedAt: time,
+      error: null,
+    };
+    save(job);
+    events.publish('job.created', id, { jobId: id, job }, time);
+    schedule(() => advanceToInspecting(id, pages), pipelineDelayMs);
+    return job;
   }
 
   function validateSettings(input: unknown, errors: FieldError[]): Partial<HotFolderSettings> {
@@ -448,43 +552,43 @@ export function createMockDb(options: MockDbOptions = {}) {
 
     health: () => ({ status: 'ok' as const, version: '0.2.0-mock' }),
 
+    /**
+     * GET /jobs (Spec 052a): only `limit` and `cursor`, newest first. Other query parameters are
+     * ignored, a limit above 200 is capped, and nextCursor is null on the last page.
+     */
     listJobs(query: URLSearchParams): JobPage {
-      const statuses = query.getAll('status').flatMap((value) => value.split(',')).filter(Boolean);
-      const errors: FieldError[] = [];
-      if (statuses.some((s) => !isJobStatus(s))) errors.push({ field: 'status', message: 'Unknown status.' });
-      const sortParam = query.get('sort') ?? DEFAULT_SORT;
-      const sort = JOB_SORTS.find((s) => s === sortParam);
-      if (!sort) errors.push({ field: 'sort', message: `Use one of ${JOB_SORTS.join(', ')}.` });
       const limitParam = query.get('limit');
-      const limit = limitParam === null ? DEFAULT_LIMIT : Number(limitParam);
-      if (!Number.isInteger(limit) || limit < 1 || limit > MAX_LIMIT) {
-        errors.push({ field: 'limit', message: `Enter a whole number from 1 to ${MAX_LIMIT}.` });
+      const requested = limitParam === null ? DEFAULT_LIMIT : Number(limitParam);
+      if (!Number.isInteger(requested) || requested < 1) {
+        throw new MockJobError(400, 'invalid_request', '`limit` must be a positive integer');
       }
-      if (errors.length) throw invalid('Invalid query parameters.', errors);
+      const limit = Math.min(requested, MAX_LIMIT);
       const cursor = query.get('cursor');
       const offset = cursor ? decodeCursor(cursor) : 0;
-
-      const q = (query.get('q') ?? '').trim().toLowerCase();
-      const hotFolderId = query.get('hotFolderId');
-      const deviceId = query.get('deviceId');
-      const matches = [...jobs.values()]
-        .filter((job) => !statuses.length || statuses.includes(job.status))
-        .filter((job) => !q || job.name.toLowerCase().includes(q))
-        .filter((job) => !hotFolderId || job.hotFolderId === hotFolderId)
-        .filter((job) => !deviceId || job.deviceId === deviceId)
-        .sort(compareJobs(sort ?? DEFAULT_SORT));
+      const matches = [...jobs.values()].sort(newestFirst);
       const end = offset + limit;
-      return { items: matches.slice(offset, end), nextCursor: end < matches.length ? encodeCursor(end) : null };
+      return {
+        items: matches.slice(offset, end).map(view),
+        nextCursor: end < matches.length ? encodeCursor(end) : null,
+      };
     },
 
+    /** The internal record (mock routes, events and tests). */
     getJob: requireJob,
+
+    /** GET /jobs/:id (Spec 052a): the job as the server answers it, or 404 `not_found`. */
+    readJob(id: string): Job {
+      const record = jobs.get(id);
+      if (!record) throw new MockJobError(404, 'not_found', `Job ${id} not found`);
+      return view(record);
+    },
 
     getTransitions(id: string): Transitions {
       const job = requireJob(id);
       return { status: job.status, allowed: allowedTransitions(job.status) };
     },
 
-    patchJob(id: string, body: unknown): Job {
+    patchJob(id: string, body: unknown): JobRecord {
       const job = requireJob(id);
       if (!isRecord(body)) throw invalid('The request body must be a JSON object.');
       const keys = Object.keys(body);
@@ -512,7 +616,7 @@ export function createMockDb(options: MockDbOptions = {}) {
       return next;
     },
 
-    printJob(id: string, body: unknown): Job {
+    printJob(id: string, body: unknown): JobRecord {
       const job = requireJob(id);
       const deviceId = isRecord(body) ? body.deviceId : undefined;
       if (typeof deviceId !== 'string' || deviceId === '') {
@@ -644,39 +748,46 @@ export function createMockDb(options: MockDbOptions = {}) {
      * Simulates a file arriving in a hot folder. Returns null when the folder is missing or
      * disabled (a disabled folder ingests nothing).
      */
-    ingest(input: IngestInput): Job | null {
+    ingest(input: IngestInput): JobRecord | null {
       const folder = hotFolders.get(input.hotFolderId);
       if (!folder?.enabled) return null;
-      const time = iso();
-      const id = newUlid(now().getTime());
-      const name = input.name ?? `incoming-${id.slice(-6).toLowerCase()}`;
       const pages = indexPages(input.pages ?? [DEFAULT_INGEST_PAGE]);
-      const job: Job = {
-        id,
-        name,
-        sourcePath: joinPath(folder.path, `${name}.pdf`),
-        storedPath: `spool/${id}.pdf`,
-        sizeBytes: pages.length * INGEST_BYTES_PER_PAGE,
-        sha256: fakeSha256(id),
-        pageCount: 0,
-        pages: [],
-        status: 'received',
-        priority: folder.settings.defaultPriority,
-        hotFolderId: folder.id,
-        ticketId: null,
-        deviceId: folder.settings.defaultDeviceId ?? null,
-        steps: [
-          { id: `${id}-intake-1`, stage: 'intake', status: 'completed', pluginId: null, startedAt: time, finishedAt: time, error: null, result: null },
-        ],
-        audit: [auditEntry(id, time, 'job.created', `Job created from hot folder ${folder.name}.`)],
-        createdAt: time,
-        updatedAt: time,
-        error: null,
-      };
-      save(job);
-      events.publish('job.created', id, { jobId: id, job }, time);
-      schedule(() => advanceToInspecting(id, pages), pipelineDelayMs);
-      return job;
+      return receive(pages, (id) => {
+        const name = input.name ?? `incoming-${id.slice(-6).toLowerCase()}`;
+        return {
+          name,
+          sourcePath: joinPath(folder.path, `${name}.pdf`),
+          sizeBytes: pages.length * INGEST_BYTES_PER_PAGE,
+          priority: folder.settings.defaultPriority,
+          hotFolderId: folder.id,
+          deviceId: folder.settings.defaultDeviceId ?? null,
+          createdMessage: `Job created from hot folder ${folder.name}.`,
+        };
+      });
+    },
+
+    /** POST /jobs (Spec 052a): a PDF uploaded through the API rather than through a hot folder. */
+    /** POST /jobs answers the new job as GET /jobs/:id does; the record stays internal. */
+    upload(input: UploadInput): Job {
+      const size = input.bytes.byteLength;
+      if (size > uploadMaxBytes) {
+        throw new MockJobError(413, 'upload_too_large', `The upload is larger than ${uploadMaxBytes} bytes`, {
+          maxBytes: uploadMaxBytes,
+        });
+      }
+      if (!isPdf(input.bytes)) throw new MockJobError(400, 'upload_not_pdf', `The upload does not start with ${PDF_MAGIC}`);
+      const displayName = input.name?.trim() || undefined;
+      const record = receive(indexPages([DEFAULT_INGEST_PAGE]), (id) => ({
+        name: displayName ?? `upload-${id.slice(-6).toLowerCase()}.pdf`,
+        sourcePath: null,
+        sizeBytes: size,
+        priority: DEFAULT_SETTINGS.defaultPriority,
+        hotFolderId: null,
+        deviceId: null,
+        createdMessage: 'Job created from an upload.',
+      }));
+      if (displayName !== undefined) displayNames.set(record.id, displayName);
+      return view(record);
     },
 
     /** Cancels pending simulated pipeline steps (tests call this between runs). */

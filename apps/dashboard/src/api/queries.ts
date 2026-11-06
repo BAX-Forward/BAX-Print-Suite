@@ -1,11 +1,8 @@
-import { useInfiniteQuery, useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { useInfiniteQuery, useMutation, useQuery, useQueryClient, type QueryClient } from '@tanstack/react-query';
 import { useApi } from './ApiContext';
-import type { JobListParams } from './client';
 import type { DeviceCreate, DevicePatch, HotFolderCreate, HotFolderPatch, JobPage, JobPatch } from './types';
 
 export const JOBS_PAGE_SIZE = 50;
-
-export type JobListFilters = Omit<JobListParams, 'cursor' | 'limit'>;
 
 /** Mutations with this meta show their errors inline instead of as a global toast. */
 export const INLINE_ERRORS = { inlineErrors: true } as const;
@@ -13,7 +10,6 @@ export const INLINE_ERRORS = { inlineErrors: true } as const;
 export const queryKeys = {
   jobs: ['jobs'] as const,
   jobLists: ['jobs', 'list'] as const,
-  jobList: (filters: JobListFilters) => ['jobs', 'list', filters] as const,
   job: (id: string) => ['jobs', 'detail', id] as const,
   transitions: (id: string) => ['jobs', 'transitions', id] as const,
   hotFolders: ['hotfolders'] as const,
@@ -21,12 +17,12 @@ export const queryKeys = {
   devices: ['devices'] as const,
 };
 
-export function useJobList(filters: JobListFilters) {
+/** GET /jobs newest first, one page at a time; paging stops when the server answers nextCursor null. */
+export function useJobList() {
   const api = useApi();
   return useInfiniteQuery({
-    queryKey: queryKeys.jobList(filters),
-    queryFn: ({ pageParam, signal }) =>
-      api.listJobs({ ...filters, cursor: pageParam ?? undefined, limit: JOBS_PAGE_SIZE }, signal),
+    queryKey: queryKeys.jobLists,
+    queryFn: ({ pageParam, signal }) => api.listJobs({ cursor: pageParam ?? undefined, limit: JOBS_PAGE_SIZE }, signal),
     initialPageParam: null as string | null,
     getNextPageParam: (lastPage: JobPage) => lastPage.nextCursor,
   });
@@ -69,12 +65,18 @@ export function usePatchJob() {
   const queryClient = useQueryClient();
   return useMutation({
     mutationFn: ({ id, patch }: { id: string; patch: JobPatch }) => api.patchJob(id, patch),
-    onSuccess: (job) => {
-      queryClient.setQueryData(queryKeys.job(job.id), job);
-      void queryClient.invalidateQueries({ queryKey: queryKeys.transitions(job.id) });
-      void queryClient.invalidateQueries({ queryKey: queryKeys.jobLists });
-    },
+    onSuccess: (record) => refreshJob(queryClient, record.id),
   });
+}
+
+/**
+ * PATCH and print answer the mock-only JobRecord, not the 052a Job the job queries cache, so the
+ * job is refetched rather than overwritten with the answer.
+ */
+function refreshJob(queryClient: QueryClient, jobId: string): void {
+  void queryClient.invalidateQueries({ queryKey: queryKeys.job(jobId) });
+  void queryClient.invalidateQueries({ queryKey: queryKeys.transitions(jobId) });
+  void queryClient.invalidateQueries({ queryKey: queryKeys.jobLists });
 }
 
 export function usePrintJob() {
@@ -82,11 +84,7 @@ export function usePrintJob() {
   const queryClient = useQueryClient();
   return useMutation({
     mutationFn: ({ id, deviceId }: { id: string; deviceId: string }) => api.printJob(id, deviceId),
-    onSuccess: (job) => {
-      queryClient.setQueryData(queryKeys.job(job.id), job);
-      void queryClient.invalidateQueries({ queryKey: queryKeys.transitions(job.id) });
-      void queryClient.invalidateQueries({ queryKey: queryKeys.jobLists });
-    },
+    onSuccess: (record) => refreshJob(queryClient, record.id),
   });
 }
 

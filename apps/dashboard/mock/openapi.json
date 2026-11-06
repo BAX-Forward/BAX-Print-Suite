@@ -3,7 +3,7 @@
   "info": {
     "title": "BAX Print Suite API",
     "version": "0.2.0-mock",
-    "description": "Fixture of the control-plane HTTP API: Spec 001 endpoints plus the Spec 002 additions. The dashboard mock (MSW) implements this document; the real document is served by apps/server at /openapi.json.",
+    "description": "Fixture of the control-plane HTTP API: Spec 001 endpoints plus the Spec 002 additions. The dashboard mock (MSW) implements this document; the real document is served by apps/server at /openapi.json. GET /jobs, POST /jobs, GET /jobs/{id} and the Job, JobPage, JobEnvelope and Error schemas are exact copies of the 052a server's (tests/openapi-drift.test.ts); every other job route is mock only.",
     "license": { "name": "Apache-2.0", "identifier": "Apache-2.0" }
   },
   "paths": {
@@ -24,36 +24,81 @@
     "/jobs": {
       "get": {
         "operationId": "listJobs",
+        "summary": "List the active jobs, newest first, one page at a time",
+        "tags": ["jobs"],
         "parameters": [
-          { "name": "status", "in": "query", "style": "form", "explode": true, "schema": { "type": "array", "items": { "$ref": "#/components/schemas/JobStatus" } } },
-          { "name": "q", "in": "query", "description": "Job name contains (case-insensitive)", "schema": { "type": "string" } },
-          { "name": "hotFolderId", "in": "query", "schema": { "type": "string" } },
-          { "name": "deviceId", "in": "query", "schema": { "type": "string" } },
-          { "name": "sort", "in": "query", "schema": { "$ref": "#/components/schemas/JobSort" } },
-          { "name": "cursor", "in": "query", "description": "Opaque cursor from a previous page's nextCursor", "schema": { "type": "string" } },
-          { "name": "limit", "in": "query", "schema": { "type": "integer", "minimum": 1, "maximum": 200, "default": 50 } }
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "schema": { "type": "integer", "minimum": 1, "default": 50, "description": "Page size; a value above 200 is capped at 200" }
+          },
+          {
+            "name": "cursor",
+            "in": "query",
+            "required": false,
+            "schema": { "type": "string", "minLength": 1, "maxLength": 512, "description": "Opaque cursor from a previous page's `nextCursor`" }
+          }
         ],
         "responses": {
-          "200": { "description": "A page of jobs", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/JobPage" } } } },
-          "400": { "$ref": "#/components/responses/BadRequest" }
+          "200": {
+            "description": "`{ items, nextCursor }`: with site scoping only the jobs of the caller's sites; `nextCursor` is null on the last page",
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/JobPage" } } }
+          },
+          "400": { "description": "`limit` is not a positive integer (`invalid_request`) or `cursor` is not one this route issued" },
+          "401": { "description": "No credential verifier recognized the caller and the actor resolver denies anonymous callers (`unauthenticated`)" },
+          "403": { "description": "The caller's role, or an API token's scopes, lack the `jobs:read` permission (`forbidden`, `details.permission` names it)" },
+          "default": { "description": "Error", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Error" } } } }
+        }
+      },
+      "post": {
+        "operationId": "createJob",
+        "summary": "Upload a PDF as a new job. The optional `x-bps-job-name` header is kept, sanitized, as the display name only",
+        "tags": ["jobs"],
+        "parameters": [
+          {
+            "name": "siteId",
+            "in": "query",
+            "required": false,
+            "schema": { "type": "string", "description": "Site of the new job (Spec 030a); without it the job has no `siteId` and belongs to `default`" }
+          }
+        ],
+        "requestBody": { "required": true, "content": { "application/pdf": { "schema": { "type": "string", "format": "binary" } } } },
+        "responses": {
+          "201": {
+            "description": "`{ job }`: the new job, `received`, with the upload as its only source file",
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/JobEnvelope" } } }
+          },
+          "400": { "description": "The body does not start with `%PDF-` (`upload_not_pdf`), or `siteId` is not a valid site id (`invalid_argument`); nothing is written" },
+          "401": { "description": "No credential verifier recognized the caller and the actor resolver denies anonymous callers (`unauthenticated`)" },
+          "403": { "description": "With site scoping, the caller's membership does not grant the job's site (`site_not_granted`)" },
+          "413": { "description": "The upload is larger than the cap, 64 bytes: by content-length (`upload_too_large`) or, for a body without one, while it is read (`invalid_request`); nothing is written" },
+          "415": { "description": "The body is not `application/pdf` (`upload_media_type_unsupported` or `invalid_request`)" },
+          "default": { "description": "Error", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Error" } } } }
         }
       }
     },
     "/jobs/{id}": {
-      "parameters": [{ "$ref": "#/components/parameters/Id" }],
       "get": {
         "operationId": "getJob",
+        "summary": "Read one job",
+        "tags": ["jobs"],
+        "parameters": [{ "name": "id", "in": "path", "required": true, "schema": { "type": "string" } }],
         "responses": {
-          "200": { "description": "The job", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Job" } } } },
-          "404": { "$ref": "#/components/responses/NotFound" }
+          "200": { "description": "`{ job }`", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/JobEnvelope" } } } },
+          "401": { "description": "No credential verifier recognized the caller and the actor resolver denies anonymous callers (`unauthenticated`)" },
+          "403": { "description": "The caller's role, or an API token's scopes, lack the `jobs:read` permission (`forbidden`, `details.permission` names it)" },
+          "404": { "description": "No job has this id (`not_found`). With site scoping enabled, a job of a site the caller's membership does not grant answers like a missing job (`not_found`)" },
+          "default": { "description": "Error", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Error" } } } }
         }
       },
       "patch": {
         "operationId": "patchJob",
-        "description": "Change status (validated by the core state machine) and/or priority.",
+        "description": "Mock only (Spec 002, not served by 052a): change status (validated by the core state machine) and/or priority.",
+        "parameters": [{ "$ref": "#/components/parameters/Id" }],
         "requestBody": { "required": true, "content": { "application/json": { "schema": { "$ref": "#/components/schemas/JobPatch" } } } },
         "responses": {
-          "200": { "description": "The updated job", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Job" } } } },
+          "200": { "description": "The updated job record", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/JobRecord" } } } },
           "400": { "$ref": "#/components/responses/BadRequest" },
           "404": { "$ref": "#/components/responses/NotFound" },
           "409": { "$ref": "#/components/responses/Conflict" }
@@ -105,7 +150,7 @@
         "operationId": "printJob",
         "requestBody": { "required": true, "content": { "application/json": { "schema": { "$ref": "#/components/schemas/PrintRequest" } } } },
         "responses": {
-          "202": { "description": "Accepted for output", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Job" } } } },
+          "202": { "description": "Accepted for output", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/JobRecord" } } } },
           "400": { "$ref": "#/components/responses/BadRequest" },
           "404": { "$ref": "#/components/responses/NotFound" },
           "409": { "$ref": "#/components/responses/Conflict" }
@@ -202,10 +247,6 @@
         "type": "string",
         "enum": ["received", "inspecting", "ready", "held", "queued", "processing", "sent_to_device", "printed", "done", "failed", "cancelled"]
       },
-      "JobSort": {
-        "type": "string",
-        "enum": ["createdAt", "-createdAt", "priority", "-priority", "name", "-name"]
-      },
       "Box": {
         "type": "object",
         "description": "Rectangle in PDF points (1/72 in)",
@@ -253,8 +294,9 @@
           "data": { "type": ["object", "null"], "additionalProperties": true }
         }
       },
-      "Job": {
+      "JobRecord": {
         "type": "object",
+        "description": "Mock only (Spec 002): the control-plane job record answered by PATCH /jobs/{id}, POST /jobs/{id}/print and carried in job events. The 052a server answers Job instead.",
         "required": ["id", "name", "sizeBytes", "sha256", "pageCount", "pages", "status", "priority", "steps", "createdAt", "updatedAt"],
         "properties": {
           "id": { "type": "string", "description": "ULID" },
@@ -277,12 +319,68 @@
           "error": { "oneOf": [{ "$ref": "#/components/schemas/JobError" }, { "type": "null" }] }
         }
       },
+      "Job": {
+        "type": "object",
+        "required": ["id", "name", "status", "priority", "sourceFiles", "artifacts", "ticket", "tags", "metadata", "createdAt", "updatedAt"],
+        "properties": {
+          "id": { "type": "string" },
+          "name": { "type": "string", "description": "The sanitized `x-bps-job-name` of an upload, else its server-generated file name" },
+          "status": { "type": "string" },
+          "sourceFormat": { "type": "string" },
+          "priority": { "type": "integer", "minimum": 0, "maximum": 100 },
+          "sourceFiles": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "required": ["name", "sha256", "sizeBytes", "storageKey"],
+              "properties": {
+                "name": { "type": "string" },
+                "sha256": { "type": "string" },
+                "sizeBytes": { "type": "integer", "minimum": 0 },
+                "storageKey": { "type": "string" }
+              }
+            }
+          },
+          "artifacts": { "type": "array", "items": { "type": "object" } },
+          "ticket": { "type": "object", "properties": { "siteId": { "type": "string" } } },
+          "tags": { "type": "array", "items": { "type": "string" } },
+          "metadata": {
+            "type": "object",
+            "additionalProperties": { "type": "string" },
+            "description": "Spec 052a: an upload records `intakeFile` (its server-generated file name) and, when sent, `displayName`"
+          },
+          "createdAt": { "type": "string", "format": "date-time" },
+          "updatedAt": { "type": "string", "format": "date-time" },
+          "lifecycle": { "type": "string" },
+          "legalHold": { "type": "boolean" }
+        }
+      },
+      "JobEnvelope": {
+        "type": "object",
+        "required": ["job"],
+        "properties": { "job": { "$ref": "#/components/schemas/Job" } }
+      },
       "JobPage": {
         "type": "object",
         "required": ["items", "nextCursor"],
         "properties": {
           "items": { "type": "array", "items": { "$ref": "#/components/schemas/Job" } },
-          "nextCursor": { "type": ["string", "null"] }
+          "nextCursor": { "type": ["string", "null"], "description": "Pass as `cursor` for the next page; null on the last page" }
+        }
+      },
+      "Error": {
+        "type": "object",
+        "required": ["error"],
+        "properties": {
+          "error": {
+            "type": "object",
+            "required": ["code", "message"],
+            "properties": {
+              "code": { "type": "string" },
+              "message": { "type": "string" },
+              "details": { "oneOf": [{ "type": "array", "items": { "type": "string" } }, { "type": "object" }] }
+            }
+          }
         }
       },
       "JobPatch": {
@@ -467,7 +565,7 @@
       "JobCreatedData": {
         "type": "object",
         "required": ["jobId"],
-        "properties": { "jobId": { "type": "string" }, "job": { "$ref": "#/components/schemas/Job" } }
+        "properties": { "jobId": { "type": "string" }, "job": { "$ref": "#/components/schemas/JobRecord" } }
       },
       "JobStatusChangedData": {
         "type": "object",
@@ -476,7 +574,7 @@
           "jobId": { "type": "string" },
           "from": { "$ref": "#/components/schemas/JobStatus" },
           "to": { "$ref": "#/components/schemas/JobStatus" },
-          "job": { "$ref": "#/components/schemas/Job" }
+          "job": { "$ref": "#/components/schemas/JobRecord" }
         }
       }
     }
