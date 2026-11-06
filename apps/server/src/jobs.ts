@@ -2,6 +2,7 @@ import {
   InvalidArgumentError,
   SYSTEM_ACTOR,
   parseTicketEdits,
+  sniffSourceFormat,
   systemClock,
   ticketEdits,
   ulid,
@@ -96,11 +97,14 @@ export class JobService {
       sourceFiles.push({ name: source.name, sha256: stat.sha256, sizeBytes: stat.size, storageKey: key });
     }
 
+    // Spec 031c: submission takes any bytes; the detected format of the first source is recorded.
+    const sourceFormat = input.sources[0] === undefined ? undefined : sniffSourceFormat(input.sources[0].bytes);
     const job: Job = {
       id,
       name: input.name,
       customerRef: input.customerRef,
       status: 'received',
+      ...(sourceFormat === undefined ? {} : { sourceFormat }),
       priority,
       hotFolderId: input.hotFolderId,
       deviceId: input.deviceId,

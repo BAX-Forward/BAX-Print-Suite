@@ -1,4 +1,5 @@
 import type { Hold } from './hold.js';
+import type { SourceFormat } from './source-format.js';
 import type { JobStatus } from './status.js';
 import type { JobTicket } from './ticket.js';
 import type { JobError, JobPage, JobStep } from './types.js';
@@ -49,6 +50,8 @@ export interface Job {
   readonly trashedAt?: string;
   readonly legalHold: boolean;
   readonly reprintOf?: string;
+  /** Spec 031c: format of the first source file from its magic bytes; absent when unrecognized. */
+  readonly sourceFormat?: SourceFormat;
   /** Inspection result (Spec 001), set when the job reaches `ready`. */
   readonly pageCount?: number;
   readonly pages?: readonly JobPage[];

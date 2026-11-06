@@ -51,6 +51,48 @@ describe('ingestFile', () => {
     expect(await readFile(join(dir, PROCESSED, 'a.pdf'), 'utf8')).toBe('%PDF-1.7 one');
   });
 
+  it('records sourceFormat pdf for a PDF and leaves the rest of intake unchanged (Spec 031c)', async () => {
+    const { jobs, deps } = makeDeps();
+    const source = join(dir, 'a.pdf');
+    await writeFile(source, '%PDF-1.7 one');
+
+    const outcome = await ingestFile(source, makeFolder(dir), deps);
+
+    expect(outcome.kind).toBe('ready');
+    if (outcome.kind !== 'ready') return;
+    expect(outcome.job.sourceFormat).toBe('pdf');
+    expect(jobs.byId.get(outcome.job.id)?.sourceFormat).toBe('pdf');
+  });
+
+  it('records sourceFormat png for a PNG from an opted-in folder (Spec 031c)', async () => {
+    const { jobs, storage, deps } = makeDeps();
+    const folder = makeFolder(dir, { acceptRaster: true });
+    const source = join(dir, 'logo.png');
+    // PNG signature and the start of an IHDR chunk; the fake inspector does not decode it.
+    await writeFile(source, Uint8Array.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 0, 0, 0, 13, 0x49, 0x48, 0x44, 0x52]));
+
+    const outcome = await ingestFile(source, folder, deps);
+
+    expect(outcome.kind).toBe('ready');
+    if (outcome.kind !== 'ready') return;
+    expect(outcome.job.sourceFormat).toBe('png');
+    expect(jobs.byId.get(outcome.job.id)?.sourceFormat).toBe('png');
+    expect(storage.blobs.size).toBe(1);
+    expect(outcome.movedTo).toBe(join(dir, PROCESSED, 'logo.png'));
+  });
+
+  it('omits sourceFormat when the bytes match no known format (Spec 031c)', async () => {
+    const { deps } = makeDeps();
+    const source = join(dir, 'odd.pdf');
+    await writeFile(source, 'not a known format');
+
+    const outcome = await ingestFile(source, makeFolder(dir), deps);
+
+    expect(outcome.kind).toBe('ready');
+    if (outcome.kind !== 'ready') return;
+    expect('sourceFormat' in outcome.job).toBe(false);
+  });
+
   it('reports a second file with the same sha256 as duplicate and does not re-ingest it', async () => {
     const { jobs, storage, deps } = makeDeps();
     const folder = makeFolder(dir);
