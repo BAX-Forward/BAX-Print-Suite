@@ -98,4 +98,5 @@ export {
   type PackedPlane1bpp,
   type Plane8bpp,
 } from "./bitpack.js";
+export { MAX_PBM_PIXELS, MAX_PBM_SIDE, PbmError, parsePbmP4, writePbmP4, type PbmErrorCode } from "./pbm.js";
 export { labelPreviewSvg, labelPartSvg, type LabelPreview, type LabelPreviewInput } from "./label-preview.js";
