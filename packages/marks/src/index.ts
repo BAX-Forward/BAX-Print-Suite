@@ -99,4 +99,13 @@ export {
   type Plane8bpp,
 } from "./bitpack.js";
 export { MAX_PBM_PIXELS, MAX_PBM_SIDE, PbmError, parsePbmP4, writePbmP4, type PbmErrorCode } from "./pbm.js";
+export {
+  MAX_MARK_DISTANCE_PT,
+  MAX_MARK_LINE_WEIGHT_PT,
+  MAX_MARK_SHEET_SIDE_PT,
+  bleedMarkSegments,
+  cropMarkSegments,
+  type CornerMarkInput,
+  type TrimBox,
+} from "./crop-geometry.js";
 export { labelPreviewSvg, labelPartSvg, type LabelPreview, type LabelPreviewInput } from "./label-preview.js";
