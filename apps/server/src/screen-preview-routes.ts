@@ -142,7 +142,10 @@ function toBase64(bytes: Uint8Array): string {
   return Buffer.from(bytes.buffer, bytes.byteOffset, bytes.byteLength).toString('base64');
 }
 
-/** Spec 043a: screens the sent planes with the job's screening and ink-limit settings; nothing is stored. */
+/**
+ * Spec 043a: screens the sent planes with the job's screening and ink-limit settings; nothing is stored.
+ * Spec 044e: the job's plane curves, when set, apply between the ink limit and the screen.
+ */
 export function registerScreenPreviewRoutes(app: FastifyInstance, deps: ScreenPreviewRouteOptions): void {
   const { jobs } = deps;
 
@@ -152,7 +155,7 @@ export function registerScreenPreviewRoutes(app: FastifyInstance, deps: ScreenPr
       bodyLimit: SCREEN_PREVIEW_BODY_LIMIT,
       schema: doc({
         operationId: 'previewJobScreening',
-        summary: "Screen CMYK planes with the job's screening and ink-limit settings and answer 1-bit packed or PBM planes",
+        summary: "Screen CMYK planes with the job's screening, ink-limit and plane-curves settings and answer 1-bit packed or PBM planes",
         tags: ['jobs'],
         params: { type: 'object', required: ['id'], properties: { id: { type: 'string' } } },
         bodyDoc: { $ref: '#/components/schemas/ScreenPreviewRequest' },
@@ -170,7 +173,8 @@ export function registerScreenPreviewRoutes(app: FastifyInstance, deps: ScreenPr
       const { id } = request.params;
       const job = await jobs.get(id);
       if (!job) throw notFound('Job', id);
-      const options = pipelineOptionsFromJob({ screening: job.screening, inkLimit: job.inkLimit });
+      // Spec 044e: stored plane curves apply after the ink limit and before screening.
+      const options = pipelineOptionsFromJob({ screening: job.screening, inkLimit: job.inkLimit, planeCurves: job.planeCurves });
       if (options.screening === undefined) throw screeningNotSet(`Job ${id} has no screening setting`);
       const { format, ...input } = parseScreenPreviewBody(request.body);
       const { width, height } = input;
