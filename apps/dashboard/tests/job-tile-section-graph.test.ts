@@ -16,8 +16,8 @@ const SRC_DIR = resolve(ROOT, 'src');
 const TILE_PACKAGE = resolve(ROOT, '../../packages/tile');
 const LAYOUT_ENTRY = '@bax-print/tile/layout';
 
-/** Bare specifiers the section's own (dashboard) files may import. */
-const ALLOWED_BARE = [LAYOUT_ENTRY];
+/** Bare specifiers the section's own (dashboard) files may import; react for the seam editor's hooks (049d). */
+const ALLOWED_BARE = [LAYOUT_ENTRY, 'react'];
 
 const STATIC_PATTERNS: readonly RegExp[] = [
   // import x from "..."; import type { a } from "..."; export { a } from "..."; spans lines.
@@ -98,6 +98,23 @@ describe('JobTileSection import graph', () => {
       expect.arrayContaining(['src/components/JobTileSection.tsx', 'src/components/TilePreview.tsx']),
     );
     expect(graph.files.filter((file) => file.startsWith('src/') === false)).toEqual([]);
+  });
+
+  it('includes the seam editor modules (049d) and no flag-off module', () => {
+    expect(graph.files).toEqual([
+      // Type-only leaf reached through types.ts (generated OpenAPI types, no runtime imports).
+      'src/api/schema.ts',
+      'src/api/tiling.ts',
+      'src/api/types.ts',
+      'src/components/JobTileSection.tsx',
+      'src/components/TilePreview.tsx',
+      'src/components/TileSeamHandles.tsx',
+      'src/components/tilePreviewStrings.ts',
+      'src/components/tileSeams.module.css',
+      'src/components/ui.module.css',
+    ]);
+    expect(graph.files).not.toContain('src/strings.ts');
+    expect(graph.files.some((file) => file.startsWith('src/api/') && /queries|client/.test(file))).toBe(false);
   });
 
   it('reaches no pdf-lib through the layout entry either', () => {

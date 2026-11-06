@@ -1,9 +1,11 @@
+import { TileSeamHandles, type EditableSeams, type SeamNames } from './TileSeamHandles';
 import { tilePreviewStrings } from './tilePreviewStrings';
 import ui from './ui.module.css';
 
 /**
- * Read-only drawing of a tile() result (Spec 009 FR10, first slice; Spec 049a): panel rectangles,
- * labels, seam bands and each panel's size in mm. No dragging or editing.
+ * Drawing of a tile() result (Spec 009 FR10, first slice; Spec 049a): panel rectangles, labels,
+ * seam bands and each panel's size in mm. Read only unless `seams` is given (Spec 049d), which adds
+ * a draggable, keyboard-operable handle per internal seam; the owner applies the moves.
  *
  * The props mirror the fields of `@bax-print/tile`'s TileResult and Panel that the drawing needs,
  * so a tile() result can be passed as is. Units are millimetres in the artwork frame (origin at
@@ -29,6 +31,8 @@ export interface PreviewPanel {
   /** 1-based, column 1 is the leftmost column. */
   col: number;
   label: string;
+  /** The row and column parts of `label`; seam handles name panels by them (049d). */
+  labelParts?: { row: string; col: string };
   visible: PreviewRect;
   printed: PreviewRect;
   edges: Record<PreviewSide, PreviewEdgeKind>;
@@ -50,6 +54,11 @@ export interface TilePreviewProps {
   tiling: PreviewTiling;
   /** Which size the dimension text shows. Default `printed` (the tile package's default accounting). */
   measure?: 'printed' | 'visible';
+  /**
+   * Makes the seams draggable (049d). `positions` place the handles and may differ from
+   * `tiling`'s seams while the owner shows an earlier, valid layout; the counts must match.
+   */
+  seams?: EditableSeams;
 }
 
 type SeamKind = 'overlap' | 'gap' | 'butt';
@@ -118,7 +127,24 @@ export function seamBands(tiling: PreviewTiling): SeamBand[] {
   return [...x, ...y];
 }
 
-export function TilePreview({ page, tiling, measure = 'printed' }: TilePreviewProps) {
+/** The panels either side of each seam: columns left and right, rows upper and lower. */
+export function seamNames(tiling: PreviewTiling): { x: SeamNames[]; y: SeamNames[] } {
+  const colName = (col: number) => {
+    const panel = tiling.panels.find((p) => p.row === 1 && p.col === col);
+    return panel?.labelParts?.col ?? String(col);
+  };
+  const rowName = (row: number) => {
+    const panel = tiling.panels.find((p) => p.col === 1 && p.row === row);
+    return panel?.labelParts?.row ?? String(row);
+  };
+  return {
+    x: tiling.seamsX.map((_, i): SeamNames => [colName(i + 1), colName(i + 2)]),
+    // Seam i (bottom to top) lies between rows rows - i - 1 (above) and rows - i (below).
+    y: tiling.seamsY.map((_, i): SeamNames => [rowName(tiling.rows - i - 1), rowName(tiling.rows - i)]),
+  };
+}
+
+export function TilePreview({ page, tiling, measure = 'printed', seams }: TilePreviewProps) {
   if (tiling.panels.length === 0) return <p className={ui.muted}>{t.empty}</p>;
 
   const { widthMm, heightMm } = page;
@@ -129,18 +155,14 @@ export function TilePreview({ page, tiling, measure = 'printed' }: TilePreviewPr
   const minY = Math.min(0, ...printed.map((r) => flipY(r.y, r.height)));
   const maxY = Math.max(heightMm, ...printed.map((r) => flipY(r.y, r.height) + r.height));
   const pad = Math.max(widthMm, heightMm) * PAD_SHARE;
-  const viewBox = [minX - pad, minY - pad, maxX - minX + 2 * pad, maxY - minY + 2 * pad].map(num).join(' ');
+  const view = { width: maxX - minX + 2 * pad, height: maxY - minY + 2 * pad };
+  const viewBox = [minX - pad, minY - pad, view.width, view.height].map(num).join(' ');
   const fontSize = Math.min(widthMm / Math.max(tiling.columns, 1), heightMm / Math.max(tiling.rows, 1)) * FONT_SHARE;
   const stroke = { vectorEffect: 'non-scaling-stroke', strokeWidth: 1 } as const;
+  const label = t.label(tiling.columns, tiling.rows);
 
-  return (
-    <svg
-      role="img"
-      aria-label={t.label(tiling.columns, tiling.rows)}
-      viewBox={viewBox}
-      width="100%"
-      data-tile-preview=""
-    >
+  const drawing = (
+    <>
       <rect
         data-role="artwork"
         x="0"
@@ -223,6 +245,30 @@ export function TilePreview({ page, tiling, measure = 'printed' }: TilePreviewPr
           <rect key={band.key} {...common} x="0" y={num(flipY(band.lo, size))} width={num(widthMm)} height={num(size)} fill={fill} fillOpacity="0.35" />
         );
       })}
+    </>
+  );
+
+  if (seams === undefined) {
+    return (
+      <svg role="img" aria-label={label} viewBox={viewBox} width="100%" data-tile-preview="">
+        {drawing}
+      </svg>
+    );
+  }
+  // An img role would hide the sliders from assistive technology, so the editor is a group that
+  // holds the drawing (still an img) next to the handles.
+  return (
+    <svg role="group" aria-label={t.editorLabel} viewBox={viewBox} width="100%" data-tile-preview="" data-tile-editor="">
+      <g role="img" aria-label={label}>
+        {drawing}
+      </g>
+      <TileSeamHandles
+        page={page}
+        positions={seams.positions}
+        names={seamNames(tiling)}
+        view={view}
+        onChange={seams.onChange}
+      />
     </svg>
   );
 }
