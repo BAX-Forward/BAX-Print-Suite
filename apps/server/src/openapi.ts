@@ -1015,10 +1015,12 @@ const API_DESCRIPTION = [
   'Spec 040c: a job may carry an optional `inkLimit` setting (`InkLimitSetting`); absent means no ink limit is requested, and a stored value',
   'that is not a valid setting reads back absent. `PUT` and `DELETE /jobs/{id}/ink-limit` set and clear it, and exist only with `BPS_INK_LIMIT=1`.',
   "Spec 043a: `POST /jobs/{id}/screen-preview` screens CMYK planes with the job's `screening` and `inkLimit` settings and answers them packed",
-'1 bit per pixel; nothing is stored. A job without `screening` answers 409 `screening_not_set`. It exists only with `BPS_SCREEN_PREVIEW=1`.',
+  '1 bit per pixel; nothing is stored. A job without `screening` answers 409 `screening_not_set`. It exists only with `BPS_SCREEN_PREVIEW=1`.',
   'Spec 043b: with `format: "pbm"` in the body, each plane is answered as a raw PBM (`P4`) file instead, and the answer names its `format`.',
   'Spec 044d: a job may carry an optional `planeCurves` setting (`PlaneCurvesSetting`); absent means no curves are requested, and a stored value',
   'that is not a valid setting reads back absent. `PUT` and `DELETE /jobs/{id}/plane-curves` set and clear it, and exist only with `BPS_PLANE_CURVES=1`.',
+  'Spec 044e: `POST /jobs/{id}/screen-preview` applies stored `planeCurves` after the ink limit and before screening; a job without them',
+  'is screened as before, and a job with curves but no `screening` still answers 409 `screening_not_set`.',
 ].join(' ');
 
 /** Collects documented routes through Fastify's `onRoute` hook. */
