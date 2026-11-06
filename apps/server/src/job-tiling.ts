@@ -39,15 +39,50 @@ function seamTreatment(seam: NonNullable<TilingSetting['seam']>): SeamTreatment 
 }
 
 /**
- * Tile's page and spec for a tiling setting: the grid in `count` mode and the one seam for every seam. Without
- * a seam the spec has none either, so tile uses its default seam, as core's `TilingSetting` documents.
+ * Spec 050d: core's explicit seam positions as tile's `seamsX` and `seamsY`. Both are mm from the artwork's
+ * left and bottom edge, so the values pass unchanged; an axis without positions adds no key.
+ */
+function seamPositions(tiling: TilingSetting): Pick<TileSpec, 'seamsX' | 'seamsY'> {
+  return {
+    ...(tiling.seamsX === undefined ? {} : { seamsX: [...tiling.seamsX] }),
+    ...(tiling.seamsY === undefined ? {} : { seamsY: [...tiling.seamsY] }),
+  };
+}
+
+/**
+ * Tile's page and spec for a tiling setting: the grid in `count` mode, the explicit seam positions (Spec 050d)
+ * and the one seam for every seam. Without a seam the spec has none either, so tile uses its default seam, as
+ * core's `TilingSetting` documents.
  */
 export function tilingToTileSpec(tiling: TilingSetting, page: JobTilingPageSize): { page: TilePage; spec: TileSpec } {
   const grid = { mode: 'count' as const, columns: tiling.grid.columns, rows: tiling.grid.rows };
+  const seam = tiling.seam === undefined ? {} : { seam: seamTreatment(tiling.seam) };
   return {
     page: { widthMm: ptToMm(page.widthPt), heightMm: ptToMm(page.heightPt) },
-    spec: tiling.seam === undefined ? { grid } : { grid, seam: seamTreatment(tiling.seam) },
+    spec: { grid, ...seamPositions(tiling), ...seam },
   };
+}
+
+/** Seams on one axis that do not lie strictly inside the artwork's `lengthMm`, one issue each. */
+function axisSeamIssues(name: string, seams: readonly number[], lengthMm: number, dimension: string): string[] {
+  return seams.flatMap((seamMm, index) =>
+    seamMm > 0 && seamMm < lengthMm
+      ? []
+      : [
+          `${name}[${String(index)}] at ${String(seamMm)} mm is not inside the artwork; a seam must lie strictly between 0 and the TrimBox ${dimension} of ${lengthMm.toFixed(3)} mm`,
+        ],
+  );
+}
+
+/**
+ * Spec 050d: core checks seam positions without an artwork, so the upper bound is checked here against the
+ * TrimBox in mm before tile runs; empty when every explicit seam lies strictly inside the artwork.
+ */
+function seamExtentIssues(tiling: TilingSetting, page: TilePage): string[] {
+  return [
+    ...axisSeamIssues('seamsX', tiling.seamsX ?? [], page.widthMm, 'width'),
+    ...axisSeamIssues('seamsY', tiling.seamsY ?? [], page.heightMm, 'height'),
+  ];
 }
 
 /** What about the job or its source tiling can not take; empty when it can be tiled. */
@@ -77,14 +112,17 @@ function shapeIssues(job: TiledJob, source: JobTilingSource): string[] {
 /**
  * Spec 050b: the nest items of a tiled job, one per panel, from tile's `toNestItems` (ids from `panelItemId`
  * with the job id, each with its clip box on the source page). Issues, never a guess, when the job has no
- * tiling, the job or source has a shape tiling does not take, or tile rejects the setting for the page (then
- * the issues are tile's issue messages, device and medium limits are not checked here).
+ * tiling, the job or source has a shape tiling does not take, an explicit seam (Spec 050d) is not strictly
+ * inside the TrimBox, or tile rejects the setting for the page (then the issues are tile's issue messages,
+ * device and medium limits are not checked here).
  */
 export function jobTilingNestItems(job: TiledJob, source: JobTilingSource): JobTilingItems {
   if (job.tiling === undefined) return { ok: false, issues: [`job ${job.id} has no tiling setting`] };
   const issues = shapeIssues(job, source);
   if (issues.length > 0) return { ok: false, issues };
   const { page, spec } = tilingToTileSpec(job.tiling, source.trimBoxPt);
+  const extentIssues = seamExtentIssues(job.tiling, page);
+  if (extentIssues.length > 0) return { ok: false, issues: extentIssues };
   const result = tile(page, spec);
   if (result.ok === false) return { ok: false, issues: result.issues.map((issue) => issue.message) };
   const { x, y } = source.trimBoxPt;
