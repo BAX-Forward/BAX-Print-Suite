@@ -51,6 +51,13 @@ function storedWithPlaneCurves(planeCurves: unknown): Job {
   throw new TypeError('not a job document');
 }
 
+/** A job document whose `tiling` is not a setting (spec 050a). */
+function storedWithTiling(tiling: unknown): Job {
+  const doc: unknown = JSON.parse(JSON.stringify({ ...job(), tiling }));
+  if (typeof doc === 'object' && doc && 'id' in doc) return Object.assign(job(), doc);
+  throw new TypeError('not a job document');
+}
+
 describe('MemoryJobRepository whiteInk (spec 038c)', () => {
   it('round-trips a valid setting and leaves an absent one absent', async () => {
     const repo = new MemoryJobRepository();
@@ -194,6 +201,54 @@ describe('MemoryJobRepository planeCurves (spec 044b)', () => {
   ])('reads a stored invalid planeCurves %j back with no planeCurves', async (planeCurves) => {
     const repo = new MemoryJobRepository();
     await repo.save(storedWithPlaneCurves(planeCurves));
+
+    expect(await repo.get('job-1')).toStrictEqual(job());
+    expect(await repo.list()).toStrictEqual([job()]);
+  });
+});
+
+describe('MemoryJobRepository tiling (spec 050a)', () => {
+  it('round-trips valid settings, keeps other settings, and leaves an absent one absent', async () => {
+    const repo = new MemoryJobRepository();
+    const overlap = job({ id: 'overlap', tiling: { grid: { columns: 2, rows: 2 }, seam: { kind: 'overlap', overlapMm: 30 } } });
+    const all = job({
+      id: 'all',
+      whiteInk: { mode: 'flood', density: 100 },
+      screening: { kind: 'bayer', size: 4 },
+      inkLimit: { limitPercent: 260, method: 'gcr' },
+      planeCurves: { k: { points: [{ in: 0, out: 3 }, { in: 255, out: 250 }], method: 'monotone' } },
+      tiling: { grid: { columns: 1, rows: 500 }, seam: { kind: 'overlap' } },
+    });
+    const existing = job({
+      id: 'existing',
+      planeCurves: { c: { points: [{ in: 0, out: 0 }, { in: 255, out: 255 }], method: 'linear' } },
+    });
+    await repo.save(overlap);
+    await repo.save(all);
+    await repo.save(existing);
+    await repo.save(job({ id: 'plain' }));
+
+    expect(await repo.get('overlap')).toStrictEqual(overlap);
+    expect(await repo.get('all')).toStrictEqual(all);
+    expect(await repo.get('existing')).toStrictEqual(existing);
+    const plain = await repo.get('plain');
+    expect(plain).toStrictEqual(job({ id: 'plain' }));
+    expect(JSON.stringify(plain)).toBe(JSON.stringify(job({ id: 'plain' })));
+    expect(plain).not.toHaveProperty('tiling');
+  });
+
+  it.each<unknown>([
+    'yes',
+    null,
+    {},
+    { grid: { columns: 2, rows: 2 }, seam: { kind: 'Butt' } },
+    { grid: { columns: 2, rows: 2 }, seam: { kind: 'overlap', overlapMm: 1001 } },
+    { grid: { columns: 2, rows: 2 }, seam: { kind: 'gap', gapMm: '5' } },
+    { grid: { columns: 2, rows: 2 }, seamsX: [100] },
+    { grid: [2, 2] },
+  ])('reads a stored invalid tiling %j back with no tiling', async (tiling) => {
+    const repo = new MemoryJobRepository();
+    await repo.save(storedWithTiling(tiling));
 
     expect(await repo.get('job-1')).toStrictEqual(job());
     expect(await repo.list()).toStrictEqual([job()]);

@@ -2,6 +2,7 @@ import {
   normalizeJobInkLimit,
   normalizeJobPlaneCurves,
   normalizeJobScreening,
+  normalizeJobTiling,
   normalizeJobWhiteInk,
   type Job,
   type JobLifecycle,
@@ -23,10 +24,13 @@ export interface JobRepository {
  * Spec 039b: likewise a stored `screening` that is not a valid setting reads back absent.
  * Spec 040b: likewise a stored `inkLimit` that is not a valid setting reads back absent.
  * Spec 044b: likewise a stored `planeCurves` that is not a valid setting reads back absent.
+ * Spec 050a: likewise a stored `tiling` that is not a valid setting reads back absent.
  */
 function readBack(job: Job): Job {
-  return normalizeJobPlaneCurves<Job>(
-    normalizeJobInkLimit<Job>(normalizeJobScreening<Job>(normalizeJobWhiteInk<Job>(structuredClone(job)))),
+  return normalizeJobTiling<Job>(
+    normalizeJobPlaneCurves<Job>(
+      normalizeJobInkLimit<Job>(normalizeJobScreening<Job>(normalizeJobWhiteInk<Job>(structuredClone(job)))),
+    ),
   );
 }
 

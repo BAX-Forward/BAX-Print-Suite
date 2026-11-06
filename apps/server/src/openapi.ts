@@ -4,6 +4,7 @@ import {
   INK_LIMIT_METHODS,
   INK_LIMIT_PERCENT_MAX,
   INK_LIMIT_PERCENT_MIN,
+  MAX_TILING_PANELS_PER_AXIS,
   PERMISSIONS,
   PLANE_CURVE_CHANNELS,
   PLANE_CURVE_METHODS,
@@ -16,6 +17,8 @@ import {
   SCREENING_ERROR_DIFFUSION_KERNELS,
   SCREENING_SEED_MAX,
   SCREENING_SEED_MIN,
+  TILING_MAX_GAP_MM,
+  TILING_MAX_OVERLAP_MM,
   WHITE_INK_CHOKE_PX_MAX,
   WHITE_INK_CHOKE_PX_MIN,
   WHITE_INK_DENSITY_MAX,
@@ -777,6 +780,78 @@ const PLANE_CURVES_JOB_SCHEMA: JsonSchema = {
   },
 };
 
+/** Spec 050a: a panel count along one axis of the tiling grid. */
+const TILING_PANEL_COUNT: JsonSchema = { type: 'integer', minimum: 1, maximum: MAX_TILING_PANELS_PER_AXIS };
+
+/** `PUT /jobs/:id/tiling` (Spec 050a): the tiling setting, checked strictly by core `parseTilingSetting`. */
+const TILING_SETTING_SCHEMA: JsonSchema = {
+  type: 'object',
+  required: ['grid'],
+  additionalProperties: false,
+  description: '`{}` is rejected. Without `seam`, every seam overlaps by the tile default of 25 mm',
+  properties: {
+    grid: {
+      type: 'object',
+      required: ['columns', 'rows'],
+      additionalProperties: false,
+      properties: { columns: TILING_PANEL_COUNT, rows: TILING_PANEL_COUNT },
+    },
+    seam: {
+      oneOf: [
+        { type: 'object', required: ['kind'], additionalProperties: false, properties: { kind: { const: 'butt' } } },
+        {
+          type: 'object',
+          required: ['kind'],
+          additionalProperties: false,
+          properties: {
+            kind: { const: 'overlap' },
+            overlapMm: {
+              type: 'number',
+              minimum: 0,
+              maximum: TILING_MAX_OVERLAP_MM,
+              description: 'Millimetres each neighbour prints past the seam; absent means the tile default of 25 mm',
+            },
+          },
+        },
+        {
+          type: 'object',
+          required: ['kind', 'gapMm'],
+          additionalProperties: false,
+          properties: {
+            kind: { const: 'gap' },
+            gapMm: {
+              type: 'number',
+              exclusiveMinimum: 0,
+              maximum: TILING_MAX_GAP_MM,
+              description: 'Width in millimetres of the unprinted strip centred on the seam',
+            },
+          },
+        },
+      ],
+    },
+  },
+};
+
+/** Spec 050a: the `{ job }` the tiling routes answer; only the fields this route group documents are listed. */
+const TILING_JOB_SCHEMA: JsonSchema = {
+  type: 'object',
+  required: ['job'],
+  properties: {
+    job: {
+      type: 'object',
+      required: ['id'],
+      properties: {
+        id: { type: 'string' },
+        updatedAt: { type: 'string', format: 'date-time' },
+        tiling: {
+          ...refTo('TilingSetting'),
+          description: 'Optional; absent means the job is not tiled. A stored value that is not a valid setting reads back absent',
+        },
+      },
+    },
+  },
+};
+
 /** Spec 043a: the longest side of a `POST /jobs/:id/screen-preview` image, in pixels. */
 export const SCREEN_PREVIEW_MAX_SIDE = 1024;
 
@@ -907,6 +982,8 @@ const COMPONENT_SCHEMAS: Readonly<Record<string, JsonSchema>> = {
   InkLimitJob: INK_LIMIT_JOB_SCHEMA,
   PlaneCurvesSetting: PLANE_CURVES_SETTING_SCHEMA,
   PlaneCurvesJob: PLANE_CURVES_JOB_SCHEMA,
+  TilingSetting: TILING_SETTING_SCHEMA,
+  TilingJob: TILING_JOB_SCHEMA,
   ScreenPreviewRequest: SCREEN_PREVIEW_REQUEST_SCHEMA,
   ScreenPreview: SCREEN_PREVIEW_SCHEMA,
 };
@@ -1033,6 +1110,8 @@ const API_DESCRIPTION = [
   'that is not a valid setting reads back absent. `PUT` and `DELETE /jobs/{id}/plane-curves` set and clear it, and exist only with `BPS_PLANE_CURVES=1`.',
   'Spec 044e: `POST /jobs/{id}/screen-preview` applies stored `planeCurves` after the ink limit and before screening; a job without them',
   'is screened as before, and a job with curves but no `screening` still answers 409 `screening_not_set`.',
+  'Spec 050a: a job may carry an optional `tiling` setting (`TilingSetting`); absent means the job is not tiled, and a stored value',
+  'that is not a valid setting reads back absent. `PUT` and `DELETE /jobs/{id}/tiling` set and clear it, and exist only with `BPS_TILING=1`.',
 ].join(' ');
 
 /** Collects documented routes through Fastify's `onRoute` hook. */

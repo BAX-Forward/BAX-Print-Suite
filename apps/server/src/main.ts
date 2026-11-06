@@ -33,6 +33,7 @@ import { parsePlaneCurvesFlag, PLANE_CURVES_ENV } from './plane-curves-routes.js
 import { parseScreenPreviewFlag, SCREEN_PREVIEW_ENV } from './screen-preview-routes.js';
 import { parseScreeningFlag, SCREENING_ENV } from './screening-routes.js';
 import { parseSwatchChartsFlag } from './swatch-chart-routes.js';
+import { parseTilingFlag, TILING_ENV } from './tiling-routes.js';
 import { loadHttpsOptions } from './tls.js';
 import { openWebhookPersistence } from './webhook-persistence.js';
 import { ALLOW_LAN_TARGETS_ENV, parseAllowLanTargets } from './webhook-routes.js';
@@ -63,6 +64,8 @@ const screening = parseScreeningFlag(process.env);
 const inkLimit = parseInkLimitFlag(process.env);
 // Spec 044d: PUT and DELETE /jobs/:id/plane-curves only with BPS_PLANE_CURVES=1; any other value stops startup.
 const planeCurves = parsePlaneCurvesFlag(process.env);
+// Spec 050a: PUT and DELETE /jobs/:id/tiling only with BPS_TILING=1; any other value stops startup.
+const tiling = parseTilingFlag(process.env);
 // Spec 043a: POST /jobs/:id/screen-preview only with BPS_SCREEN_PREVIEW=1; any other value stops startup.
 const screenPreview = parseScreenPreviewFlag(process.env);
 // Spec 034a: print output only with BPS_PRINT_OUTPUT=1 and BPS_PRINTER_PLUGIN; any other flag value, a missing,
@@ -164,6 +167,7 @@ const serverDeps: ServerDeps = {
   ...(screening ? { screening: { jobs: jobRepository } } : {}),
   ...(inkLimit ? { inkLimit: { jobs: jobRepository } } : {}),
   ...(planeCurves ? { planeCurves: { jobs: jobRepository } } : {}),
+  ...(tiling ? { tiling: { jobs: jobRepository } } : {}),
   ...(screenPreview ? { screenPreview: { jobs: jobRepository } } : {}),
   logger: true,
   ...(https === undefined ? {} : { https }),
@@ -230,6 +234,11 @@ app.log.info(
   planeCurves
     ? `plane-curves settings are on (${PLANE_CURVES_ENV}=1): PUT and DELETE /jobs/:id/plane-curves`
     : `plane-curves settings are off (set ${PLANE_CURVES_ENV}=1 to set a job's plane-curves setting)`,
+);
+app.log.info(
+  tiling
+    ? `tiling settings are on (${TILING_ENV}=1): PUT and DELETE /jobs/:id/tiling`
+    : `tiling settings are off (set ${TILING_ENV}=1 to set a job's tiling setting)`,
 );
 app.log.info(
   screenPreview

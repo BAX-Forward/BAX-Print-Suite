@@ -289,6 +289,64 @@ describe('SqliteJobRepository', () => {
       expect(await repo.findLiveBySha256('hf-1', 'a'.repeat(64))).toStrictEqual(expected);
     });
   });
+
+  describe('tiling (spec 050a)', () => {
+    it('round-trips valid settings, leaves an absent one absent, and keeps the other settings', async () => {
+      const repo = new SqliteJobRepository(openDatabase());
+      const grid = job({ id: 'grid', tiling: { grid: { columns: 3, rows: 2 } } });
+      const all = job({
+        id: 'all',
+        whiteInk: { mode: 'flood', density: 100 },
+        screening: { kind: 'bayer', size: 8 },
+        inkLimit: { limitPercent: 300, method: 'gcr' },
+        planeCurves: { k: { points: [{ in: 0, out: 0 }, { in: 255, out: 230 }], method: 'linear' } },
+        tiling: { grid: { columns: 500, rows: 1 }, seam: { kind: 'gap', gapMm: 12.5 } },
+      });
+      const existing = job({
+        id: 'existing',
+        planeCurves: { c: { points: [{ in: 0, out: 0 }, { in: 255, out: 255 }], method: 'monotone' } },
+      });
+      await repo.save(grid);
+      await repo.save(all);
+      await repo.save(existing);
+      await repo.save(job({ id: 'plain' }));
+
+      expect(await repo.get('grid')).toStrictEqual(grid);
+      expect(await repo.get('all')).toStrictEqual(all);
+      expect(await repo.get('existing')).toStrictEqual(existing);
+      const plain = await repo.get('plain');
+      expect(plain).toStrictEqual(job({ id: 'plain' }));
+      expect(JSON.stringify(plain)).toBe(JSON.stringify(job({ id: 'plain' })));
+      expect(plain).not.toHaveProperty('tiling');
+    });
+
+    it.each<unknown>([
+      'yes',
+      null,
+      {},
+      { grid: { columns: 0, rows: 1 } },
+      { grid: { columns: 501, rows: 1 } },
+      { grid: { columns: 2, rows: 2, mode: 'count' } },
+      { grid: { columns: 2, rows: 2 }, seam: { kind: 'gap' } },
+      { grid: { columns: 2, rows: 2 }, seam: { kind: 'butt', overlapMm: 5 } },
+      { grid: { columns: 2, rows: 2 }, bleedMm: 3 },
+    ])('reads a stored invalid tiling %j back with no tiling', async (tiling) => {
+      const db = openDatabase();
+      const repo = new SqliteJobRepository(db);
+      const expected = job({
+        status: 'queued',
+        screening: { kind: 'bayer', size: 4 },
+        planeCurves: { k: { points: [{ in: 0, out: 0 }, { in: 255, out: 255 }], method: 'linear' } },
+      });
+      await repo.save(expected);
+      db.prepare('UPDATE jobs SET doc = ? WHERE id = ?').run(JSON.stringify({ ...expected, tiling }), 'job-1');
+
+      expect(await repo.get('job-1')).toStrictEqual(expected);
+      expect(await repo.list()).toStrictEqual([expected]);
+      expect((await repo.queue()).items).toStrictEqual([expected]);
+      expect(await repo.findLiveBySha256('hf-1', 'a'.repeat(64))).toStrictEqual(expected);
+    });
+  });
 });
 
 describe('SqliteHotFolderRepository', () => {

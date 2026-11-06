@@ -5,6 +5,7 @@ import type { ScreeningSetting } from './screening-setting.js';
 import type { SourceFormat } from './source-format.js';
 import type { JobStatus } from './status.js';
 import type { JobTicket } from './ticket.js';
+import type { TilingSetting } from './tiling-setting.js';
 import type { JobError, JobPage, JobStep } from './types.js';
 import type { WhiteInkSetting } from './white-ink-setting.js';
 
@@ -73,4 +74,6 @@ export interface Job {
   readonly inkLimit?: InkLimitSetting;
   /** Spec 044b: requested per-channel tone curves; absent means no curves are requested. */
   readonly planeCurves?: PlaneCurvesSetting;
+  /** Spec 050a: requested panel grid and seam treatment; absent means the job is not tiled. */
+  readonly tiling?: TilingSetting;
 }

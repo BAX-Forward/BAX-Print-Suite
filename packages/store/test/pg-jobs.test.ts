@@ -413,6 +413,55 @@ describe('PgJobRepository', () => {
     expect(await repo.list()).toStrictEqual([expected]);
   });
 
+  it('round-trips valid tiling, keeps other settings, and leaves absent ones absent (spec 050a)', async () => {
+    const repo = new PgJobRepository(new FakeDbPort());
+    const butt = job({ id: 'butt', tiling: { grid: { columns: 4, rows: 1 }, seam: { kind: 'butt' } } });
+    const all = job({
+      id: 'all',
+      whiteInk: { mode: 'flood' },
+      screening: { kind: 'bayer', size: 8 },
+      inkLimit: { limitPercent: 300, method: 'gcr' },
+      planeCurves: { c: { points: [{ in: 0, out: 0 }, { in: 255, out: 240 }], method: 'linear' } },
+      tiling: { grid: { columns: 2, rows: 3 }, seam: { kind: 'overlap', overlapMm: 0 } },
+    });
+    const existing = job({
+      id: 'existing',
+      planeCurves: { k: { points: [{ in: 0, out: 0 }, { in: 255, out: 255 }], method: 'monotone' } },
+    });
+    await repo.save(butt);
+    await repo.save(all);
+    await repo.save(existing);
+    await repo.save(job({ id: 'plain' }));
+
+    expect(await repo.get('butt')).toStrictEqual(butt);
+    expect(await repo.get('all')).toStrictEqual(all);
+    expect(await repo.get('existing')).toStrictEqual(existing);
+    const plain = await repo.get('plain');
+    expect(plain).toStrictEqual(job({ id: 'plain' }));
+    expect(JSON.stringify(plain)).toBe(JSON.stringify(job({ id: 'plain' })));
+    expect(plain).not.toHaveProperty('tiling');
+  });
+
+  it.each<unknown>([
+    'yes',
+    null,
+    {},
+    { grid: { columns: 1.5, rows: 1 } },
+    { grid: { columns: 2 } },
+    { grid: { columns: 2, rows: 2 }, seam: { kind: 'gap', gapMm: 0 } },
+    { grid: { columns: 2, rows: 2 }, seam: { kind: 'overlap', overlapMm: -1 } },
+    { grid: { columns: 2, rows: 2 }, seam: { kind: 'overlap', gapMm: 5 } },
+    { grid: { columns: 2, rows: 2 }, seam: 'butt' },
+  ])('reads a stored invalid tiling %j back with no tiling (spec 050a)', async (tiling) => {
+    const port = new FakeDbPort();
+    const repo = new PgJobRepository(port);
+    const expected = job({ screening: { kind: 'bayer', size: 8 }, inkLimit: { limitPercent: 280, method: 'gcr' } });
+    port.rows.set('job-1', storedRow({ id: 'job-1', doc: JSON.stringify({ ...expected, tiling }) }));
+
+    expect(await repo.get('job-1')).toStrictEqual(expected);
+    expect(await repo.list()).toStrictEqual([expected]);
+  });
+
   it('rolls back writes made inside a port transaction that throws', async () => {
     const port = new FakeDbPort();
     const repo = new PgJobRepository(port);
