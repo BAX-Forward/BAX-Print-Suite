@@ -90,6 +90,8 @@ describe("registry", () => {
       "conformance",
       "raster-resolution",
       "raster-color-mode",
+      "vector-size",
+      "vector-markup",
     ]);
     expect(registry.has("fonts")).toBe(true);
     expect(registry.get("missing")).toBeUndefined();
