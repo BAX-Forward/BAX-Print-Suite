@@ -9,6 +9,7 @@ export * from './color/white-ink-setting.js';
 export * from './color/ink-limit.js';
 export * from './screening/threshold.js';
 export * from './screening/pipeline.js';
+export * from './screening/job-adapter.js';
 export * from './cgats.js';
 export * from './cxf.js';
 export * from './spot-library.js';
