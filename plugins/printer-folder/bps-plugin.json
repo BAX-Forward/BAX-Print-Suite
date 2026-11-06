@@ -1,0 +1,21 @@
+{
+  "id": "org.bax-print.printer.folder",
+  "name": "Folder Output Driver",
+  "version": "0.1.0",
+  "license": "Apache-2.0",
+  "description": "Generic file-drop PrinterDriver/1 plugin. Writes finished PDF or TIFF output, and an optional BPS ticket JSON, atomically into a configured folder for whatever watches it. Speaks no device protocol.",
+  "provides": [{ "interface": "PrinterDriver", "versions": ">=1.0 <2" }],
+  "protocol": "bpp/1",
+  "exec": {
+    "command": "node",
+    "args": ["dist/main.js"],
+    "platforms": ["win32-x64", "win32-arm64", "linux-x64", "linux-arm64", "darwin-x64", "darwin-arm64"]
+  },
+  "externalDependencies": [],
+  "permissions": { "fs": ["output:rw"], "network": false, "devices": [] },
+  "capabilities": {
+    "input": "document",
+    "documentFormats": ["pdf", "tiff"],
+    "transports": ["file"]
+  }
+}
