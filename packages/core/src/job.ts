@@ -1,4 +1,5 @@
 import type { Hold } from './hold.js';
+import type { InkLimitSetting } from './ink-limit-setting.js';
 import type { ScreeningSetting } from './screening-setting.js';
 import type { SourceFormat } from './source-format.js';
 import type { JobStatus } from './status.js';
@@ -67,4 +68,6 @@ export interface Job {
   readonly whiteInk?: WhiteInkSetting;
   /** Spec 039b: requested screening threshold array; absent means no screening is requested. */
   readonly screening?: ScreeningSetting;
+  /** Spec 040b: requested total area coverage limit; absent means no ink limit is requested. */
+  readonly inkLimit?: InkLimitSetting;
 }

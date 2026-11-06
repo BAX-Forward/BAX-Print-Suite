@@ -1,4 +1,10 @@
-import { normalizeJobScreening, normalizeJobWhiteInk, TERMINAL_STATUSES, type Job } from '@bax-print/core';
+import {
+  normalizeJobInkLimit,
+  normalizeJobScreening,
+  normalizeJobWhiteInk,
+  TERMINAL_STATUSES,
+  type Job,
+} from '@bax-print/core';
 import type { Database } from './database.js';
 import {
   DEFAULT_JOB_PAGE_SIZE,
@@ -26,9 +32,10 @@ function clampOffset(offset: number | undefined): number {
 /**
  * Spec 038c: a stored `whiteInk` that is not a valid setting reads back absent (white ink off).
  * Spec 039b: likewise a stored `screening` that is not a valid setting reads back absent.
+ * Spec 040b: likewise a stored `inkLimit` that is not a valid setting reads back absent.
  */
 function parse(row: DocRow): Job {
-  return normalizeJobScreening<Job>(normalizeJobWhiteInk<Job>(JSON.parse(row.doc) as Job));
+  return normalizeJobInkLimit<Job>(normalizeJobScreening<Job>(normalizeJobWhiteInk<Job>(JSON.parse(row.doc) as Job)));
 }
 
 /**
