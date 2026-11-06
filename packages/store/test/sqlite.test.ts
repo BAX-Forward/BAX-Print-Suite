@@ -143,6 +143,46 @@ describe('SqliteJobRepository', () => {
       },
     );
   });
+
+  describe('screening (spec 039b)', () => {
+    it('round-trips valid settings, leaves an absent one absent, and keeps whiteInk', async () => {
+      const repo = new SqliteJobRepository(openDatabase());
+      const bayer = job({ id: 'bayer', screening: { kind: 'bayer', size: 8 } });
+      const blue = job({
+        id: 'blue',
+        whiteInk: { mode: 'flood', density: 100 },
+        screening: { kind: 'blue-noise', size: 256, seed: 4294967295 },
+      });
+      await repo.save(bayer);
+      await repo.save(blue);
+      await repo.save(job({ id: 'plain' }));
+
+      expect(await repo.get('bayer')).toStrictEqual(bayer);
+      expect(await repo.get('blue')).toStrictEqual(blue);
+      const plain = await repo.get('plain');
+      expect(plain).toStrictEqual(job({ id: 'plain' }));
+      expect(plain !== undefined && 'screening' in plain).toBe(false);
+    });
+
+    it.each<unknown>([
+      'yes',
+      { kind: 'x' },
+      { kind: 'bayer', size: 3 },
+      { kind: 'blue-noise', size: 300, seed: 1 },
+      { kind: 'bayer', size: 4, extra: 1 },
+    ])('reads a stored invalid screening %j back with no screening', async (screening) => {
+      const db = openDatabase();
+      const repo = new SqliteJobRepository(db);
+      const expected = job({ status: 'queued', whiteInk: { mode: 'spot' } });
+      await repo.save(expected);
+      db.prepare('UPDATE jobs SET doc = ? WHERE id = ?').run(JSON.stringify({ ...expected, screening }), 'job-1');
+
+      expect(await repo.get('job-1')).toStrictEqual(expected);
+      expect(await repo.list()).toStrictEqual([expected]);
+      expect((await repo.queue()).items).toStrictEqual([expected]);
+      expect(await repo.findLiveBySha256('hf-1', 'a'.repeat(64))).toStrictEqual(expected);
+    });
+  });
 });
 
 describe('SqliteHotFolderRepository', () => {

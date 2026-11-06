@@ -32,3 +32,4 @@ export * from './source-format.js';
 export * from './ulid.js';
 export * from './spot-name.js';
 export * from './white-ink-setting.js';
+export * from './screening-setting.js';
