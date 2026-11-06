@@ -11,6 +11,7 @@ export * from './pg-finishing.js';
 export * from './pg-hotfolders.js';
 export * from './pg-jobs.js';
 export * from './pg-layouts.js';
+export { PgMediaRepository } from './pg-media.js';
 export * from './pg-migrations.js';
 export * from './secret-box.js';
 export * from './secret-key.js';
