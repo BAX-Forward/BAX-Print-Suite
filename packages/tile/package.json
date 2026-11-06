@@ -11,6 +11,11 @@
     ".": {
       "types": "./dist/index.d.ts",
       "import": "./dist/index.js"
+    },
+    "./layout": {
+      "@bax-print/source": "./src/layout.ts",
+      "types": "./dist/layout.d.ts",
+      "import": "./dist/layout.js"
     }
   },
   "files": [
