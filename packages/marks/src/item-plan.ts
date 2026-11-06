@@ -3,15 +3,16 @@
  * frame (mm, origin at the trim bottom-left of the unrotated artwork).
  */
 import type { PanelRef } from "./codes/index.js";
+import { bleedMarkSegments } from "./crop-geometry.js";
 import { MarkSpecError } from "./errors.js";
-import type { ItemBox } from "./geometry.js";
+import type { ItemBox, Segment } from "./geometry.js";
 import { grommetPoints } from "./grommets.js";
 import { planLabel, templateValues } from "./label.js";
 import { cropSegments, customCenters, edgeLineSegments, foldSegments, trimSegments } from "./marks-local.js";
 import type { ElementKind, JobInfo, MarkPart } from "./plan-types.js";
-import type { Edge, FinishingSpec, MarkSpec } from "./schema.js";
+import type { CropMark, Edge, FinishingSpec, MarkSpec } from "./schema.js";
 import type { SymbolTable } from "./symbols.js";
-import { ptToMm } from "./units.js";
+import { mmToPt, ptToMm } from "./units.js";
 
 export interface LocalElement {
   readonly markId: string;
@@ -42,12 +43,30 @@ export function assignMarkIds(marks: readonly MarkSpec[]): string[] {
   return ids;
 }
 
-/** How far from the trim, per edge, crop marks and fold ticks reach. */
+/** Bleed marks are opt-in and only differ from the crop marks when there is a bleed. */
+function drawsBleedMarks(mark: MarkSpec, item: ItemBox): mark is CropMark {
+  return mark.kind === "crop" && mark.bleedMarks === true && item.bleedMm > 0;
+}
+
+/** Spec 046a bleed marks (computed in points) in the item-local trim frame (mm). */
+function bleedSegmentsMm(item: ItemBox, mark: CropMark): Segment[] {
+  const segments = bleedMarkSegments({
+    trim: { x: 0, y: 0, width: mmToPt(item.widthMm), height: mmToPt(item.heightMm) },
+    bleed: mmToPt(item.bleedMm),
+    offset: mmToPt(mark.offsetMm),
+    length: mmToPt(mark.lengthMm),
+    lineWeight: mark.lineWidthPt,
+  });
+  return segments.map((s) => ({ x1: ptToMm(s.x1), y1: ptToMm(s.y1), x2: ptToMm(s.x2), y2: ptToMm(s.y2) }));
+}
+
+/** How far from the trim, per edge, crop marks, bleed marks and fold ticks reach. */
 export function occupiedOutside(item: ItemBox, marks: readonly MarkSpec[]): Record<Edge, number> {
   const out: Record<Edge, number> = { top: 0, bottom: 0, left: 0, right: 0 };
   const raise = (edges: readonly Edge[], mm: number) => edges.forEach((e) => (out[e] = Math.max(out[e], mm)));
   for (const m of marks) {
     if (m.kind === "crop") raise(["top", "bottom", "left", "right"], Math.max(m.offsetMm, item.bleedMm) + m.lengthMm);
+    if (drawsBleedMarks(m, item)) raise(["top", "bottom", "left", "right"], item.bleedMm + m.offsetMm + m.lengthMm);
     if (m.kind === "fold-line" && m.ticks) {
       const reach = Math.max(m.tickOffsetMm, item.bleedMm) + m.tickLengthMm;
       raise(m.axis === "vertical" ? ["top", "bottom"] : ["left", "right"], reach);
@@ -62,7 +81,10 @@ function markParts(mark: MarkSpec, item: ItemBox, symbols: SymbolTable, warnings
     case "crop": {
       const r = cropSegments(item, mark);
       warnings.push(...r.warnings);
-      return [{ type: "lines", segments: r.value, lineWidthMm: ptToMm(mark.lineWidthPt) }];
+      const lineWidthMm = ptToMm(mark.lineWidthPt);
+      const parts: MarkPart[] = [{ type: "lines", segments: r.value, lineWidthMm }];
+      if (drawsBleedMarks(mark, item)) parts.push({ type: "lines", segments: bleedSegmentsMm(item, mark), lineWidthMm });
+      return parts;
     }
     case "trim-line":
       return [{ type: "lines", segments: trimSegments(item), lineWidthMm: ptToMm(mark.lineWidthPt) }];

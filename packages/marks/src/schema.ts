@@ -48,6 +48,13 @@ export const CropMarkSchema = z.object({
   /** Distance from the trim; raised to the bleed when smaller, so marks never land in the bleed. */
   offsetMm: z.number().min(0).max(100).default(3),
   lineWidthPt: lineWidthPt(0.25),
+  /**
+   * Also draw bleed marks (Spec 046b): corner lines on the bleed box edge
+   * extensions, `offsetMm` beyond the bleed box. Opt-in; absent = off, and the
+   * output is unchanged. Not drawn when the item has no bleed (they would
+   * coincide with the crop marks).
+   */
+  bleedMarks: z.boolean().optional(),
 });
 
 export const TrimLineSchema = z.object({
