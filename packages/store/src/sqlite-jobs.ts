@@ -1,5 +1,6 @@
 import {
   normalizeJobInkLimit,
+  normalizeJobPlaneCurves,
   normalizeJobScreening,
   normalizeJobWhiteInk,
   TERMINAL_STATUSES,
@@ -33,9 +34,12 @@ function clampOffset(offset: number | undefined): number {
  * Spec 038c: a stored `whiteInk` that is not a valid setting reads back absent (white ink off).
  * Spec 039b: likewise a stored `screening` that is not a valid setting reads back absent.
  * Spec 040b: likewise a stored `inkLimit` that is not a valid setting reads back absent.
+ * Spec 044b: likewise a stored `planeCurves` that is not a valid setting reads back absent.
  */
 function parse(row: DocRow): Job {
-  return normalizeJobInkLimit<Job>(normalizeJobScreening<Job>(normalizeJobWhiteInk<Job>(JSON.parse(row.doc) as Job)));
+  return normalizeJobPlaneCurves<Job>(
+    normalizeJobInkLimit<Job>(normalizeJobScreening<Job>(normalizeJobWhiteInk<Job>(JSON.parse(row.doc) as Job))),
+  );
 }
 
 /**

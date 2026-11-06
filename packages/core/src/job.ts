@@ -1,5 +1,6 @@
 import type { Hold } from './hold.js';
 import type { InkLimitSetting } from './ink-limit-setting.js';
+import type { PlaneCurvesSetting } from './plane-curves-setting.js';
 import type { ScreeningSetting } from './screening-setting.js';
 import type { SourceFormat } from './source-format.js';
 import type { JobStatus } from './status.js';
@@ -70,4 +71,6 @@ export interface Job {
   readonly screening?: ScreeningSetting;
   /** Spec 040b: requested total area coverage limit; absent means no ink limit is requested. */
   readonly inkLimit?: InkLimitSetting;
+  /** Spec 044b: requested per-channel tone curves; absent means no curves are requested. */
+  readonly planeCurves?: PlaneCurvesSetting;
 }

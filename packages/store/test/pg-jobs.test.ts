@@ -362,6 +362,57 @@ describe('PgJobRepository', () => {
     expect(await repo.list()).toStrictEqual([expected]);
   });
 
+  it('round-trips valid planeCurves, keeps other settings, and leaves absent ones absent (spec 044b)', async () => {
+    const repo = new PgJobRepository(new FakeDbPort());
+    const cyan = job({
+      id: 'cyan',
+      planeCurves: { c: { points: [{ in: 0, out: 0 }, { in: 128, out: 110 }, { in: 255, out: 255 }], method: 'monotone' } },
+    });
+    const all = job({
+      id: 'all',
+      whiteInk: { mode: 'flood' },
+      screening: { kind: 'bayer', size: 8 },
+      inkLimit: { limitPercent: 300, method: 'gcr' },
+      planeCurves: {
+        c: { points: [{ in: 0, out: 0 }, { in: 255, out: 240 }], method: 'linear' },
+        m: { points: [{ in: 0, out: 5 }, { in: 255, out: 255 }], method: 'monotone' },
+        y: { points: [{ in: 0, out: 0 }, { in: 255, out: 0 }], method: 'linear' },
+        k: { points: [{ in: 0, out: 0 }, { in: 64, out: 64 }, { in: 255, out: 255 }], method: 'monotone' },
+      },
+    });
+    const existing = job({ id: 'existing', inkLimit: { limitPercent: 260, method: 'proportional' } });
+    await repo.save(cyan);
+    await repo.save(all);
+    await repo.save(existing);
+    await repo.save(job({ id: 'plain' }));
+
+    expect(await repo.get('cyan')).toStrictEqual(cyan);
+    expect(await repo.get('all')).toStrictEqual(all);
+    expect(await repo.get('existing')).toStrictEqual(existing);
+    const plain = await repo.get('plain');
+    expect(plain).toStrictEqual(job({ id: 'plain' }));
+    expect(plain).not.toHaveProperty('planeCurves');
+  });
+
+  it.each<unknown>([
+    'yes',
+    null,
+    {},
+    { c: { points: [{ in: 0, out: 0 }], method: 'linear' } },
+    { c: { points: [{ in: 0, out: 0 }, { in: 254, out: 255 }], method: 'linear' } },
+    { c: { points: [{ in: 0, out: 10 }, { in: 255, out: 5 }], method: 'linear' } },
+    { c: { points: [{ in: 0, out: 0 }, { in: 255, out: 255 }], method: 'cubic' } },
+    { r: { points: [{ in: 0, out: 0 }, { in: 255, out: 255 }], method: 'linear' } },
+  ])('reads a stored invalid planeCurves %j back with no planeCurves (spec 044b)', async (planeCurves) => {
+    const port = new FakeDbPort();
+    const repo = new PgJobRepository(port);
+    const expected = job({ screening: { kind: 'bayer', size: 8 }, inkLimit: { limitPercent: 280, method: 'gcr' } });
+    port.rows.set('job-1', storedRow({ id: 'job-1', doc: JSON.stringify({ ...expected, planeCurves }) }));
+
+    expect(await repo.get('job-1')).toStrictEqual(expected);
+    expect(await repo.list()).toStrictEqual([expected]);
+  });
+
   it('rolls back writes made inside a port transaction that throws', async () => {
     const port = new FakeDbPort();
     const repo = new PgJobRepository(port);
