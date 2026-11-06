@@ -1,6 +1,8 @@
 import { describe, expect, it } from 'vitest';
 import {
   BAYER_SIZES,
+  ERROR_DIFFUSION_KERNELS,
+  type ErrorDiffusionKernel,
   type InkLimitMethod,
   MAX_SCREEN_PIPELINE_PIXELS,
   PlaneCurveError,
@@ -13,6 +15,7 @@ import {
   type ScreenPlaneOffset,
   type ScreenPlaneOffsets,
   type ThresholdArray,
+  applyErrorDiffusion,
   applyPlaneCurves,
   bayerArray,
   blueNoiseArray,
@@ -42,13 +45,15 @@ function randomImage(rng: () => number): ScreenPipelineInput {
   return { width, height, c: plane(), m: plane(), y: plane(), k: plane() };
 }
 
-function randomScreening(rng: () => number): ScreenPipelineScreening {
+type ThresholdScreening = Exclude<ScreenPipelineScreening, { kind: 'error-diffusion' }>;
+
+function randomScreening(rng: () => number): ThresholdScreening {
   const int = (lo: number, hi: number): number => lo + Math.floor(rng() * (hi - lo + 1));
   if (rng() < 0.5) return { kind: 'bayer', size: BAYER_SIZES[int(0, BAYER_SIZES.length - 1)] ?? 2 };
   return { kind: 'blue-noise', size: int(2, 8), seed: int(0, 0xffff_ffff) };
 }
 
-function arrayFor(screening: ScreenPipelineScreening): ThresholdArray {
+function arrayFor(screening: ThresholdScreening): ThresholdArray {
   return screening.kind === 'bayer' ? bayerArray(screening.size) : blueNoiseArray(screening.size, screening.seed);
 }
 
@@ -154,7 +159,7 @@ describe('composeScreening screening', () => {
   it('shifts only the plane with an offset: it equals the unshifted pattern translated', () => {
     const plane = flat(100);
     const base = { width, height, c: plane, m: plane, y: plane, k: plane };
-    const screenings: ScreenPipelineScreening[] = [
+    const screenings: ThresholdScreening[] = [
       { kind: 'bayer', size: 8 },
       { kind: 'blue-noise', size: 16, seed: 0x041a },
     ];
@@ -455,7 +460,7 @@ describe('composeScreening validation', () => {
     ['not an object', 'bayer', /screening must be an object with a kind/],
     ['null', null, /screening must be an object with a kind/],
     ['without a kind', { size: 4 }, /screening must be an object with a kind/],
-    ['of unknown kind', { kind: 'am', size: 4 }, /screening.kind must be bayer or blue-noise/],
+    ['of unknown kind', { kind: 'am', size: 4 }, /screening.kind must be bayer, blue-noise or error-diffusion/],
     ['bayer 3', { kind: 'bayer', size: 3 }, /screening.size must be 2, 4, 8, 16/],
     ['bayer 32', { kind: 'bayer', size: 32 }, /screening.size/],
     ['bayer without size', { kind: 'bayer' }, /screening.size/],
@@ -494,5 +499,212 @@ describe('composeScreening validation', () => {
         planeOffsets: { k: { x: 8, y: 0 } },
       }),
     ).toThrow(/planeOffsets.k.x must be an integer in 0..7/);
+  });
+});
+
+describe('composeScreening error diffusion (spec 045b, seeded)', () => {
+  type ErrorDiffusionScreening = Extract<ScreenPipelineScreening, { kind: 'error-diffusion' }>;
+
+  const SCREENINGS: ErrorDiffusionScreening[] = ERROR_DIFFUSION_KERNELS.flatMap((kernel: ErrorDiffusionKernel) => [
+    { kind: 'error-diffusion' as const, kernel, serpentine: false },
+    { kind: 'error-diffusion' as const, kernel, serpentine: true },
+  ]);
+  const FLOYD_STEINBERG: ErrorDiffusionScreening = { kind: 'error-diffusion', kernel: 'floyd-steinberg' };
+
+  function randomInt(rng: () => number, lo: number, hi: number): number {
+    return lo + Math.floor(rng() * (hi - lo + 1));
+  }
+
+  function randomInkLimit(rng: () => number): ScreenPipelineInkLimit {
+    return { limitPercent: randomInt(rng, 100, 400), method: rng() < 0.5 ? 'proportional' : 'gcr' };
+  }
+
+  /** One random LUT per plane; any 256 bytes are a valid LUT. */
+  function randomCurves(rng: () => number): PlaneCurveLuts {
+    const lut = (): Uint8Array => Uint8Array.from({ length: 256 }, () => randomInt(rng, 0, 255));
+    return { c: lut(), m: lut(), y: lut(), k: lut() };
+  }
+
+  /** The ink-limited, curved planes, each stage present only when set. */
+  function prepared(
+    image: ScreenPipelineInput,
+    inkLimit: ScreenPipelineInkLimit | undefined,
+    planeCurves: PlaneCurveLuts | undefined,
+  ): ScreenPipelinePlanes {
+    const { width, height } = image;
+    const limited = inkLimit ? limitInk({ ...image, ...inkLimit }) : image;
+    return planeCurves ? applyPlaneCurves({ width, height, ...limited }, planeCurves) : limited;
+  }
+
+  function diffusedReference(
+    source: ScreenPipelinePlanes,
+    width: number,
+    height: number,
+    screening: ErrorDiffusionScreening,
+  ): Uint8Array[] {
+    const options = { kernel: screening.kernel, serpentine: screening.serpentine ?? false };
+    return planesOf(source).map((plane) => applyErrorDiffusion({ width, height, plane }, options));
+  }
+
+  it('keeps bayer and blue-noise bytes equal to the threshold reference with ink limit and curves', () => {
+    const rng = seededRng(0x045b);
+    for (let trial = 0; trial < 200; trial++) {
+      const image = randomImage(rng);
+      const inkLimit = rng() < 0.5 ? randomInkLimit(rng) : undefined;
+      const planeCurves = rng() < 0.5 ? randomCurves(rng) : undefined;
+      const screening = randomScreening(rng);
+      const array = arrayFor(screening);
+      const out = composeScreening({
+        ...image,
+        screening,
+        ...(inkLimit === undefined ? {} : { inkLimit }),
+        ...(planeCurves === undefined ? {} : { planeCurves }),
+      });
+      const source = prepared(image, inkLimit, planeCurves);
+      for (const name of PLANES) {
+        expect(out[name]).toEqual(referenceScreen(source[name], image.width, image.height, array, { x: 0, y: 0 }));
+      }
+    }
+  });
+
+  it('equals applyErrorDiffusion on each prepared plane for both kernels and scan orders', () => {
+    const rng = seededRng(0x045c);
+    for (let trial = 0; trial < 200; trial++) {
+      const image = randomImage(rng);
+      const inkLimit = rng() < 0.5 ? randomInkLimit(rng) : undefined;
+      const planeCurves = rng() < 0.5 ? randomCurves(rng) : undefined;
+      const source = prepared(image, inkLimit, planeCurves);
+      const before = planesOf(image).map((p) => p.slice());
+      for (const screening of SCREENINGS) {
+        const out = composeScreening({
+          ...image,
+          screening,
+          ...(inkLimit === undefined ? {} : { inkLimit }),
+          ...(planeCurves === undefined ? {} : { planeCurves }),
+        });
+        expect(planesOf(out)).toEqual(diffusedReference(source, image.width, image.height, screening));
+        for (const plane of planesOf(out)) expect(plane.every((v) => v === 0 || v === SCREEN_DOT_ON)).toBe(true);
+      }
+      expect(planesOf(image)).toEqual(before);
+    }
+  });
+
+  it('treats a missing serpentine like false and differs from serpentine on a mid grey', () => {
+    const width = 32;
+    const height = 32;
+    const plane = new Uint8Array(width * height).fill(100);
+    const image = { width, height, c: plane, m: plane, y: plane, k: plane };
+    for (const kernel of ERROR_DIFFUSION_KERNELS) {
+      const raster = composeScreening({ ...image, screening: { kind: 'error-diffusion', kernel, serpentine: false } });
+      const implicit = composeScreening({ ...image, screening: { kind: 'error-diffusion', kernel } });
+      const serpentine = composeScreening({ ...image, screening: { kind: 'error-diffusion', kernel, serpentine: true } });
+      expect(planesOf(implicit)).toEqual(planesOf(raster));
+      expect(planesOf(serpentine)).not.toEqual(planesOf(raster));
+      for (const name of PLANES) expect(raster[name]).not.toBe(plane);
+    }
+  });
+
+  it('is deterministic for the same input', () => {
+    const rng = seededRng(0x045d);
+    for (let trial = 0; trial < 50; trial++) {
+      const screening = SCREENINGS[randomInt(rng, 0, SCREENINGS.length - 1)] ?? FLOYD_STEINBERG;
+      const input = { ...randomImage(rng), inkLimit: randomInkLimit(rng), planeCurves: randomCurves(rng), screening };
+      expect(planesOf(composeScreening(input))).toEqual(planesOf(composeScreening(input)));
+    }
+  });
+
+  it('runs the ink limit, then the curves, then error diffusion, matching a manual composition', () => {
+    const rng = seededRng(0x045e);
+    let swappedDiffers = 0;
+    for (let trial = 0; trial < 200; trial++) {
+      const image = randomImage(rng);
+      const { width, height } = image;
+      const inkLimit = randomInkLimit(rng);
+      const planeCurves = randomCurves(rng);
+      const screening = SCREENINGS[trial % SCREENINGS.length] ?? FLOYD_STEINBERG;
+
+      const out = composeScreening({ ...image, inkLimit, planeCurves, screening });
+
+      const limited = limitInk({ ...image, ...inkLimit });
+      const curved = applyPlaneCurves({ width, height, ...limited }, planeCurves);
+      expect(planesOf(out)).toEqual(diffusedReference(curved, width, height, screening));
+
+      const curvedFirst = applyPlaneCurves(image, planeCurves);
+      const limitedAfter = limitInk({ ...curvedFirst, ...inkLimit });
+      const swapped = diffusedReference(limitedAfter, width, height, screening).flatMap((p) => Array.from(p));
+      const b = planesOf(out).flatMap((p) => Array.from(p));
+      if (swapped.every((v, i) => v === b[i])) continue;
+      swappedDiffers++;
+    }
+    expect(swappedDiffers).toBeGreaterThan(0);
+  });
+});
+
+describe('composeScreening error diffusion validation', () => {
+  const plane = (): Uint8Array => new Uint8Array(4);
+  const ok = { width: 2, height: 2, c: plane(), m: plane(), y: plane(), k: plane() };
+  const fs = { kind: 'error-diffusion', kernel: 'floyd-steinberg' };
+
+  it('accepts both kernels with and without serpentine', () => {
+    for (const kernel of ERROR_DIFFUSION_KERNELS) {
+      for (const serpentine of [undefined, false, true]) {
+        const screening = { kind: 'error-diffusion', kernel, ...(serpentine === undefined ? {} : { serpentine }) };
+        expect(callUntyped({ ...ok, screening })).toEqual({ c: plane(), m: plane(), y: plane(), k: plane() });
+      }
+    }
+  });
+
+  it.each([
+    ['an unknown key', { ...fs, size: 4 }, /screening has unknown key size for error-diffusion/],
+    ['a seed', { ...fs, seed: 1 }, /screening has unknown key seed/],
+    [
+      'an unknown kernel',
+      { kind: 'error-diffusion', kernel: 'stucki' },
+      /screening.kernel must be floyd-steinberg or jarvis-judice-ninke/,
+    ],
+    ['a missing kernel', { kind: 'error-diffusion' }, /screening.kernel/],
+    ['a numeric kernel', { kind: 'error-diffusion', kernel: 1 }, /screening.kernel/],
+    ['a string serpentine', { ...fs, serpentine: 'true' }, /screening.serpentine must be a boolean/],
+    ['a numeric serpentine', { ...fs, serpentine: 1 }, /screening.serpentine must be a boolean/],
+    ['a null serpentine', { ...fs, serpentine: null }, /screening.serpentine must be a boolean/],
+  ])('rejects error diffusion with %s', (_name, screening, message) => {
+    expect(() => callUntyped({ ...ok, screening })).toThrow(RangeError);
+    expect(() => callUntyped({ ...ok, screening })).toThrow(/composeScreening: /);
+    expect(() => callUntyped({ ...ok, screening })).toThrow(message);
+  });
+
+  it.each([
+    ['empty offsets', {}],
+    ['zero offsets', { c: { x: 0, y: 0 } }],
+    ['a non-zero offset', { k: { x: 1, y: 2 } }],
+  ])('rejects planeOffsets with error diffusion: %s', (_name, planeOffsets) => {
+    for (const kernel of ERROR_DIFFUSION_KERNELS) {
+      const screening = { kind: 'error-diffusion', kernel };
+      expect(() => callUntyped({ ...ok, screening, planeOffsets })).toThrow(RangeError);
+      expect(() => callUntyped({ ...ok, screening, planeOffsets })).toThrow(
+        /planeOffsets is not supported with error-diffusion screening/,
+      );
+    }
+  });
+
+  it('checks error-diffusion options and offsets before the ink limit or curves run', () => {
+    const huge = new Uint8Array(1_000_000);
+    const base = {
+      width: 1000,
+      height: 1000,
+      c: huge,
+      m: huge,
+      y: huge,
+      k: huge,
+      inkLimit: { limitPercent: 300, method: 'gcr' },
+      planeCurves: { c: new Uint8Array(256) },
+    };
+    const started = performance.now();
+    expect(() => callUntyped({ ...base, screening: { ...fs, serpentine: 'yes' } })).toThrow(/screening.serpentine/);
+    expect(() => callUntyped({ ...base, screening: { kind: 'error-diffusion', kernel: 'atkinson' } })).toThrow(
+      /screening.kernel/,
+    );
+    expect(() => callUntyped({ ...base, screening: fs, planeOffsets: {} })).toThrow(/planeOffsets is not supported/);
+    expect(performance.now() - started).toBeLessThan(100);
   });
 });
