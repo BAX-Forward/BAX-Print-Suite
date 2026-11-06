@@ -1,6 +1,7 @@
-import { defineConfig, loadEnv } from 'vite';
+import { defaultClientConditions, defineConfig, loadEnv } from 'vite';
 import react from '@vitejs/plugin-react';
 import { tilePreviewFlag } from './src/lib/buildFlags';
+import { tilePreviewPagePlugin, WORKSPACE_SOURCE_CONDITION } from './src/lib/tilePreviewPage';
 
 /** Where `pnpm dev` proxies API calls. Override with BPS_API_URL. */
 const DEFAULT_API_TARGET = 'http://127.0.0.1:8080';
@@ -28,10 +29,16 @@ export default defineConfig(({ mode }) => {
       : Object.fromEntries(API_PREFIXES.map((prefix) => [prefix, { target }]));
   // Throws on any value other than unset or "1", which stops the build or dev server.
   const tilePreview = tilePreviewFlag(process.env);
+  // Flag on only: route the job page through JobDetailTilePage and read @bax-print/tile/layout from
+  // source. With the flag off the config is what it was, so the dist stays byte-identical (049c).
+  const tilePreviewConfig = tilePreview
+    ? { resolve: { conditions: [WORKSPACE_SOURCE_CONDITION, ...defaultClientConditions] } }
+    : {};
 
   return {
     base: '/ui/',
-    plugins: [react()],
+    plugins: tilePreview ? [react(), tilePreviewPagePlugin()] : [react()],
+    ...tilePreviewConfig,
     define: { __BPS_TILE_PREVIEW__: JSON.stringify(tilePreview) },
     server: { host: '127.0.0.1', proxy },
     worker: { format: 'es' },

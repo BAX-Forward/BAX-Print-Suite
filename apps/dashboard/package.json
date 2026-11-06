@@ -18,6 +18,7 @@
     "msw:init": "msw init public --save"
   },
   "dependencies": {
+    "@bax-print/tile": "workspace:*",
     "@tanstack/react-query": "5.59.20",
     "@tanstack/react-table": "8.20.5",
     "@tanstack/react-virtual": "3.10.9",
