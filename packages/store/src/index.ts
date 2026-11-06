@@ -8,6 +8,7 @@ export * from './keys.js';
 export * from './local-storage.js';
 export * from './memory-storage.js';
 export * from './pg-jobs.js';
+export * from './pg-layouts.js';
 export * from './pg-migrations.js';
 export * from './secret-box.js';
 export * from './secret-key.js';
