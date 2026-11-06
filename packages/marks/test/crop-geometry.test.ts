@@ -111,6 +111,29 @@ describe("cropMarkSegments", () => {
     expect(cropMarkSegments(input)).toHaveLength(8);
     expect(bleedMarkSegments(input)).toHaveLength(8);
   });
+
+  it("covers 100 m of roll (MAX_EDIT_LENGTH_MM in core edits.ts)", () => {
+    expect(MAX_MARK_SHEET_SIDE_PT).toBe(283_465);
+    expect(MAX_MARK_SHEET_SIDE_PT).toBeGreaterThanOrEqual((100_000 * 72) / 25.4);
+  });
+
+  it("accepts a trim side exactly at the cap", () => {
+    const input: CornerMarkInput = { ...LETTER, trim: { x: 0, y: 0, width: 612, height: MAX_MARK_SHEET_SIDE_PT } };
+    expect(cropMarkSegments(input)).toHaveLength(8);
+    expect(bleedMarkSegments(input)).toHaveLength(8);
+  });
+
+  it("draws corner marks on a 30 m roll item", () => {
+    const rollPt = (30_000 * 72) / 25.4;
+    const input: CornerMarkInput = { trim: { x: 0, y: 0, width: 1_000, height: rollPt }, bleed: 9, offset: 9, length: 18 };
+    const bleed = bleedMarkSegments(input);
+    const crop = cropMarkSegments(input);
+    expect(bleed).toHaveLength(8);
+    expect(crop).toHaveLength(8);
+    // Top-right vertical lines: 18 pt past the trim top, 18 pt long.
+    expect(bleed.some((s) => near(s, { x1: 1_009, y1: rollPt + 18, x2: 1_009, y2: rollPt + 36 }))).toBe(true);
+    expect(crop.some((s) => near(s, { x1: 1_000, y1: rollPt + 18, x2: 1_000, y2: rollPt + 36 }))).toBe(true);
+  });
 });
 
 describe("bleedMarkSegments", () => {
@@ -186,9 +209,14 @@ describe("corner mark bounds", () => {
     {
       name: "trim width over cap",
       input: withTrim({ width: MAX_MARK_SHEET_SIDE_PT + 1 }),
-      message: "trim.width 14401 is over the limit of 14400",
+      message: "trim.width 283466 is over the limit of 283465",
     },
-    { name: "trim x over cap", input: withTrim({ x: MAX_MARK_SHEET_SIDE_PT + 1 }), message: "trim.x 14401 is over the limit of 14400" },
+    {
+      name: "trim height just over cap",
+      input: withTrim({ height: MAX_MARK_SHEET_SIDE_PT + 0.001 }),
+      message: `trim.height ${String(MAX_MARK_SHEET_SIDE_PT + 0.001)} is over the limit of 283465`,
+    },
+    { name: "trim x over cap", input: withTrim({ x: MAX_MARK_SHEET_SIDE_PT + 1 }), message: "trim.x 283466 is over the limit of 283465" },
     { name: "bleed over cap", input: { ...LETTER, bleed: MAX_MARK_DISTANCE_PT + 1 }, message: "bleed 721 is over the limit of 720" },
     { name: "offset over cap", input: { ...LETTER, offset: MAX_MARK_DISTANCE_PT + 1 }, message: "offset 721 is over the limit of 720" },
     { name: "length over cap", input: { ...LETTER, length: MAX_MARK_DISTANCE_PT + 1 }, message: "length 721 is over the limit of 720" },
