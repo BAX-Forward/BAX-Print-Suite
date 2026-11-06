@@ -15,7 +15,12 @@ export interface SuggestOptions extends Omit<TileSpec, "grid" | "seamsX" | "seam
   maxWidthMm?: Mm;
   /** User limit on panel height, measured per `accounting`. */
   maxHeightMm?: Mm;
-  /** Regions seams should avoid (faces, text, door handles), in the artwork frame. */
+  /**
+   * Regions seams should avoid (faces, text, door handles), in mm in the
+   * artwork frame. Each needs finite values, width and height > 0, and must lie
+   * inside the artwork; at most {@link MAX_KEEP_OUT_REGIONS}. Absent or empty
+   * leaves the suggestion unchanged.
+   */
   keepOut?: RectMm[];
   /**
    * Panel-size spreads up to this many mm count as "equal widths" for the
@@ -33,9 +38,21 @@ export interface Suggestion {
   rotated: boolean;
   /** (widest − narrowest visible column) + (tallest − shortest visible row), mm. */
   widthSpreadMm: Mm;
-  /** Number of (seam, keep-out) pairs where the seam band crosses the region. */
+  /**
+   * Number of (seam, keep-out) pairs where the seam crosses the region; a
+   * region crossed by two seams counts twice. A seam is its band on the wall
+   * ({@link seamBand}): the seam line for `butt`, seam ± `overlapMm` for
+   * `overlap` (the full overlap strip, not its centre line), seam ± `gapMm / 2`
+   * for `gap`. A vertical seam crosses a region when its open band meets the
+   * open interval (x, x + width), so a butt seam at x crosses iff
+   * x < seam < x + width and a band that only touches a region's edge does not
+   * cross. Horizontal seams use y and height the same way.
+   */
   keepOutHits: number;
 }
+
+/** Upper bound on keep-out regions per call; keeps validation and the seam search bounded. */
+export const MAX_KEEP_OUT_REGIONS = 256;
 
 export type SuggestResult =
   | { ok: true; suggestion: Suggestion; alternatives: Suggestion[] }
@@ -46,13 +63,16 @@ type Range = [Mm, Mm];
 /**
  * FR4: propose the grid with the fewest panels that satisfies the limits.
  * Ties break on equal panel widths, then on seams avoiding keep-out regions,
- * then on unrotated panels. Deterministic for a given input.
+ * (fewest {@link Suggestion.keepOutHits}), then on the smaller width spread,
+ * then on unrotated panels; the sort is stable, so remaining ties keep
+ * candidate order. Deterministic for a given input. Invalid keep-out regions
+ * return `invalid-keep-out` issues; never throws.
  */
 export function suggest(page: TilePage, options: SuggestOptions = {}, limits: TileLimits = {}): SuggestResult {
   const { maxWidthMm, maxHeightMm, keepOut = [], widthToleranceMm = 0, ...rest } = options;
   const base: TileSpec = { ...rest, grid: { mode: "size", maxWidthMm, maxHeightMm } };
 
-  const keepOutIssues = validateKeepOut(keepOut);
+  const keepOutIssues = validateKeepOut(page, keepOut);
   if (keepOutIssues.length > 0) return { ok: false, issues: keepOutIssues };
 
   const rangesX: Range[] = keepOut.map((r) => [r.x, r.x + r.width]);
@@ -119,12 +139,44 @@ export function suggest(page: TilePage, options: SuggestOptions = {}, limits: Ti
   return { ok: true, suggestion: best as Suggestion, alternatives };
 }
 
-function validateKeepOut(keepOut: readonly RectMm[]): TileIssue[] {
-  return keepOut.flatMap((r, i) =>
-    [r.x, r.y, r.width, r.height].every(isFiniteNumber) && r.width >= 0 && r.height >= 0
-      ? []
-      : [{ code: "invalid-keep-out" as const, message: `keep-out region ${i} needs finite x, y and width, height >= 0` }],
-  );
+function validateKeepOut(page: TilePage, keepOut: unknown): TileIssue[] {
+  if (!Array.isArray(keepOut)) {
+    return [{ code: "invalid-keep-out", message: "keepOut must be an array of rectangles" }];
+  }
+  const regions: readonly unknown[] = keepOut;
+  if (regions.length > MAX_KEEP_OUT_REGIONS) {
+    return [
+      {
+        code: "invalid-keep-out",
+        message: `at most ${MAX_KEEP_OUT_REGIONS} keep-out regions (got ${regions.length})`,
+      },
+    ];
+  }
+  // An invalid page is reported by tile() as invalid-page; skip the bounds check then.
+  const pageValid =
+    isFiniteNumber(page.widthMm) && isFiniteNumber(page.heightMm) && page.widthMm > 0 && page.heightMm > 0;
+  return regions.flatMap((r, i) => {
+    const error = keepOutError(r, pageValid ? page : undefined);
+    if (error === undefined) return [];
+    return [{ code: "invalid-keep-out" as const, message: `keep-out region ${i} ${error}` }];
+  });
+}
+
+function keepOutError(region: unknown, page: TilePage | undefined): string | undefined {
+  if (typeof region !== "object" || region === null) return "must be a rectangle { x, y, width, height }";
+  if (!("x" in region && "y" in region && "width" in region && "height" in region)) {
+    return "must be a rectangle { x, y, width, height }";
+  }
+  const { x, y, width, height } = region;
+  if (!(isFiniteNumber(x) && isFiniteNumber(y) && isFiniteNumber(width) && isFiniteNumber(height))) {
+    return "needs finite x, y, width and height";
+  }
+  if (width <= 0 || height <= 0) return "needs width and height > 0";
+  if (x < 0 || y < 0) return "must start inside the artwork (x, y >= 0)";
+  if (page && (x + width > page.widthMm + EPS_MM || y + height > page.heightMm + EPS_MM)) {
+    return `must lie inside the artwork (${page.widthMm} x ${page.heightMm} mm)`;
+  }
+  return undefined;
 }
 
 function hitsAt(position: Mm, treatment: SeamTreatment, ranges: readonly Range[]): number {
