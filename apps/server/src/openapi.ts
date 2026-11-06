@@ -522,6 +522,21 @@ const BOOKLET_REQUEST_SCHEMA: JsonSchema = {
   },
 };
 
+/** `POST /jobs/:id/impose` (Spec 036e): the plan options of one kind, checked like the Spec 036b bodies. */
+const IMPOSE_REQUEST_SCHEMA: JsonSchema = {
+  type: 'object',
+  required: ['kind', 'options'],
+  additionalProperties: false,
+  properties: {
+    kind: { enum: ['n-up', 'booklet'] },
+    options: {
+      oneOf: [refTo('NUpRequest'), refTo('BookletRequest')],
+      description: 'The `POST /imposition/n-up` body for `n-up`, the `POST /imposition/booklet` body for `booklet`',
+    },
+    proofMarks: { type: 'boolean', default: false, description: 'Draws the Spec 036c proof marks and labels over the content' },
+  },
+};
+
 const BOOKLET_SIDE: JsonSchema = { type: 'array', items: PAGE_SLOT, minItems: 2, maxItems: 2, description: 'Left then right' };
 
 const BOOKLET_PLAN_SCHEMA: JsonSchema = {
@@ -584,6 +599,7 @@ const COMPONENT_SCHEMAS: Readonly<Record<string, JsonSchema>> = {
   NUpPlan: N_UP_PLAN_SCHEMA,
   BookletRequest: BOOKLET_REQUEST_SCHEMA,
   BookletPlan: BOOKLET_PLAN_SCHEMA,
+  ImposeRequest: IMPOSE_REQUEST_SCHEMA,
   PrintSubmission: PRINT_SUBMISSION_SCHEMA,
   PrintOutputStatus: PRINT_OUTPUT_STATUS_SCHEMA,
 };

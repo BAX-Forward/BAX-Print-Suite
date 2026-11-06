@@ -80,6 +80,8 @@ export const ROUTE_PERMISSIONS: Readonly<Record<RouteKey, Permission>> = Object.
   // Spec 036b imposition plans: a read like the swatch charts; nothing is rendered or stored.
   'POST /imposition/n-up': 'jobs:read',
   'POST /imposition/booklet': 'jobs:read',
+  // Spec 036e imposed sheets: a read like the proof route; the PDF is answered, not stored.
+  'POST /jobs/:id/impose': 'jobs:read',
   // Spec 003x layout templates.
   'POST /layout-templates': 'layouts:write',
   'GET /layout-templates': 'layouts:read',
