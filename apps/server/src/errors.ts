@@ -98,6 +98,9 @@ export const sourcePdfTooLarge = (message: string): HttpError => new HttpError(4
 /** Spec 038c: the body of `PUT /jobs/:id/white-ink` is not a white ink setting core `parseWhiteInkSetting` accepts. */
 export const whiteInkInvalid = (message: string): HttpError => new HttpError(400, "invalid_white_ink", message);
 
+/** Spec 039c: the body of `PUT /jobs/:id/screening` is not a screening setting core `parseScreeningSetting` accepts. */
+export const screeningInvalid = (message: string): HttpError => new HttpError(400, "invalid_screening", message);
+
 /** Spec 036e: the status and lowercase code of each Spec 036d imposed sheet error. */
 const IMPOSED_SHEETS_ERRORS: Readonly<Record<ImposedSheetsErrorCode, readonly [number, string]>> = {
   SOURCE_PDF_TOO_LARGE: [413, "source_pdf_too_large"],

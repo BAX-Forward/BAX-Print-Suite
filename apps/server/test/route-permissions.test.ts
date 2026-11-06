@@ -103,6 +103,7 @@ function createHarness(actor?: Actor): Harness {
     swatchCharts: true,
     imposition: true,
     whiteInk: { jobs, clock: time.clock },
+    screening: { jobs, clock: time.clock },
     ...(actor ? { authenticate: () => actor } : {}),
   });
   return { app, db };
@@ -139,6 +140,15 @@ describe('route permissions (Spec 024b)', () => {
 
     expect(routesOf(h.app)).toContain('POST /jobs/:id/impose');
     expect(routePermission('POST', '/jobs/:id/impose')).toBe('jobs:read');
+  });
+
+  it('mounts the Spec 039c screening routes and maps them to jobs:write', async () => {
+    h = createHarness();
+    await h.app.ready();
+
+    expect(routesOf(h.app)).toEqual(expect.arrayContaining(['PUT /jobs/:id/screening', 'DELETE /jobs/:id/screening']));
+    expect(routePermission('PUT', '/jobs/:id/screening')).toBe('jobs:write');
+    expect(routePermission('DELETE', '/jobs/:id/screening')).toBe('jobs:write');
   });
 
   it('denies every caller a route without a declared permission', async () => {
