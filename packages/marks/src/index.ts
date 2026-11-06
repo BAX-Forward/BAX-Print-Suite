@@ -47,4 +47,18 @@ export {
   type ProofWatermark,
   type ProofWatermarkInput,
 } from "./proof-watermark.js";
+export {
+  SwatchChartOptionsSchema,
+  parseSwatchChartOptions,
+  planSwatchChart,
+  renderSwatchChart,
+  type SwatchCell,
+  type SwatchChartOptions,
+  type SwatchChartOptionsInput,
+  type SwatchCmykPercent,
+  type SwatchColor,
+  type SwatchLab,
+  type SwatchLibrary,
+  type SwatchPage,
+} from "./swatch-chart.js";
 export { labelPreviewSvg, labelPartSvg, type LabelPreview, type LabelPreviewInput } from "./label-preview.js";
