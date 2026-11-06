@@ -36,7 +36,7 @@ function job(overrides: Partial<Job> = {}): Job {
 describe('database migrations', () => {
   it('applies every migration once', () => {
     const db = openDatabase();
-    expect(appliedMigrations(db)).toEqual([1, 2, 3, 4, 5, 6]);
+    expect(appliedMigrations(db)).toEqual([1, 2, 3, 4, 5, 6, 7]);
   });
 });
 

@@ -109,7 +109,7 @@ function countTokens(db: Database): unknown {
 describe('SqliteApiTokenRepository', () => {
   it('applies the api tokens migration', () => {
     const db = openDatabase();
-    expect(appliedMigrations(db)).toEqual([1, 2, 3, 4, 5, 6]);
+    expect(appliedMigrations(db)).toEqual([1, 2, 3, 4, 5, 6, 7]);
     db.close();
   });
 

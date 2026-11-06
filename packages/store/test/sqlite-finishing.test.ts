@@ -56,7 +56,7 @@ function expectInvalid(work: () => unknown): void {
 describe('SqliteFinishingPlanRepository', () => {
   it('applies the finishing plans migration', () => {
     const db = openDatabase();
-    expect(appliedMigrations(db)).toEqual([1, 2, 3, 4, 5, 6]);
+    expect(appliedMigrations(db)).toEqual([1, 2, 3, 4, 5, 6, 7]);
     db.close();
   });
 
