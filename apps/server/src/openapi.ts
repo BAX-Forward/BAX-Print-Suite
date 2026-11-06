@@ -172,7 +172,10 @@ const CUT_JOB_RESULT_SCHEMA: JsonSchema = {
   ],
 };
 
-/** `POST /jobs/:id/step-repeat` (Spec 003u): the roll layout, one trim contour per copy and the imposed PDF. */
+/**
+ * `POST /jobs/:id/step-repeat` (Spec 003u): the roll layout, one trim contour per copy and the imposed PDF.
+ * Spec 051b: for a tiled job, one placement and one panel outline contour per copy of each tiling panel.
+ */
 const STEP_REPEAT_RESULT_SCHEMA: JsonSchema = {
   type: 'object',
   required: ['layout', 'cutContours', 'warnings', 'imposedPdfBase64'],
@@ -192,9 +195,19 @@ const STEP_REPEAT_RESULT_SCHEMA: JsonSchema = {
         panels: { type: 'array', items: { type: 'object' } },
       },
     },
-    cutContours: { type: 'array', items: CUT_CONTOUR_SCHEMA },
+    cutContours: {
+      type: 'array',
+      items: CUT_CONTOUR_SCHEMA,
+      description:
+        'One closed trim rectangle per copy (`copy-<n>`); for a tiled job one panel outline per panel copy (`<panel item id>/copy-<n>`), in `layout.placements` order',
+    },
     warnings: { type: 'array', items: { type: 'object' } },
-    imposedPdfBase64: { type: 'string', contentEncoding: 'base64', contentMediaType: 'application/pdf' },
+    imposedPdfBase64: {
+      type: 'string',
+      contentEncoding: 'base64',
+      contentMediaType: 'application/pdf',
+      description: 'One page per roll panel; a tiled job draws each tiling panel as a Form XObject whose /BBox is its clip box on the source page',
+    },
   },
 };
 

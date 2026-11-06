@@ -13,9 +13,9 @@ import {
 } from '@bax-print/nest';
 import type { CutJobLookup } from './cut-routes.js';
 import { conflict, HttpError, notFound } from './errors.js';
-import { rejectTiledJob } from './job-tiling.js';
 import { doc } from './openapi.js';
 import { readSource } from './pdf-cut-extractor.js';
+import { tiledStepRepeat } from './tiled-step-repeat.js';
 
 /** Builds the step-and-repeat job; tests replace it. */
 export type StepRepeatRunner = (opts: StepRepeatJobOptions) => Promise<StepRepeatJob>;
@@ -105,16 +105,17 @@ export function registerStepRepeatRoutes(app: FastifyInstance, deps: StepRepeatR
     {
       schema: doc({
         operationId: 'stepRepeatJob',
-        summary: "Steps and repeats a page of a job's first source PDF on roll media, with one trim cut contour per copy",
+        summary:
+          "Steps and repeats a page of a job's first source PDF on roll media, with one trim cut contour per copy. A tiled job (Spec 051b) prints `copies` of each tiling panel instead, nested on the roll, each panel clipped to its part of the page and cut along its outline",
         tags: ['nest'],
         params: ID_PARAMS,
         body: STEP_REPEAT_BODY,
         responses: {
-          200: 'The roll layout, the cut contours and the imposed PDF (base64)',
+          200: 'The roll layout, the cut contours and the imposed PDF (base64). For a tiled job, one placement and contour per panel copy, nested with the `maxrects` nester: `rotate` does not apply (panels keep the orientation tile validated) and the larger of `gapXMm` and `gapYMm` is the gap both ways',
           400: 'The body does not match the schema (`invalid_request`)',
-          404: 'Unknown job',
+          404: "Unknown job, or a job outside the caller's sites (the same answer)",
           409: 'The job has no source file',
-          422: 'The options can not be laid out (`invalid_step_repeat`), the source is not a readable PDF (`unreadable_pdf`), or the job has a tiling setting (`tiling_unsupported`)',
+          422: 'The options can not be laid out, e.g. too many placements or an item or tiling panel wider than the roll (`invalid_step_repeat`), the source is not a readable PDF (`unreadable_pdf`), or the job\'s tiling can not be printed: more or fewer than one PDF source file, a multi-page source, ticket edits, a setting tile rejects for the page, or panels the nester can not impose (`tiling_unsupported`, issues in `details`)',
         },
         responseSchema: 'StepRepeatResult',
       }),
@@ -123,11 +124,11 @@ export function registerStepRepeatRoutes(app: FastifyInstance, deps: StepRepeatR
       const { id } = request.params;
       const job = await deps.jobs.get(id);
       if (!job) throw notFound('Job', id);
-      // Spec 050b: stepAndRepeatJob builds one item from the whole page, so it can not take tiling panels.
-      rejectTiledJob(job, 'step and repeat');
+      const { body } = request;
+      // Spec 051b: stepAndRepeatJob builds one item from the whole page, so a tiled job's panels are nested instead.
+      if (job.tiling !== undefined) return respond(await tiledStepRepeat(job, body, deps.blobPath), job);
       const sourcePdf = await readSource(job, deps.blobPath);
       if (!sourcePdf) throw conflict(`Job ${id} has no source file to step and repeat`);
-      const { body } = request;
       const result = await build(run, {
         sourcePdf,
         sourceBox: body.sourceBox,
@@ -139,13 +140,17 @@ export function registerStepRepeatRoutes(app: FastifyInstance, deps: StepRepeatR
         rotate: body.rotate,
         ...(body.pageIndex === undefined ? {} : { pageIndex: body.pageIndex }),
       });
-      deps.onJob?.(result, job);
-      return {
-        layout: result.layout,
-        cutContours: result.cutContours,
-        warnings: result.warnings,
-        imposedPdfBase64: Buffer.from(result.imposedPdf).toString('base64'),
-      };
+      return respond(result, job);
     },
   );
+
+  function respond(result: StepRepeatJob, job: Job): StepRepeatResponse {
+    deps.onJob?.(result, job);
+    return {
+      layout: result.layout,
+      cutContours: result.cutContours,
+      warnings: result.warnings,
+      imposedPdfBase64: Buffer.from(result.imposedPdf).toString('base64'),
+    };
+  }
 }
