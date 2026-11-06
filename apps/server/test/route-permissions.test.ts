@@ -105,6 +105,7 @@ function createHarness(actor?: Actor): Harness {
     whiteInk: { jobs, clock: time.clock },
     screening: { jobs, clock: time.clock },
     inkLimit: { jobs, clock: time.clock },
+    screenPreview: { jobs },
     ...(actor ? { authenticate: () => actor } : {}),
   });
   return { app, db };
@@ -159,6 +160,14 @@ describe('route permissions (Spec 024b)', () => {
     expect(routesOf(h.app)).toEqual(expect.arrayContaining(['PUT /jobs/:id/ink-limit', 'DELETE /jobs/:id/ink-limit']));
     expect(routePermission('PUT', '/jobs/:id/ink-limit')).toBe('jobs:write');
     expect(routePermission('DELETE', '/jobs/:id/ink-limit')).toBe('jobs:write');
+  });
+
+  it('mounts the Spec 043a screen preview route and maps it to jobs:read', async () => {
+    h = createHarness();
+    await h.app.ready();
+
+    expect(routesOf(h.app)).toContain('POST /jobs/:id/screen-preview');
+    expect(routePermission('POST', '/jobs/:id/screen-preview')).toBe('jobs:read');
   });
 
   it('denies every caller a route without a declared permission', async () => {
