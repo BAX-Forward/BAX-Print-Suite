@@ -12,9 +12,9 @@ export class BpsError extends Error {
   }
 }
 
-/** A caller passed a value that fails validation. */
+/** A caller passed a value that fails validation. `code` narrows the failure, e.g. `tls_config_invalid`. */
 export class InvalidArgumentError extends BpsError {
-  constructor(message: string) {
-    super('INVALID_ARGUMENT', message);
+  constructor(message: string, code = 'INVALID_ARGUMENT') {
+    super(code, message);
   }
 }
