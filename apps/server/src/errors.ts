@@ -95,6 +95,9 @@ export const jobSourceNotPdf = (message: string): HttpError => new HttpError(409
 /** Spec 036e: the stored source PDF is above the Spec 036d size limit, checked before it is read. */
 export const sourcePdfTooLarge = (message: string): HttpError => new HttpError(413, "source_pdf_too_large", message);
 
+/** Spec 038c: the body of `PUT /jobs/:id/white-ink` is not a white ink setting core `parseWhiteInkSetting` accepts. */
+export const whiteInkInvalid = (message: string): HttpError => new HttpError(400, "invalid_white_ink", message);
+
 /** Spec 036e: the status and lowercase code of each Spec 036d imposed sheet error. */
 const IMPOSED_SHEETS_ERRORS: Readonly<Record<ImposedSheetsErrorCode, readonly [number, string]>> = {
   SOURCE_PDF_TOO_LARGE: [413, "source_pdf_too_large"],

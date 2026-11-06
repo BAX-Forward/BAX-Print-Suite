@@ -113,6 +113,36 @@ describe('SqliteJobRepository', () => {
     expect(await repo.findLiveBySha256('hf-2', sha)).toBeUndefined();
     expect(await repo.findLiveBySha256('hf-1', 'b'.repeat(64))).toBeUndefined();
   });
+
+  describe('whiteInk (spec 038c)', () => {
+    it('round-trips a valid setting and leaves an absent one absent', async () => {
+      const repo = new SqliteJobRepository(openDatabase());
+      const withWhite = job({ id: 'white', whiteInk: { mode: 'choke', chokePx: 2, shape: 'diamond', density: 80 } });
+      await repo.save(withWhite);
+      await repo.save(job({ id: 'plain' }));
+
+      expect(await repo.get('white')).toStrictEqual(withWhite);
+      const plain = await repo.get('plain');
+      expect(plain).toStrictEqual(job({ id: 'plain' }));
+      expect(plain !== undefined && 'whiteInk' in plain).toBe(false);
+    });
+
+    it.each([['yes'], [{ mode: 'x' }], [{ mode: 'flood', chokePx: 65 }], [null]])(
+      'reads a stored invalid whiteInk %j back with no whiteInk',
+      async (whiteInk) => {
+        const db = openDatabase();
+        const repo = new SqliteJobRepository(db);
+        await repo.save(job({ status: 'queued' }));
+        db.prepare('UPDATE jobs SET doc = ? WHERE id = ?').run(JSON.stringify({ ...job({ status: 'queued' }), whiteInk }), 'job-1');
+
+        const expected = job({ status: 'queued' });
+        expect(await repo.get('job-1')).toStrictEqual(expected);
+        expect(await repo.list()).toStrictEqual([expected]);
+        expect((await repo.queue()).items).toStrictEqual([expected]);
+        expect(await repo.findLiveBySha256('hf-1', 'a'.repeat(64))).toStrictEqual(expected);
+      },
+    );
+  });
 });
 
 describe('SqliteHotFolderRepository', () => {

@@ -1,5 +1,19 @@
 import type { FastifySchema, RouteOptions } from 'fastify';
-import { FINISHING_STEP_KINDS, PERMISSIONS, type Permission } from '@bax-print/core';
+import {
+  FINISHING_STEP_KINDS,
+  PERMISSIONS,
+  WHITE_INK_CHOKE_PX_MAX,
+  WHITE_INK_CHOKE_PX_MIN,
+  WHITE_INK_DENSITY_MAX,
+  WHITE_INK_DENSITY_MIN,
+  WHITE_INK_SEPARATION_NAME_MAX_LENGTH,
+  WHITE_INK_SEPARATION_NAME_MIN_LENGTH,
+  WHITE_INK_SETTING_MODES,
+  WHITE_INK_SETTING_SHAPES,
+  WHITE_INK_THRESHOLD_MAX,
+  WHITE_INK_THRESHOLD_MIN,
+  type Permission,
+} from '@bax-print/core';
 import { MAX_CREEP_PT, MAX_GRID, MAX_PAGES, MAX_SHEETS } from '@bax-print/nest';
 import { routePermission } from './route-permissions.js';
 import { isJobRoute } from './site-scope.js';
@@ -561,6 +575,48 @@ const BOOKLET_PLAN_SCHEMA: JsonSchema = {
   },
 };
 
+/** `PUT /jobs/:id/white-ink` (Spec 038c): the Spec 038b white ink setting, checked strictly by core `parseWhiteInkSetting`. */
+const WHITE_INK_SETTING_SCHEMA: JsonSchema = {
+  type: 'object',
+  required: ['mode'],
+  additionalProperties: false,
+  properties: {
+    mode: { enum: [...WHITE_INK_SETTING_MODES] },
+    threshold: { type: 'integer', minimum: WHITE_INK_THRESHOLD_MIN, maximum: WHITE_INK_THRESHOLD_MAX },
+    chokePx: { type: 'integer', minimum: WHITE_INK_CHOKE_PX_MIN, maximum: WHITE_INK_CHOKE_PX_MAX },
+    shape: { enum: [...WHITE_INK_SETTING_SHAPES] },
+    density: { type: 'integer', minimum: WHITE_INK_DENSITY_MIN, maximum: WHITE_INK_DENSITY_MAX, description: 'Percent' },
+    invert: { type: 'boolean' },
+    separationName: {
+      type: 'string',
+      minLength: WHITE_INK_SEPARATION_NAME_MIN_LENGTH,
+      maxLength: WHITE_INK_SEPARATION_NAME_MAX_LENGTH,
+      pattern: '^[\\x20-\\x7e]+$',
+      description: 'Printable ASCII, not blank',
+    },
+  },
+};
+
+/** Spec 038c: the `{ job }` the white ink routes answer; only the fields this route group documents are listed. */
+const WHITE_INK_JOB_SCHEMA: JsonSchema = {
+  type: 'object',
+  required: ['job'],
+  properties: {
+    job: {
+      type: 'object',
+      required: ['id'],
+      properties: {
+        id: { type: 'string' },
+        updatedAt: { type: 'string', format: 'date-time' },
+        whiteInk: {
+          ...refTo('WhiteInkSetting'),
+          description: 'Optional; absent means white ink is off. A stored value that is not a valid setting reads back absent',
+        },
+      },
+    },
+  },
+};
+
 const itemsOf = (name: string): JsonSchema => ({
   type: 'object',
   required: ['items'],
@@ -602,6 +658,8 @@ const COMPONENT_SCHEMAS: Readonly<Record<string, JsonSchema>> = {
   ImposeRequest: IMPOSE_REQUEST_SCHEMA,
   PrintSubmission: PRINT_SUBMISSION_SCHEMA,
   PrintOutputStatus: PRINT_OUTPUT_STATUS_SCHEMA,
+  WhiteInkSetting: WHITE_INK_SETTING_SCHEMA,
+  WhiteInkJob: WHITE_INK_JOB_SCHEMA,
 };
 
 function parameters(schema: JsonSchema | undefined, location: 'path' | 'query'): unknown[] {
@@ -713,6 +771,8 @@ const API_DESCRIPTION = [
   "they send the job's PDF source to it through `printer/submitDocument`. A device that takes no finished documents or not",
   'this format answers 409 `document_input_unsupported`, a document above its limit 413 `document_too_large`, and any other',
   "plugin failure 502 `printer_error`; each carries the plugin's uppercase code in `details.code`.",
+  'Spec 038c: a job may carry an optional `whiteInk` setting (`WhiteInkSetting`); absent means white ink is off, and a stored value',
+  'that is not a valid setting reads back absent. `PUT` and `DELETE /jobs/{id}/white-ink` set and clear it, and exist only with `BPS_WHITE_INK=1`.',
 ].join(' ');
 
 /** Collects documented routes through Fastify's `onRoute` hook. */
