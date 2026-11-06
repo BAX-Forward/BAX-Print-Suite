@@ -73,6 +73,9 @@ export const ROUTE_PERMISSIONS: Readonly<Record<RouteKey, Permission>> = Object.
   'GET /finishing/incomplete': 'finishing:read',
   // Spec 023b production report.
   'GET /reports/production': 'reports:read',
+  // Spec 017d accounting IDs.
+  'PUT /jobs/:id/accounting-id': 'jobs:write',
+  'GET /reports/accounting': 'reports:read',
   // Archive, trash, legal hold and job history.
   'GET /archive': 'archive:read',
   'GET /archive/:id': 'archive:read',

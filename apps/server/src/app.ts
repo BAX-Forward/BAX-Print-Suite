@@ -3,6 +3,7 @@ import { parseSearchQuery, type ArchiveService } from '@bax-print/archive';
 import { InvalidArgumentError, type Actor } from '@bax-print/core';
 import { toJsonl } from '@bax-print/events';
 import { sanitizeKeySegment, type LayoutTemplateRepository } from '@bax-print/store';
+import { registerAccountingRoutes, type AccountingRouteOptions } from './accounting-routes.js';
 import { registerCutRoutes, type CutExtractor, type CutJobLookup } from './cut-routes.js';
 import { registerFinishingRoutes, type FinishingRouteOptions } from './finishing-routes.js';
 import { registerLayoutTemplateRoutes } from './layout-template-routes.js';
@@ -48,6 +49,11 @@ export interface ServerDeps {
   readonly finishing?: FinishingRouteOptions;
   /** Mounts the Spec 023b `GET /reports/production` route over these jobs; any job repository satisfies `jobs`. */
   readonly productionReport?: ProductionReportRouteOptions;
+  /**
+   * Mounts the Spec 017d `PUT /jobs/:id/accounting-id` route over these jobs, and `GET /reports/accounting`
+   * when `reports` provides the device accounting reports; any job repository satisfies `jobs`.
+   */
+  readonly accounting?: AccountingRouteOptions;
   /** `info.version` of the OpenAPI document. */
   readonly version?: string;
   /**
@@ -133,6 +139,10 @@ export function buildServer(deps: ServerDeps): FastifyInstance {
 
   if (deps.productionReport) {
     registerProductionReportRoutes(app, deps.productionReport);
+  }
+
+  if (deps.accounting) {
+    registerAccountingRoutes(app, deps.accounting);
   }
 
   app.get('/archive', async (request) => archive.search(parseSearchQuery(request.query as Record<string, unknown>)));
