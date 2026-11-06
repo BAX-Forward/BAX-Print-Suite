@@ -4,6 +4,8 @@ import type { EditParseResult } from "@bax-print/core";
 import { SeverityOrOffSchema, type CheckConfig, type Finding, type Severity } from "@bax-print/plugin-sdk";
 import type { AnyCheck, RawFinding } from "./check.js";
 import type { DocumentModel } from "./document-model.js";
+import { RASTER_CHECKS } from "./raster-checks.js";
+import type { RasterHeader } from "./raster-header.js";
 import { BUILTIN_CHECKS, builtinRegistry, type CheckRegistry } from "./registry.js";
 
 /** Core's generic `{ ok, value } | { ok, errors }` result, used here for profiles and params. */
@@ -157,14 +159,14 @@ function toFinding(checkId: string, severity: Severity, raw: RawFinding): Findin
   };
 }
 
-function runCheck(check: AnyCheck, config: CheckConfig, doc: DocumentModel): Finding[] {
+function runCheck(check: AnyCheck, config: CheckConfig, run: (params: Record<string, unknown>) => RawFinding[]): Finding[] {
   const params = resolveParams(check, config.params);
   if (!params.ok) {
     return [toFinding(check.id, "error", { rule: "invalid-params", message: `Check ${check.id}: ${params.errors.join("; ")}` })];
   }
   let raw: RawFinding[];
   try {
-    raw = check.run(doc, params.value);
+    raw = run(params.value);
   } catch (error) {
     // A failing check must not let a job through unseen.
     return [toFinding(check.id, "error", { rule: "check-failed", message: `Check ${check.id} failed: ${(error as Error).message}` })];
@@ -189,11 +191,36 @@ export function evaluateChecks(
   for (const check of registry.list()) {
     const config = configs[check.id];
     if (!config || config.enabled === false) continue;
-    findings.push(...runCheck(check, config, doc));
+    findings.push(...runCheck(check, config, (params) => check.run(doc, params)));
   }
-  for (const id of Object.keys(configs)) {
-    if (registry.has(id)) continue;
-    findings.push(toFinding(id, "warn", { rule: "unknown-check", message: `Check ${id} is not available in this inspector` }));
+  findings.push(...unknownCheckFindings(configs, registry));
+  return findings;
+}
+
+function unknownCheckFindings(configs: Readonly<Record<string, CheckConfig>>, registry: CheckRegistry): Finding[] {
+  return Object.keys(configs)
+    .filter((id) => registry.has(id) === false)
+    .map((id) => toFinding(id, "warn", { rule: "unknown-check", message: `Check ${id} is not available in this inspector` }));
+}
+
+/**
+ * The raster form of `evaluateChecks` (Spec 031b): runs the configured raster checks on a
+ * PNG, JPEG or TIFF header, with the same defaults, params, severities and unknown-check
+ * findings. Registered checks without a raster form (the PDF checks) do not apply and are skipped.
+ */
+export function evaluateRasterChecks(
+  header: RasterHeader,
+  checks: Readonly<Record<string, CheckConfig>> | undefined,
+  registry: CheckRegistry = builtinRegistry(),
+): Finding[] {
+  const configs: Record<string, CheckConfig> = checks ? { ...checks } : Object.fromEntries(registry.list().map((c) => [c.id, {}]));
+  const findings: Finding[] = [];
+  for (const check of registry.list()) {
+    const config = configs[check.id];
+    const raster = RASTER_CHECKS.find((candidate) => candidate.check === check);
+    if (config === undefined || config.enabled === false || raster === undefined) continue;
+    findings.push(...runCheck(check, config, (params) => raster.run(header, params)));
   }
+  findings.push(...unknownCheckFindings(configs, registry));
   return findings;
 }

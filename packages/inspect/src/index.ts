@@ -16,6 +16,7 @@ export * from "./document-model.js";
 export * from "./inspector.js";
 export * from "./preflight.js";
 export * from "./profile.js";
+export * from "./raster-checks.js";
 export * from "./raster-header.js";
 export * from "./registry.js";
 export * from "./spot-name.js";
