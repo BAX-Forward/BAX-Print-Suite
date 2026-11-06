@@ -127,7 +127,10 @@ export type TileIssueCode =
   | "exceeds-size-limit"
   | "exceeds-printable-width"
   | "exceeds-media-width"
-  | "exceeds-max-length";
+  | "exceeds-max-length"
+  | "invalid-panel-ref"
+  | "unknown-panel"
+  | "ambiguous-panel-ref";
 
 export interface TileIssue {
   code: TileIssueCode;

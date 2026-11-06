@@ -26,6 +26,7 @@ export {
   type PanelSource,
 } from "./nest-item.js";
 export { panelPdf } from "./pdf.js";
+export { MAX_PANEL_REF_LENGTH, MAX_PANEL_REFS, selectPanels, type PanelSelection, type SelectPanelsOptions } from "./select.js";
 export {
   parseTileTemplate,
   serializeTileTemplate,
