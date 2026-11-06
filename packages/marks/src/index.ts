@@ -81,4 +81,12 @@ export {
   type ImpositionProofSide,
   type ImpositionProofSlot,
 } from "./imposition-proof.js";
+export {
+  ImposedSheetsError,
+  MAX_SOURCE_PAGES,
+  MAX_SOURCE_PDF_BYTES,
+  renderImposedSheets,
+  type ImposedSheetsErrorCode,
+  type ImposedSheetsOptions,
+} from "./imposition-output.js";
 export { labelPreviewSvg, labelPartSvg, type LabelPreview, type LabelPreviewInput } from "./label-preview.js";
