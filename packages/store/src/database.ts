@@ -84,6 +84,21 @@ export const MIGRATIONS: readonly Migration[] = Object.freeze([
       CREATE INDEX finishing_plans_updated ON finishing_plans (updated_at, job_id);
     `,
   },
+  {
+    version: 5,
+    name: 'users',
+    sql: `
+      CREATE TABLE users (
+        id TEXT PRIMARY KEY,
+        username TEXT NOT NULL UNIQUE,
+        display_name TEXT NOT NULL,
+        roles_json TEXT NOT NULL,
+        password_hash TEXT NOT NULL,
+        created_at TEXT NOT NULL,
+        disabled_at TEXT
+      );
+    `,
+  },
 ]);
 
 function applyMigrations(db: DatabaseSync): void {
