@@ -61,4 +61,24 @@ export {
   type SwatchLibrary,
   type SwatchPage,
 } from "./swatch-chart.js";
+export {
+  ImpositionProofOptionsSchema,
+  MAX_PROOF_SIDES,
+  parseImpositionProofOptions,
+  planImpositionProof,
+  renderImpositionProof,
+  type ImpositionProofBookletPlan,
+  type ImpositionProofBookletSheet,
+  type ImpositionProofFace,
+  type ImpositionProofLine,
+  type ImpositionProofNUpPlacement,
+  type ImpositionProofNUpPlan,
+  type ImpositionProofOptions,
+  type ImpositionProofOptionsInput,
+  type ImpositionProofPageSlot,
+  type ImpositionProofPlan,
+  type ImpositionProofRect,
+  type ImpositionProofSide,
+  type ImpositionProofSlot,
+} from "./imposition-proof.js";
 export { labelPreviewSvg, labelPartSvg, type LabelPreview, type LabelPreviewInput } from "./label-preview.js";
