@@ -1,5 +1,6 @@
 import {
   ErrorCodes,
+  MAX_DOCUMENT_BYTES,
   RpcError,
   type AccountingResult,
   type BandDataParams,
@@ -12,6 +13,8 @@ import {
   type PrinterStatus,
   type SdkLogger,
   type SubmissionParams,
+  type SubmitDocumentParams,
+  type SubmitDocumentResult,
   type SubmitParams,
   type SubmitResult,
 } from '@bax-print/plugin-sdk';
@@ -39,6 +42,9 @@ export type {
 } from './folder-output.js';
 
 export const FOLDER_DEVICE_ID = 'folder-output';
+
+/** Largest document accepted over `printer/submitDocument`: the SDK limit, nothing tighter. */
+export const FOLDER_MAX_DOCUMENT_BYTES = MAX_DOCUMENT_BYTES;
 
 /** Why PrinterDriver/1 band submissions are declined. */
 export const BAND_INPUT_UNSUPPORTED =
@@ -69,7 +75,14 @@ export interface FolderDescription {
  * own. Whatever consumes the folder decides how the output is printed.
  */
 function folderCapabilities(formats: readonly DocumentFormat[]): PrinterCapabilities {
-  return { input: 'document', colorants: [], bitsPerSample: [], resolutionsDpi: [], documentFormats: [...formats] };
+  return {
+    input: 'document',
+    colorants: [],
+    bitsPerSample: [],
+    resolutionsDpi: [],
+    documentFormats: [...formats],
+    maxDocumentBytes: FOLDER_MAX_DOCUMENT_BYTES,
+  };
 }
 
 /**
@@ -80,6 +93,8 @@ function folderCapabilities(formats: readonly DocumentFormat[]): PrinterCapabili
 export class FolderPrinterDriver implements PrinterDriverV1 {
   private output: FolderOutput | undefined;
   private readonly now: () => Date;
+  /** `printer/submitDocument` submission id -> folder job id, for `printer/cancel`. */
+  private readonly documentJobs = new Map<string, string>();
 
   constructor(
     private readonly host: DriverHost,
@@ -108,10 +123,34 @@ export class FolderPrinterDriver implements PrinterDriverV1 {
     };
   }
 
-  async submitDocument(submission: DocumentSubmission): Promise<FolderSubmitResult> {
-    const result = await this.requireOutput().submit(submission);
-    this.host.log.info('output written', { jobId: result.jobId, path: result.outputPath });
-    return result;
+  /** Writes a finished document into the folder. */
+  submitDocument(submission: DocumentSubmission): Promise<FolderSubmitResult>;
+  /**
+   * PrinterDriver/1 `printer/submitDocument` (spec 034a0). The SDK has already read the document
+   * from the spool and checked its size and sha256; the folder job id is the BPP `jobId`.
+   */
+  submitDocument(params: SubmitDocumentParams, bytes: Uint8Array): Promise<SubmitDocumentResult>;
+  async submitDocument(
+    request: DocumentSubmission | SubmitDocumentParams,
+    bytes?: Uint8Array,
+  ): Promise<FolderSubmitResult | SubmitDocumentResult> {
+    if ('data' in request) return this.writeDocument(request);
+    this.requireDevice(request.deviceId);
+    if (bytes === undefined) {
+      throw new RpcError(ErrorCodes.InvalidParams, 'document bytes are required');
+    }
+    if (this.documentJobs.has(request.submissionId)) {
+      throw new RpcError(ErrorCodes.InvalidParams, `duplicate submission ${request.submissionId}`);
+    }
+    await this.writeDocument({
+      jobId: request.jobId,
+      format: request.format,
+      data: bytes,
+      ...(request.copies !== undefined ? { copies: request.copies } : {}),
+      ...(request.mediaName !== undefined ? { media: { name: request.mediaName } } : {}),
+    });
+    this.documentJobs.set(request.submissionId, request.jobId);
+    return { submissionId: request.submissionId };
   }
 
   async getJobStatus(jobId: string): Promise<FolderJobStatus> {
@@ -164,14 +203,25 @@ export class FolderPrinterDriver implements PrinterDriverV1 {
     throw new RpcError(ErrorCodes.InvalidParams, `unknown submission ${params.submissionId}`);
   }
 
+  /** Cancels a document submitted over `printer/submitDocument`; there are no band submissions. */
   async cancel(params: SubmissionParams): Promise<void> {
-    throw new RpcError(ErrorCodes.InvalidParams, `unknown submission ${params.submissionId}`);
+    const jobId = this.documentJobs.get(params.submissionId);
+    if (jobId === undefined) {
+      throw new RpcError(ErrorCodes.InvalidParams, `unknown submission ${params.submissionId}`);
+    }
+    await this.cancelJob(jobId);
   }
 
   /** Nothing is measured here, so there is nothing to account. */
   async accounting(params: DeviceParams): Promise<AccountingResult> {
     this.requireDevice(params.deviceId);
     return { records: [] };
+  }
+
+  private async writeDocument(submission: DocumentSubmission): Promise<FolderSubmitResult> {
+    const result = await this.requireOutput().submit(submission);
+    this.host.log.info('output written', { jobId: result.jobId, path: result.outputPath });
+    return result;
   }
 
   private requireOutput(): FolderOutput {
