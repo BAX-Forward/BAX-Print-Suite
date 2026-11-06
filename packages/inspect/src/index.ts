@@ -20,3 +20,25 @@ export * from "./raster-checks.js";
 export * from "./raster-header.js";
 export * from "./registry.js";
 export * from "./spot-name.js";
+export {
+  VECTOR_CHECKS,
+  defineVectorCheck,
+  vectorMarkupCheck,
+  vectorSizeCheck,
+  type VectorCheck,
+  type VectorCheckSpec,
+} from "./vector-checks.js";
+export {
+  VECTOR_HEADER_MAX_BYTES,
+  readVectorHeader,
+  type DxfHeader,
+  type DxfPoint,
+  type SvgHeader,
+  type SvgLengthUnit,
+  type SvgViewBox,
+  type VectorHeader,
+  type VectorHeaderError,
+  type VectorHeaderErrorCode,
+  type VectorHeaderResult,
+  type VectorType,
+} from "./vector-header.js";

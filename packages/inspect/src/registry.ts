@@ -9,6 +9,7 @@ import { pageBoxesCheck } from "./checks/page-boxes.js";
 import { printableWidthCheck } from "./checks/printable-width.js";
 import { transparencyOverprintCheck } from "./checks/transparency-overprint.js";
 import { rasterColorModeCheck, rasterResolutionCheck } from "./raster-checks.js";
+import { vectorMarkupCheck, vectorSizeCheck } from "./vector-checks.js";
 
 const CHECK_ID = /^[a-z][a-z0-9-]{0,63}$/;
 
@@ -41,6 +42,7 @@ export class CheckRegistry {
 /**
  * Built-in checks, in report order. `document` comes first: the others depend on a readable file.
  * The raster checks (Spec 031b) find nothing in a PDF; they run on raster headers only.
+ * Likewise the vector checks (Spec 035a) run on SVG and DXF headers only.
  */
 export const BUILTIN_CHECKS: readonly AnyCheck[] = [
   documentCheck,
@@ -54,6 +56,8 @@ export const BUILTIN_CHECKS: readonly AnyCheck[] = [
   conformanceCheck,
   rasterResolutionCheck.check,
   rasterColorModeCheck.check,
+  vectorSizeCheck.check,
+  vectorMarkupCheck.check,
 ];
 
 export function builtinRegistry(): CheckRegistry {
