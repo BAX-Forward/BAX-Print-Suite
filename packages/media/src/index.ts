@@ -15,6 +15,7 @@ export * from './screening/error-diffusion.js';
 export * from './cgats.js';
 export * from './cxf.js';
 export * from './spot-library.js';
+export * from './swatch-csv.js';
 export * from './measurements.js';
 export * from './curves-text.js';
 export * from './events.js';
