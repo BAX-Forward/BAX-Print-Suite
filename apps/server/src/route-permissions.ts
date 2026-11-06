@@ -77,6 +77,9 @@ export const ROUTE_PERMISSIONS: Readonly<Record<RouteKey, Permission>> = Object.
   'DELETE /jobs/:id/print/:outputJobId': 'jobs:write',
   // Spec 032b swatch charts: a read like the proof route; nothing is stored.
   'POST /swatch-charts': 'jobs:read',
+  // Spec 036b imposition plans: a read like the swatch charts; nothing is rendered or stored.
+  'POST /imposition/n-up': 'jobs:read',
+  'POST /imposition/booklet': 'jobs:read',
   // Spec 003x layout templates.
   'POST /layout-templates': 'layouts:write',
   'GET /layout-templates': 'layouts:read',

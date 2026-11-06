@@ -1,5 +1,6 @@
 import type { FastifySchema, RouteOptions } from 'fastify';
 import { FINISHING_STEP_KINDS, PERMISSIONS, type Permission } from '@bax-print/core';
+import { MAX_CREEP_PT, MAX_GRID, MAX_PAGES, MAX_SHEETS } from '@bax-print/nest';
 import { routePermission } from './route-permissions.js';
 import { isJobRoute } from './site-scope.js';
 
@@ -441,6 +442,110 @@ const SWATCH_CHART_REQUEST_SCHEMA: JsonSchema = {
   },
 };
 
+const POINTS: JsonSchema = { type: 'number', description: 'Points (1/72 inch)' };
+const POSITIVE_POINTS: JsonSchema = { ...POINTS, exclusiveMinimum: 0 };
+const PAGE_SLOT: JsonSchema = { oneOf: [{ type: 'integer', minimum: 1 }, { const: 'blank' }] };
+const ROTATION: JsonSchema = { enum: [0, 90] };
+const N_UP_SIZE: JsonSchema = {
+  type: 'object',
+  required: ['width', 'height'],
+  additionalProperties: false,
+  properties: { width: POSITIVE_POINTS, height: POSITIVE_POINTS },
+};
+
+/**
+ * `POST /imposition/n-up` (Spec 036b): the Spec 036a `planNUp` options. The route checks the JSON
+ * types and unknown fields; the planner checks the ranges, the limits and the fit.
+ */
+const N_UP_REQUEST_SCHEMA: JsonSchema = {
+  type: 'object',
+  required: ['sheet', 'cell'],
+  additionalProperties: false,
+  properties: {
+    sheet: N_UP_SIZE,
+    cell: { ...N_UP_SIZE, description: 'The cell size before rotation' },
+    rows: { type: 'integer', minimum: 1, maximum: MAX_GRID, description: 'Omitted: as many as fit' },
+    cols: { type: 'integer', minimum: 1, maximum: MAX_GRID, description: 'Omitted: as many as fit' },
+    gutter: { ...POINTS, minimum: 0, default: 0, description: 'Gap between neighboring cells; at most the smaller sheet side' },
+    margin: { ...POINTS, minimum: 0, default: 0, description: 'Same on all four sheet edges; must leave a usable area' },
+    orientation: { enum: ['upright', 'turned', 'auto'], default: 'upright' },
+    pageCount: { type: 'integer', minimum: 1, maximum: MAX_PAGES, description: `Omitted: the plan has no sheets; at most ${MAX_SHEETS} sheets` },
+  },
+};
+
+const N_UP_PLAN_SCHEMA: JsonSchema = {
+  type: 'object',
+  required: ['rows', 'cols', 'rotation', 'cellsPerSheet', 'pageCount', 'blankCount', 'placements', 'sheets'],
+  properties: {
+    rows: { type: 'integer', minimum: 1 },
+    cols: { type: 'integer', minimum: 1 },
+    rotation: ROTATION,
+    cellsPerSheet: { type: 'integer', minimum: 1 },
+    pageCount: COUNT,
+    blankCount: COUNT,
+    placements: {
+      type: 'array',
+      items: {
+        type: 'object',
+        required: ['index', 'row', 'col', 'x', 'y', 'width', 'height', 'rotation'],
+        description: 'Row 0 is at the top; x and y are the bottom-left of the footprint (y up)',
+        properties: { index: COUNT, row: COUNT, col: COUNT, x: POINTS, y: POINTS, width: POINTS, height: POINTS, rotation: ROTATION },
+      },
+    },
+    sheets: {
+      type: 'array',
+      items: {
+        type: 'object',
+        required: ['index', 'pages'],
+        properties: { index: COUNT, pages: { type: 'array', items: PAGE_SLOT, description: '`pages[k]` goes into `placements[k]`' } },
+      },
+    },
+  },
+};
+
+/** `POST /imposition/booklet` (Spec 036b): the Spec 036a `planBooklet` options, checked like the n-up ones. */
+const BOOKLET_REQUEST_SCHEMA: JsonSchema = {
+  type: 'object',
+  required: ['pageCount', 'signaturePages', 'binding'],
+  additionalProperties: false,
+  properties: {
+    pageCount: { type: 'integer', minimum: 1, maximum: MAX_PAGES, description: `At most ${MAX_SHEETS} sheets of 4 pages` },
+    signaturePages: { enum: [4, 8, 16, 'single'], description: '"single": every sheet nested in one signature' },
+    binding: { enum: ['left', 'right'] },
+    creep: {
+      ...POINTS,
+      minimum: 0,
+      maximum: MAX_CREEP_PT,
+      default: 0,
+      description: 'Per sheet, growing inward; the innermost sheet offset must not exceed 10 mm either',
+    },
+  },
+};
+
+const BOOKLET_SIDE: JsonSchema = { type: 'array', items: PAGE_SLOT, minItems: 2, maxItems: 2, description: 'Left then right' };
+
+const BOOKLET_PLAN_SCHEMA: JsonSchema = {
+  type: 'object',
+  required: ['pageCount', 'paddedPageCount', 'blankCount', 'pagesPerSignature', 'sheetsPerSignature', 'signatureCount', 'binding', 'sheets'],
+  properties: {
+    pageCount: { type: 'integer', minimum: 1 },
+    paddedPageCount: { type: 'integer', minimum: 4 },
+    blankCount: COUNT,
+    pagesPerSignature: { type: 'integer', minimum: 4 },
+    sheetsPerSignature: { type: 'integer', minimum: 1 },
+    signatureCount: { type: 'integer', minimum: 1 },
+    binding: { enum: ['left', 'right'] },
+    sheets: {
+      type: 'array',
+      items: {
+        type: 'object',
+        required: ['index', 'signature', 'position', 'front', 'back', 'creep'],
+        properties: { index: COUNT, signature: COUNT, position: COUNT, front: BOOKLET_SIDE, back: BOOKLET_SIDE, creep: { ...POINTS, minimum: 0 } },
+      },
+    },
+  },
+};
+
 const itemsOf = (name: string): JsonSchema => ({
   type: 'object',
   required: ['items'],
@@ -475,6 +580,10 @@ const COMPONENT_SCHEMAS: Readonly<Record<string, JsonSchema>> = {
   IssuedApiToken: ISSUED_API_TOKEN_SCHEMA,
   LoginResult: LOGIN_RESULT_SCHEMA,
   SwatchChartRequest: SWATCH_CHART_REQUEST_SCHEMA,
+  NUpRequest: N_UP_REQUEST_SCHEMA,
+  NUpPlan: N_UP_PLAN_SCHEMA,
+  BookletRequest: BOOKLET_REQUEST_SCHEMA,
+  BookletPlan: BOOKLET_PLAN_SCHEMA,
   PrintSubmission: PRINT_SUBMISSION_SCHEMA,
   PrintOutputStatus: PRINT_OUTPUT_STATUS_SCHEMA,
 };

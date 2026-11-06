@@ -101,6 +101,7 @@ function createHarness(actor?: Actor): Harness {
     accounting: { jobs, reports: { list: async () => [] }, clock: time.clock },
     apiTokens: { tokens: new SqliteApiTokenRepository(db), now },
     swatchCharts: true,
+    imposition: true,
     ...(actor ? { authenticate: () => actor } : {}),
   });
   return { app, db };

@@ -14,6 +14,7 @@ import {
 import { configureApiTokens } from './api-token-config.js';
 import { buildServer, isLoopbackHost, localAdminWarning, type ServerDeps } from './app.js';
 import { DATABASE_URL_ENV, parseDatabaseUrl, redactDatabaseUrl } from './database-url.js';
+import { IMPOSITION_ENV, parseImpositionFlag } from './imposition-routes.js';
 import { JobService } from './jobs.js';
 import { MediaService } from './media-service.js';
 import { memoryMediaStores } from './media-stores.js';
@@ -47,6 +48,8 @@ const allowLanTargets = parseAllowLanTargets(process.env[ALLOW_LAN_TARGETS_ENV])
 const https = loadHttpsOptions(process.env);
 // Spec 032b: POST /swatch-charts only with BPS_SWATCH_CHARTS=1; any other value stops startup.
 const swatchCharts = parseSwatchChartsFlag(process.env);
+// Spec 036b: POST /imposition/n-up and /imposition/booklet only with BPS_IMPOSITION=1; any other value stops startup.
+const imposition = parseImpositionFlag(process.env);
 // Spec 034a: print output only with BPS_PRINT_OUTPUT=1 and BPS_PRINTER_PLUGIN; any other flag value, a missing,
 // relative or absent manifest or a bad BPS_PRINTER_SETTINGS stops startup. The plugin is started on first use, never here.
 const printOutput = configurePrintOutput(process.env, { spoolDir: join(dataDir, 'spool', 'print-output') });
@@ -141,6 +144,7 @@ const serverDeps: ServerDeps = {
   ...login,
   ...(siteScope ? { siteScope } : {}),
   ...(swatchCharts ? { swatchCharts } : {}),
+  ...(imposition ? { imposition } : {}),
   logger: true,
   ...(https === undefined ? {} : { https }),
 };
@@ -182,6 +186,11 @@ if (printOutput) {
 } else {
   app.log.info(`print output is off (set ${PRINT_OUTPUT_ENV}=1 and ${PRINTER_PLUGIN_ENV} to send jobs to a printer plugin)`);
 }
+app.log.info(
+  imposition
+    ? `imposition plans are on (${IMPOSITION_ENV}=1): POST /imposition/n-up and POST /imposition/booklet`
+    : `imposition plans are off (set ${IMPOSITION_ENV}=1 to plan n-up and booklet impositions)`,
+);
 if (https === undefined) {
   app.log.info('TLS is off: serving plain HTTP (set BPS_TLS_CERT and BPS_TLS_KEY to serve HTTPS)');
 } else {

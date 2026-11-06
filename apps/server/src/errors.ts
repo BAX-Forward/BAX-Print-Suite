@@ -15,6 +15,7 @@ import {
   InvalidLifecycleError,
   LegalHoldError,
 } from "@bax-print/core";
+import { NestInputError } from "@bax-print/nest";
 import { InvalidCursorError, InvalidFinishingPlanError, InvalidLayoutTemplateError, LayoutTemplateNameConflictError } from "@bax-print/store";
 
 /** Service errors with the HTTP status the API maps them to. */
@@ -168,6 +169,10 @@ export function errorResponse(error: unknown): ErrorResponse {
   // Spec 004d: the store's finishing plan error keeps its uppercase code too.
   if (error instanceof InvalidFinishingPlanError) {
     return { statusCode: 422, body: errorBody("finishing_plan_invalid", error.message) };
+  }
+  // Spec 036b: the n-up and booklet planners reject a value; their message names it.
+  if (error instanceof NestInputError) {
+    return { statusCode: 400, body: errorBody("invalid_imposition_input", error.message) };
   }
   const status = isRecord(error) && typeof error.statusCode === "number" ? error.statusCode : 500;
   if (status >= 400 && status < 500) {
